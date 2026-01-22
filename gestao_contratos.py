@@ -1,19 +1,21 @@
 import sys
-from datetime import datetime, timedelta
+import csv
+import json
+import os
+from datetime import datetime
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                              QHBoxLayout, QLabel, QLineEdit, QPushButton, 
                              QTableWidget, QTableWidgetItem, QMessageBox, 
                              QHeaderView, QListWidget, QSplitter, 
                              QDialog, QComboBox, QFormLayout, QDialogButtonBox,
                              QAbstractItemView, QDateEdit, QTabWidget, QMenu,
-                             QCheckBox, QListWidgetItem)
+                             QCheckBox, QStackedWidget, QFrame, QFileDialog)
 from PyQt6.QtCore import Qt, QDate
 from PyQt6.QtGui import QAction, QColor, QFont
 
-# --- 0. UTILITÁRIOS E COMPONENTES PERSONALIZADOS ---
+# --- 0. UTILITÁRIOS ---
 
 class CurrencyInput(QLineEdit):
-    """Campo de texto que formata como dinheiro (R$ 0,00) ao digitar"""
     def __init__(self, valor_inicial=0.0, parent=None):
         super().__init__(parent)
         self.valor_float = valor_inicial
@@ -24,29 +26,32 @@ class CurrencyInput(QLineEdit):
         return f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
     def ao_mudar_texto(self, text):
-        # Remove tudo que não é dígito
         numeros = ''.join(filter(str.isdigit, text))
-        if not numeros:
-            self.valor_float = 0.0
-        else:
-            self.valor_float = float(numeros) / 100
-        
-        # Bloqueia sinal para não entrar em loop infinito
+        if not numeros: self.valor_float = 0.0
+        else: self.valor_float = float(numeros) / 100
         self.blockSignals(True)
         self.setText(self.formatar(self.valor_float))
-        # Move cursor para o final
         self.setCursorPosition(len(self.text()))
         self.blockSignals(False)
 
-    def get_value(self):
-        return self.valor_float
-
+    def get_value(self): return self.valor_float
     def set_value(self, valor):
         self.valor_float = valor
         self.setText(self.formatar(valor))
 
+def str_to_date(date_str):
+    try: return datetime.strptime(date_str, "%d/%m/%Y")
+    except: return datetime.now()
+
+def parse_float_br(valor_str):
+    if not valor_str: return 0.0
+    v = valor_str.strip()
+    if ',' in v and '.' in v: v = v.replace('.', '').replace(',', '.')
+    elif ',' in v: v = v.replace(',', '.')
+    try: return float(v)
+    except: return 0.0
+
 def gerar_competencias(inicio_str, fim_str):
-    """Gera lista de MM/YYYY entre duas datas"""
     try:
         dt_ini = datetime.strptime(inicio_str, "%m/%Y")
         dt_fim = datetime.strptime(fim_str, "%m/%Y")
@@ -54,137 +59,229 @@ def gerar_competencias(inicio_str, fim_str):
         atual = dt_ini
         while atual <= dt_fim:
             lista.append(atual.strftime("%m/%Y"))
-            # Avança um mês
-            proximo_mes = atual.month + 1
-            proximo_ano = atual.year
-            if proximo_mes > 12:
-                proximo_mes = 1
-                proximo_ano += 1
-            atual = datetime(proximo_ano, proximo_mes, 1)
+            if atual.month == 12: atual = datetime(atual.year + 1, 1, 1)
+            else: atual = datetime(atual.year, atual.month + 1, 1)
         return lista
-    except:
-        return []
+    except: return []
 
 # --- 1. ESTRUTURA DE DADOS ---
-
-class Aditivo:
-    def __init__(self, tipo, valor=0.0, data_nova=None, descricao="", renovacao_valor=False):
-        self.tipo = tipo  # "Valor" ou "Prazo"
-        self.valor = valor
-        self.data_nova = data_nova
-        self.descricao = descricao
-        self.renovacao_valor = renovacao_valor # Se True, é prazo COM valor
-
-class SubContrato:
-    def __init__(self, descricao, valor_estimado):
-        self.descricao = descricao
-        self.valor_estimado = valor_estimado
 
 class Movimentacao:
     def __init__(self, tipo, valor, competencia=""):
         self.tipo = tipo
         self.valor = valor
-        self.competencia = competencia 
+        self.competencia = competencia
+    
+    def to_dict(self): return self.__dict__
+    @staticmethod
+    def from_dict(d): return Movimentacao(d['tipo'], d['valor'], d['competencia'])
 
 class NotaEmpenho:
-    def __init__(self, numero, valor, descricao, subcontrato_idx, fonte_recurso):
+    def __init__(self, numero, valor, descricao, subcontrato_idx, fonte_recurso, data_emissao, ciclo_id, aditivo_vinculado_id=None):
         self.numero = numero
         self.valor_inicial = valor
         self.descricao = descricao
         self.subcontrato_idx = subcontrato_idx 
-        self.fonte_recurso = fonte_recurso # Novo Campo
+        self.fonte_recurso = fonte_recurso
+        self.data_emissao = data_emissao
+        self.ciclo_id = ciclo_id 
+        self.aditivo_vinculado_id = aditivo_vinculado_id
         self.valor_pago = 0.0
-        self.historico = []
+        self.historico = [] 
         self.historico.append(Movimentacao("Emissão Original", valor, "-"))
 
     def realizar_pagamento(self, valor, competencia):
         saldo = self.valor_inicial - self.valor_pago
-        if valor > saldo + 0.01: # Margem pequena pra float
-            return False, f"Saldo insuficiente na NE! Resta: {saldo:.2f}"
+        if valor > saldo + 0.01: return False, f"Saldo insuficiente! Resta: {saldo:.2f}"
         self.valor_pago += valor
         self.historico.append(Movimentacao("Pagamento", valor, competencia))
         return True, "Pagamento realizado."
 
-    def excluir_movimentacao(self, index_movimentacao):
-        if index_movimentacao < 0 or index_movimentacao >= len(self.historico):
-            return False
-        mov = self.historico[index_movimentacao]
-        if mov.tipo == "Emissão Original":
-            return False # Não exclui a origem
-        if mov.tipo == "Pagamento":
-            self.valor_pago -= mov.valor
-        self.historico.pop(index_movimentacao)
+    def excluir_movimentacao(self, index):
+        if index < 0 or index >= len(self.historico): return False
+        mov = self.historico[index]
+        if mov.tipo == "Emissão Original": return False
+        if mov.tipo == "Pagamento": self.valor_pago -= mov.valor
+        self.historico.pop(index)
         return True
 
     def editar_movimentacao(self, index, novo_valor, nova_comp):
         mov = self.historico[index]
         if mov.tipo == "Pagamento":
-            # Reverte o antigo e aplica o novo
             self.valor_pago -= mov.valor
             saldo = self.valor_inicial - self.valor_pago
             if novo_valor > saldo + 0.01:
-                self.valor_pago += mov.valor # Restaura o antigo se der erro
+                self.valor_pago += mov.valor 
                 return False, "Novo valor excede o saldo."
             self.valor_pago += novo_valor
-            mov.valor = novo_valor
-            mov.competencia = nova_comp
-            return True, "Editado com sucesso"
-        return False, "Tipo não editável"
+            mov.valor = novo_valor; mov.competencia = nova_comp
+            return True, "Sucesso"
+        return False, "Erro"
 
     def calcular_media_mensal(self):
         if self.valor_pago == 0: return 0.0
         meses = set(m.competencia for m in self.historico if m.tipo == "Pagamento" and m.competencia)
         return self.valor_pago / len(meses) if len(meses) > 0 else 0.0
 
+    def to_dict(self):
+        d = self.__dict__.copy()
+        d['historico'] = [h.to_dict() for h in self.historico]
+        return d
+    
+    @staticmethod
+    def from_dict(d):
+        ne = NotaEmpenho(d['numero'], d['valor_inicial'], d['descricao'], d['subcontrato_idx'], 
+                         d['fonte_recurso'], d['data_emissao'], d.get('ciclo_id', 0), d.get('aditivo_vinculado_id'))
+        ne.valor_pago = d['valor_pago']
+        # Limpa historico padrão e carrega o salvo
+        ne.historico = [Movimentacao.from_dict(h) for h in d['historico']]
+        return ne
+
+class Aditivo:
+    def __init__(self, id_aditivo, tipo, valor=0.0, data_nova=None, descricao="", renovacao_valor=False, data_inicio_vigencia=None):
+        self.id_aditivo = id_aditivo 
+        self.tipo = tipo  
+        self.valor = valor
+        self.data_nova = data_nova 
+        self.descricao = descricao
+        self.renovacao_valor = renovacao_valor 
+        self.data_inicio_vigencia = data_inicio_vigencia
+        self.ciclo_pertencente_id = -1 
+    
+    def to_dict(self): return self.__dict__
+    @staticmethod
+    def from_dict(d):
+        adt = Aditivo(d['id_aditivo'], d['tipo'], d['valor'], d['data_nova'], d['descricao'], d['renovacao_valor'], d['data_inicio_vigencia'])
+        adt.ciclo_pertencente_id = d.get('ciclo_pertencente_id', -1)
+        return adt
+
+class SubContrato:
+    def __init__(self, descricao, valor_estimado):
+        self.descricao = descricao
+        self.valor_estimado = valor_estimado
+    def to_dict(self): return self.__dict__
+    @staticmethod
+    def from_dict(d): return SubContrato(d['descricao'], d['valor_estimado'])
+
+class CicloFinanceiro:
+    def __init__(self, id_ciclo, nome, valor_base):
+        self.id_ciclo = id_ciclo
+        self.nome = nome
+        self.valor_base = valor_base
+        self.aditivos_valor = [] 
+    
+    def get_teto_total(self):
+        return self.valor_base + sum(a.valor for a in self.aditivos_valor)
+
+    def to_dict(self):
+        d = self.__dict__.copy()
+        if 'aditivos_valor' in d: del d['aditivos_valor'] 
+        return d
+    
+    @staticmethod
+    def from_dict(d): return CicloFinanceiro(d['id_ciclo'], d['nome'], d['valor_base'])
+
 class Contrato:
     def __init__(self, numero, prestador, descricao, valor_inicial, vig_inicio, vig_fim, comp_inicio, comp_fim, licitacao, dispensa):
         self.numero = numero
         self.prestador = prestador
         self.descricao = descricao
-        self.valor_inicial = valor_inicial
-        
+        self.valor_inicial = valor_inicial 
         self.vigencia_inicio = vig_inicio
         self.vigencia_fim = vig_fim
         self.comp_inicio = comp_inicio
         self.comp_fim = comp_fim
-        
         self.licitacao = licitacao
         self.dispensa = dispensa
+
+        self.ciclos = []
+        self.ciclos.append(CicloFinanceiro(0, "Contrato Inicial", valor_inicial))
 
         self.lista_notas_empenho = []
         self.lista_aditivos = []
         self.lista_servicos = []
-
-    def get_valor_total_contrato(self):
-        # Soma Valor inicial + aditivos do tipo Valor + aditivos de Prazo que tenham renovação de valor
-        total_aditivos = sum(a.valor for a in self.lista_aditivos if (a.tipo == "Valor" or a.renovacao_valor))
-        return self.valor_inicial + total_aditivos
+        self._contador_aditivos = 0
 
     def get_vigencia_final_atual(self):
         aditivos_prazo = [a for a in self.lista_aditivos if a.tipo == "Prazo"]
-        if aditivos_prazo:
-            return aditivos_prazo[-1].data_nova
+        if aditivos_prazo: return aditivos_prazo[-1].data_nova
         return self.vigencia_fim
 
+    def adicionar_aditivo(self, adt):
+        self._contador_aditivos += 1
+        adt.id_aditivo = self._contador_aditivos
+        self.lista_aditivos.append(adt)
+        
+        qtd_prazos = len([a for a in self.lista_aditivos if a.tipo == "Prazo"])
+        qtd_valores = len([a for a in self.lista_aditivos if a.tipo == "Valor"])
+        
+        if adt.tipo == "Prazo" and adt.renovacao_valor:
+            nome_ciclo = f"{qtd_prazos}º TA Prazo/Valor"
+            novo_id = len(self.ciclos)
+            novo_ciclo = CicloFinanceiro(novo_id, nome_ciclo, adt.valor)
+            self.ciclos.append(novo_ciclo)
+            adt.ciclo_pertencente_id = novo_id
+            return f"Novo Ciclo Criado: {nome_ciclo}"
+        elif adt.tipo == "Valor":
+            ciclo_atual = self.ciclos[-1]
+            ciclo_atual.aditivos_valor.append(adt)
+            adt.ciclo_pertencente_id = ciclo_atual.id_ciclo
+            adt.descricao = f"{qtd_valores}º TA Valor - " + adt.descricao
+            return f"Valor vinculado ao ciclo: {ciclo_atual.nome}"
+        return "Aditivo registrado"
+
+    def get_saldo_ciclo_geral(self, id_ciclo):
+        if id_ciclo < 0 or id_ciclo >= len(self.ciclos): return 0.0
+        c = self.ciclos[id_ciclo]
+        teto = c.get_teto_total()
+        empenhado = sum(ne.valor_inicial for ne in self.lista_notas_empenho if ne.ciclo_id == id_ciclo)
+        return teto - empenhado
+
+    def get_saldo_aditivo_especifico(self, id_aditivo):
+        aditivo_alvo = next((a for a in self.lista_aditivos if a.id_aditivo == id_aditivo), None)
+        if not aditivo_alvo: return 0.0
+        gasto_especifico = sum(ne.valor_inicial for ne in self.lista_notas_empenho if ne.aditivo_vinculado_id == id_aditivo)
+        return aditivo_alvo.valor - gasto_especifico
+
     def adicionar_nota_empenho(self, ne):
-        total_empenhado_geral = sum(e.valor_inicial for e in self.lista_notas_empenho)
-        saldo_livre_geral = self.get_valor_total_contrato() - total_empenhado_geral
-        
-        if ne.valor_inicial > saldo_livre_geral + 0.01:
-            return False, "Valor indisponível no Saldo Geral do Contrato."
-
-        if ne.subcontrato_idx < 0 or ne.subcontrato_idx >= len(self.lista_servicos):
-            return False, "Subcontrato inválido."
-        
-        sub = self.lista_servicos[ne.subcontrato_idx]
-        gasto_sub = sum(e.valor_inicial for e in self.lista_notas_empenho if e.subcontrato_idx == ne.subcontrato_idx)
-        saldo_livre_sub = sub.valor_estimado - gasto_sub
-        
-        if ne.valor_inicial > saldo_livre_sub + 0.01:
-             return False, f"Valor excede o saldo do serviço '{sub.descricao}'."
-
+        saldo_ciclo = self.get_saldo_ciclo_geral(ne.ciclo_id)
+        if ne.valor_inicial > saldo_ciclo + 0.01: return False, f"Valor indisponível no Saldo Geral do Ciclo. Resta: {saldo_ciclo:,.2f}"
+        if ne.aditivo_vinculado_id:
+            saldo_adt = self.get_saldo_aditivo_especifico(ne.aditivo_vinculado_id)
+            if ne.valor_inicial > saldo_adt + 0.01: return False, f"Valor excede o saldo do Aditivo. Resta: {saldo_adt:,.2f}"
+        if 0 <= ne.subcontrato_idx < len(self.lista_servicos):
+            sub = self.lista_servicos[ne.subcontrato_idx]
+            gasto_sub = sum(e.valor_inicial for e in self.lista_notas_empenho if e.subcontrato_idx == ne.subcontrato_idx)
+            saldo_sub = sub.valor_estimado - gasto_sub
+            if ne.valor_inicial > saldo_sub + 0.01: return False, f"Valor excede o saldo do serviço '{sub.descricao}'."
         self.lista_notas_empenho.append(ne)
         return True, "Nota de Empenho vinculada."
+
+    def to_dict(self):
+        d = self.__dict__.copy()
+        d['ciclos'] = [c.to_dict() for c in self.ciclos]
+        d['lista_notas_empenho'] = [ne.to_dict() for ne in self.lista_notas_empenho]
+        d['lista_aditivos'] = [adt.to_dict() for adt in self.lista_aditivos]
+        d['lista_servicos'] = [sub.to_dict() for sub in self.lista_servicos]
+        return d
+
+    @staticmethod
+    def from_dict(d):
+        c = Contrato(d['numero'], d['prestador'], d['descricao'], d['valor_inicial'], d['vigencia_inicio'], 
+                     d['vigencia_fim'], d['comp_inicio'], d['comp_fim'], d.get('licitacao', ''), d.get('dispensa', ''))
+        c.ciclos = [CicloFinanceiro.from_dict(cd) for cd in d['ciclos']]
+        c.lista_servicos = [SubContrato.from_dict(sd) for sd in d['lista_servicos']]
+        c.lista_aditivos = [Aditivo.from_dict(ad) for ad in d['lista_aditivos']]
+        c.lista_notas_empenho = [NotaEmpenho.from_dict(nd) for nd in d['lista_notas_empenho']]
+        c._contador_aditivos = d.get('_contador_aditivos', 0)
+        
+        for adt in c.lista_aditivos:
+            if adt.tipo == "Valor" and adt.ciclo_pertencente_id != -1:
+                for ciclo in c.ciclos:
+                    if ciclo.id_ciclo == adt.ciclo_pertencente_id:
+                        ciclo.aditivos_valor.append(adt)
+                        break
+        return c
 
 # --- 2. DIÁLOGOS ---
 
@@ -192,210 +289,124 @@ class DialogoCriarContrato(QDialog):
     def __init__(self, contrato_editar=None, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Cadastro de Contrato")
-        self.setFixedWidth(500)
+        self.setFixedWidth(600)
         layout = QFormLayout(self)
-
-        self.inp_numero = QLineEdit()
-        self.inp_prestador = QLineEdit()
-        self.inp_desc = QLineEdit()
-        self.inp_valor = CurrencyInput()
-        
-        self.inp_licitacao = QLineEdit()
-        self.inp_dispensa = QLineEdit()
-
-        self.date_vig_ini = QDateEdit(QDate.currentDate())
-        self.date_vig_ini.setCalendarPopup(True)
-        self.date_vig_fim = QDateEdit(QDate.currentDate().addYears(1))
-        self.date_vig_fim.setCalendarPopup(True)
-
-        self.inp_comp_ini = QLineEdit(QDate.currentDate().toString("MM/yyyy"))
-        self.inp_comp_fim = QLineEdit(QDate.currentDate().addYears(1).toString("MM/yyyy"))
-        self.inp_comp_ini.setInputMask("99/9999")
-        self.inp_comp_fim.setInputMask("99/9999")
-
-        layout.addRow("Número Contrato:", self.inp_numero)
-        layout.addRow("Prestador:", self.inp_prestador)
-        layout.addRow("Objeto:", self.inp_desc)
-        layout.addRow("Valor Inicial:", self.inp_valor)
-        layout.addRow("Licitação/Edital:", self.inp_licitacao)
-        layout.addRow("Inexigibilidade/Disp:", self.inp_dispensa)
-        layout.addRow("Início Vigência:", self.date_vig_ini)
-        layout.addRow("Fim Vigência:", self.date_vig_fim)
-        layout.addRow("Competência Inicial:", self.inp_comp_ini)
-        layout.addRow("Competência Final:", self.inp_comp_fim)
-
-        # Preenchimento se for edição
+        self.inp_numero = QLineEdit(); self.inp_prestador = QLineEdit()
+        self.inp_desc = QLineEdit(); self.inp_valor = CurrencyInput()
+        self.inp_licitacao = QLineEdit(); self.inp_dispensa = QLineEdit()
+        self.date_vig_ini = QDateEdit(QDate.currentDate()); self.date_vig_ini.setCalendarPopup(True)
+        self.date_vig_fim = QDateEdit(QDate.currentDate().addYears(1)); self.date_vig_fim.setCalendarPopup(True)
+        self.inp_comp_ini = QLineEdit(QDate.currentDate().toString("MM/yyyy")); self.inp_comp_ini.setInputMask("99/9999")
+        self.inp_comp_fim = QLineEdit(QDate.currentDate().addYears(1).toString("MM/yyyy")); self.inp_comp_fim.setInputMask("99/9999")
+        layout.addRow("Número Contrato:", self.inp_numero); layout.addRow("Prestador:", self.inp_prestador)
+        layout.addRow("Objeto:", self.inp_desc); layout.addRow("Valor Inicial (Ciclo 0):", self.inp_valor)
+        layout.addRow("Licitação/Edital:", self.inp_licitacao); layout.addRow("Inexigibilidade/Disp:", self.inp_dispensa)
+        layout.addRow("Início Vigência:", self.date_vig_ini); layout.addRow("Fim Vigência:", self.date_vig_fim)
+        layout.addRow("Competência Inicial:", self.inp_comp_ini); layout.addRow("Competência Final:", self.inp_comp_fim)
         if contrato_editar:
-            self.inp_numero.setText(contrato_editar.numero)
-            self.inp_prestador.setText(contrato_editar.prestador)
-            self.inp_desc.setText(contrato_editar.descricao)
-            self.inp_valor.set_value(contrato_editar.valor_inicial)
-            self.inp_licitacao.setText(contrato_editar.licitacao)
-            self.inp_dispensa.setText(contrato_editar.dispensa)
-            self.date_vig_ini.setDate(QDate.fromString(contrato_editar.vigencia_inicio, "dd/MM/yyyy"))
-            self.date_vig_fim.setDate(QDate.fromString(contrato_editar.vigencia_fim, "dd/MM/yyyy"))
-            self.inp_comp_ini.setText(contrato_editar.comp_inicio)
-            self.inp_comp_fim.setText(contrato_editar.comp_fim)
-
+            self.inp_numero.setText(contrato_editar.numero); self.inp_prestador.setText(contrato_editar.prestador)
+            self.inp_desc.setText(contrato_editar.descricao); self.inp_valor.set_value(contrato_editar.valor_inicial); self.inp_valor.setReadOnly(True)
+            self.inp_licitacao.setText(contrato_editar.licitacao); self.inp_dispensa.setText(contrato_editar.dispensa)
+            self.date_vig_ini.setDate(str_to_date(contrato_editar.vigencia_inicio)); self.date_vig_fim.setDate(str_to_date(contrato_editar.vigencia_fim))
+            self.inp_comp_ini.setText(contrato_editar.comp_inicio); self.inp_comp_fim.setText(contrato_editar.comp_fim)
         botoes = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
-        botoes.accepted.connect(self.accept)
-        botoes.rejected.connect(self.reject)
-        layout.addWidget(botoes)
-
-    def get_dados(self):
-        return (self.inp_numero.text(), self.inp_prestador.text(), self.inp_desc.text(), self.inp_valor.get_value(),
-                self.date_vig_ini.text(), self.date_vig_fim.text(),
-                self.inp_comp_ini.text(), self.inp_comp_fim.text(),
-                self.inp_licitacao.text(), self.inp_dispensa.text())
+        botoes.accepted.connect(self.accept); botoes.rejected.connect(self.reject); layout.addWidget(botoes)
+    def get_dados(self): return (self.inp_numero.text(), self.inp_prestador.text(), self.inp_desc.text(), self.inp_valor.get_value(), self.date_vig_ini.text(), self.date_vig_fim.text(), self.inp_comp_ini.text(), self.inp_comp_fim.text(), self.inp_licitacao.text(), self.inp_dispensa.text())
 
 class DialogoNovoEmpenho(QDialog):
-    def __init__(self, lista_subcontratos, ne_editar=None, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("Nota de Empenho")
-        self.setFixedWidth(400)
+    def __init__(self, contrato, ne_editar=None, parent=None):
+        super().__init__(parent); self.contrato = contrato; self.setWindowTitle("Nota de Empenho"); self.setFixedWidth(500)
         layout = QFormLayout(self)
-        
-        self.inp_num = QLineEdit()
-        self.inp_desc = QLineEdit()
-        self.inp_fonte = QLineEdit()
-        self.inp_val = CurrencyInput()
-        
+        self.inp_num = QLineEdit(); self.inp_desc = QLineEdit(); self.inp_fonte = QLineEdit(); self.date_emissao = QDateEdit(QDate.currentDate()); self.date_emissao.setCalendarPopup(True); self.inp_val = CurrencyInput()
+        self.combo_ciclo = QComboBox(); self.combo_ciclo.currentIndexChanged.connect(self.atualizar_combo_aditivos); self.combo_aditivo = QComboBox()
         self.combo_sub = QComboBox()
-        for sub in lista_subcontratos:
-            self.combo_sub.addItem(f"{sub.descricao} (Total: {sub.valor_estimado:,.2f})")
-            
-        layout.addRow("Número da Nota:", self.inp_num)
-        layout.addRow("Descrição:", self.inp_desc)
-        layout.addRow("Fonte de Recurso:", self.inp_fonte)
-        layout.addRow("Vincular a Serviço:", self.combo_sub)
-        layout.addRow("Valor:", self.inp_val)
-
+        for sub in contrato.lista_servicos: self.combo_sub.addItem(f"{sub.descricao} (Total Est: {sub.valor_estimado:,.2f})")
+        for c in contrato.ciclos:
+            saldo = contrato.get_saldo_ciclo_geral(c.id_ciclo)
+            if ne_editar and ne_editar.ciclo_id == c.id_ciclo: saldo += ne_editar.valor_inicial
+            self.combo_ciclo.addItem(f"{c.nome} (Livre: R$ {saldo:,.2f})", c.id_ciclo)
+        layout.addRow("1. Ciclo Financeiro:", self.combo_ciclo); layout.addRow("2. Vincular a Aditivo de Valor (Opcional):", self.combo_aditivo)
+        layout.addRow("Número da Nota:", self.inp_num); layout.addRow("Data de Emissão:", self.date_emissao); layout.addRow("Fonte de Recurso:", self.inp_fonte)
+        layout.addRow("Descrição:", self.inp_desc); layout.addRow("Vincular a Serviço:", self.combo_sub); layout.addRow("Valor:", self.inp_val)
         if ne_editar:
-            self.inp_num.setText(ne_editar.numero)
-            self.inp_desc.setText(ne_editar.descricao)
-            self.inp_fonte.setText(ne_editar.fonte_recurso)
-            self.inp_val.set_value(ne_editar.valor_inicial)
-            if ne_editar.subcontrato_idx < self.combo_sub.count():
-                self.combo_sub.setCurrentIndex(ne_editar.subcontrato_idx)
-
+            self.inp_num.setText(ne_editar.numero); self.inp_desc.setText(ne_editar.descricao); self.inp_fonte.setText(ne_editar.fonte_recurso)
+            self.date_emissao.setDate(str_to_date(ne_editar.data_emissao)); self.inp_val.set_value(ne_editar.valor_inicial)
+            idx_c = self.combo_ciclo.findData(ne_editar.ciclo_id); 
+            if idx_c >= 0: self.combo_ciclo.setCurrentIndex(idx_c)
+            self.atualizar_combo_aditivos() 
+            if ne_editar.aditivo_vinculado_id:
+                idx_a = self.combo_aditivo.findData(ne_editar.aditivo_vinculado_id)
+                if idx_a >= 0: self.combo_aditivo.setCurrentIndex(idx_a)
+            if ne_editar.subcontrato_idx < self.combo_sub.count(): self.combo_sub.setCurrentIndex(ne_editar.subcontrato_idx)
+            if len(ne_editar.historico) > 1: self.inp_val.setEnabled(False) 
+        else:
+            self.combo_ciclo.setCurrentIndex(self.combo_ciclo.count()-1); self.atualizar_combo_aditivos()
         botoes = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
-        botoes.accepted.connect(self.accept)
-        layout.addWidget(botoes)
-
-    def get_dados(self):
-        return self.inp_num.text(), self.inp_desc.text(), self.combo_sub.currentIndex(), self.inp_val.get_value(), self.inp_fonte.text()
+        botoes.accepted.connect(self.accept); layout.addWidget(botoes)
+    def atualizar_combo_aditivos(self):
+        self.combo_aditivo.clear(); self.combo_aditivo.addItem("--- Usar Saldo Geral do Ciclo ---", None)
+        id_ciclo_atual = self.combo_ciclo.currentData(); 
+        if id_ciclo_atual is None: return
+        ciclo_obj = next((c for c in self.contrato.ciclos if c.id_ciclo == id_ciclo_atual), None)
+        if ciclo_obj:
+            for adt in ciclo_obj.aditivos_valor:
+                saldo = self.contrato.get_saldo_aditivo_especifico(adt.id_aditivo)
+                self.combo_aditivo.addItem(f"{adt.descricao} (Resta: R$ {saldo:,.2f})", adt.id_aditivo)
+    def get_dados(self): return (self.inp_num.text(), self.inp_desc.text(), self.combo_sub.currentIndex(), self.inp_val.get_value(), self.inp_fonte.text(), self.date_emissao.text(), self.combo_ciclo.currentData(), self.combo_aditivo.currentData())
 
 class DialogoAditivo(QDialog):
     def __init__(self, aditivo_editar=None, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("Aditivo")
+        super().__init__(parent); self.setWindowTitle("Aditivo Contratual"); self.setFixedWidth(450)
         layout = QFormLayout(self)
-        
-        self.combo_tipo = QComboBox()
-        self.combo_tipo.addItems(["Valor (Acréscimo/Decréscimo)", "Prazo (Prorrogação)"])
-        self.combo_tipo.currentIndexChanged.connect(self.mudar_tipo)
-
-        self.chk_renovacao = QCheckBox("Haverá renovação de valor?")
-        self.chk_renovacao.setVisible(False)
-        self.chk_renovacao.toggled.connect(self.mudar_tipo)
-
-        self.inp_valor = CurrencyInput()
-        self.date_nova = QDateEdit(QDate.currentDate())
-        self.date_nova.setCalendarPopup(True)
-        self.date_nova.setEnabled(False)
-        
+        self.combo_tipo = QComboBox(); self.combo_tipo.addItems(["Valor (Acréscimo/Decréscimo)", "Prazo (Prorrogação)"]); self.combo_tipo.currentIndexChanged.connect(self.mudar_tipo)
+        self.chk_renovacao = QCheckBox("Haverá renovação de valor? (Cria Novo Ciclo/Saldo)"); self.chk_renovacao.setVisible(False); self.chk_renovacao.toggled.connect(self.mudar_tipo)
+        self.lbl_info = QLabel(""); self.lbl_info.setStyleSheet("color: blue; font-size: 10px")
+        self.inp_valor = CurrencyInput(); self.date_inicio = QDateEdit(QDate.currentDate()); self.date_inicio.setCalendarPopup(True)
+        self.date_nova = QDateEdit(QDate.currentDate().addYears(1)); self.date_nova.setCalendarPopup(True); self.date_nova.setEnabled(False)
         self.inp_desc = QLineEdit()
-
-        layout.addRow("Tipo:", self.combo_tipo)
-        layout.addRow("", self.chk_renovacao)
-        layout.addRow("Valor:", self.inp_valor)
-        layout.addRow("Nova Data Fim:", self.date_nova)
-        layout.addRow("Justificativa:", self.inp_desc)
-
+        layout.addRow("Tipo:", self.combo_tipo); layout.addRow("", self.chk_renovacao); layout.addRow("", self.lbl_info)
+        layout.addRow("Início da Vigência:", self.date_inicio); layout.addRow("Valor do Aditivo:", self.inp_valor)
+        layout.addRow("Nova Data Fim (Contrato):", self.date_nova); layout.addRow("Justificativa:", self.inp_desc)
         if aditivo_editar:
             idx = 0 if aditivo_editar.tipo == "Valor" else 1
-            self.combo_tipo.setCurrentIndex(idx)
-            self.inp_valor.set_value(aditivo_editar.valor)
-            if aditivo_editar.data_nova:
-                self.date_nova.setDate(QDate.fromString(aditivo_editar.data_nova, "dd/MM/yyyy"))
-            self.inp_desc.setText(aditivo_editar.descricao)
-            self.chk_renovacao.setChecked(aditivo_editar.renovacao_valor)
-            self.mudar_tipo()
-
-        botoes = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
-        botoes.accepted.connect(self.accept)
-        layout.addWidget(botoes)
-
+            self.combo_tipo.setCurrentIndex(idx); self.inp_valor.set_value(aditivo_editar.valor)
+            if aditivo_editar.data_nova: self.date_nova.setDate(str_to_date(aditivo_editar.data_nova))
+            if aditivo_editar.data_inicio_vigencia: self.date_inicio.setDate(str_to_date(aditivo_editar.data_inicio_vigencia))
+            self.inp_desc.setText(aditivo_editar.descricao); self.chk_renovacao.setChecked(aditivo_editar.renovacao_valor); self.mudar_tipo()
+        botoes = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel); botoes.accepted.connect(self.accept); layout.addWidget(botoes)
     def mudar_tipo(self):
         is_prazo = self.combo_tipo.currentText().startswith("Prazo")
-        
         if is_prazo:
-            self.chk_renovacao.setVisible(True)
-            self.date_nova.setEnabled(True)
-            # Se é prazo e quer renovar valor, habilita valor. Se não, desabilita.
-            self.inp_valor.setEnabled(self.chk_renovacao.isChecked())
+            self.chk_renovacao.setVisible(True); self.date_nova.setEnabled(True); self.inp_valor.setEnabled(self.chk_renovacao.isChecked()); self.date_inicio.setEnabled(True)
+            self.lbl_info.setText("Este aditivo iniciará um NOVO 'Ciclo Financeiro'." if self.chk_renovacao.isChecked() else "Apenas prorrogação de data.")
         else:
-            # É apenas Valor
-            self.chk_renovacao.setVisible(False)
-            self.chk_renovacao.setChecked(False)
-            self.inp_valor.setEnabled(True)
-            self.date_nova.setEnabled(False)
-
+            self.chk_renovacao.setVisible(False); self.chk_renovacao.setChecked(False); self.inp_valor.setEnabled(True); self.date_nova.setEnabled(False); self.date_inicio.setEnabled(False); self.lbl_info.setText("Valor somado ao Ciclo Atual.")
     def get_dados(self):
         tipo = "Valor" if self.combo_tipo.currentText().startswith("Valor") else "Prazo"
-        val = self.inp_valor.get_value()
-        return tipo, val, self.date_nova.text(), self.inp_desc.text(), self.chk_renovacao.isChecked()
+        return tipo, self.inp_valor.get_value(), self.date_nova.text(), self.inp_desc.text(), self.chk_renovacao.isChecked(), self.date_inicio.text()
 
 class DialogoPagamento(QDialog):
     def __init__(self, comp_inicio, comp_fim, pg_editar=None, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("Pagamento")
-        layout = QFormLayout(self)
-        
-        self.combo_comp = QComboBox()
-        lista_meses = gerar_competencias(comp_inicio, comp_fim)
-        if not lista_meses:
-            lista_meses = ["Configuração de datas inválida"]
-        self.combo_comp.addItems(lista_meses)
-        
-        self.inp_valor = CurrencyInput()
-        
-        layout.addRow("Competência:", self.combo_comp)
-        layout.addRow("Valor:", self.inp_valor)
-
+        super().__init__(parent); self.setWindowTitle("Pagamento"); layout = QFormLayout(self)
+        self.combo_comp = QComboBox(); lista_meses = gerar_competencias(comp_inicio, comp_fim); 
+        if not lista_meses: lista_meses = ["Erro datas contrato"]
+        self.combo_comp.addItems(lista_meses); self.inp_valor = CurrencyInput()
+        layout.addRow("Competência:", self.combo_comp); layout.addRow("Valor:", self.inp_valor)
         if pg_editar:
-            # Tentar setar a competencia existente
-            index = self.combo_comp.findText(pg_editar.competencia)
-            if index >= 0: self.combo_comp.setCurrentIndex(index)
+            idx = self.combo_comp.findText(pg_editar.competencia); 
+            if idx >= 0: self.combo_comp.setCurrentIndex(idx)
             self.inp_valor.set_value(pg_editar.valor)
-
-        botoes = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
-        botoes.accepted.connect(self.accept)
-        layout.addWidget(botoes)
-
-    def get_dados(self):
-        return self.combo_comp.currentText(), self.inp_valor.get_value()
+        botoes = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel); botoes.accepted.connect(self.accept); layout.addWidget(botoes)
+    def get_dados(self): return self.combo_comp.currentText(), self.inp_valor.get_value()
 
 class DialogoSubContrato(QDialog):
     def __init__(self, sub_editar=None, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("Serviço / Subcontrato")
-        layout = QFormLayout(self)
-        self.inp_desc = QLineEdit()
-        self.inp_valor = CurrencyInput()
-        layout.addRow("Descrição:", self.inp_desc)
-        layout.addRow("Valor Estimado:", self.inp_valor)
-        
-        if sub_editar:
-            self.inp_desc.setText(sub_editar.descricao)
-            self.inp_valor.set_value(sub_editar.valor_estimado)
-            
-        botoes = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
-        botoes.accepted.connect(self.accept)
-        layout.addWidget(botoes)
-    
-    def get_dados(self):
-        return self.inp_desc.text(), self.inp_valor.get_value()
+        super().__init__(parent); self.setWindowTitle("Serviço / Subcontrato"); layout = QFormLayout(self)
+        self.inp_desc = QLineEdit(); self.inp_valor = CurrencyInput()
+        layout.addRow("Descrição:", self.inp_desc); layout.addRow("Valor Estimado:", self.inp_valor)
+        if sub_editar: self.inp_desc.setText(sub_editar.descricao); self.inp_valor.set_value(sub_editar.valor_estimado)
+        botoes = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel); botoes.accepted.connect(self.accept); layout.addWidget(botoes)
+    def get_dados(self): return self.inp_desc.text(), self.inp_valor.get_value()
 
 # --- 3. SISTEMA PRINCIPAL ---
 
@@ -405,476 +416,317 @@ class SistemaGestao(QMainWindow):
         self.db_contratos = [] 
         self.contrato_selecionado = None
         self.ne_selecionada = None 
+        self.arquivo_db = "dados_sistema.json"
+        
         self.init_ui()
+        self.carregar_dados()
+
+    def closeEvent(self, event):
+        self.salvar_dados()
+        event.accept()
+
+    def salvar_dados(self):
+        dados = [c.to_dict() for c in self.db_contratos]
+        try:
+            with open(self.arquivo_db, 'w', encoding='utf-8') as f:
+                json.dump(dados, f, indent=4, ensure_ascii=False)
+        except Exception as e: print(f"Erro ao salvar: {e}")
+
+    def carregar_dados(self):
+        if not os.path.exists(self.arquivo_db): return
+        try:
+            with open(self.arquivo_db, 'r', encoding='utf-8') as f:
+                dados = json.load(f)
+                self.db_contratos = [Contrato.from_dict(d) for d in dados]
+        except Exception as e: print(f"Erro ao carregar: {e}")
 
     def init_ui(self):
         self.setWindowTitle("SGF - Gestão Profissional")
-        self.setGeometry(100, 100, 1280, 800) 
-
-        # Menus
+        self.setGeometry(50, 50, 1300, 850) 
         mb = self.menuBar()
         m_arq = mb.addMenu("Arquivo")
+        m_exp = m_arq.addMenu("Exportar para Excel (CSV)...")
+        m_exp.addAction("Contrato Completo (Selecionado)", self.exportar_contrato_completo)
+        m_exp.addAction("Nota de Empenho Selecionada", self.exportar_ne_atual)
+        m_arq.addSeparator()
+        m_arq.addAction("Salvar Agora", self.salvar_dados)
         m_arq.addAction("Sair", self.close)
-        
+
         m_con = mb.addMenu("Contratos")
         m_con.addAction("Novo Contrato...", self.abrir_novo_contrato)
-        m_con.addAction("Listar Contratos", lambda: None) # Já visível na tela principal
-
-        # Layout Principal
-        splitter = QSplitter(Qt.Orientation.Horizontal)
-        self.setCentralWidget(splitter)
-
-        # PAINEL ESQUERDO: LISTA DE CONTRATOS
-        p_esq = QWidget()
-        l_esq = QVBoxLayout(p_esq)
-        l_esq.addWidget(QLabel("<b>Lista de Contratos</b>"))
+        m_con.addAction("Listar / Pesquisar Contratos", self.voltar_para_pesquisa)
         
-        self.lista_contratos_widget = QListWidget()
-        self.lista_contratos_widget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self.lista_contratos_widget.customContextMenuRequested.connect(self.menu_contrato)
-        self.lista_contratos_widget.itemClicked.connect(self.selecionar_contrato)
-        l_esq.addWidget(self.lista_contratos_widget)
-        splitter.addWidget(p_esq)
+        m_imp = mb.addMenu("Importação (Lote)")
+        m_imp.addAction("Importar Contratos (CSV)...", self.importar_contratos)
+        m_imp.addAction("Importar Empenhos (CSV)...", self.importar_empenhos)
 
-        # PAINEL DIREITO: DETALHES
-        p_dir = QWidget()
-        self.layout_dir = QVBoxLayout(p_dir)
-        
-        # Cabeçalho
-        self.lbl_titulo = QLabel("Selecione um contrato")
-        self.lbl_titulo.setFont(QFont("Arial", 14, QFont.Weight.Bold))
-        self.layout_dir.addWidget(self.lbl_titulo)
-        
-        self.lbl_prestador = QLabel("")
-        self.lbl_prestador.setStyleSheet("color: #555; font-weight: bold; font-size: 12px;")
-        self.layout_dir.addWidget(self.lbl_prestador)
+        self.stack = QStackedWidget(); self.setCentralWidget(self.stack)
 
-        self.lbl_saldo = QLabel("")
-        self.lbl_saldo.setStyleSheet("font-size: 14px; margin-bottom: 5px")
-        self.layout_dir.addWidget(self.lbl_saldo)
+        self.page_pesquisa = QWidget()
+        layout_p = QVBoxLayout(self.page_pesquisa); layout_p.setAlignment(Qt.AlignmentFlag.AlignTop)
+        container = QFrame(); container.setFixedWidth(900); l_cont = QVBoxLayout(container)
+        lbl_logo = QLabel("Pesquisa de Contratos"); lbl_logo.setAlignment(Qt.AlignmentFlag.AlignCenter); lbl_logo.setFont(QFont("Arial", 24, QFont.Weight.Bold)); lbl_logo.setStyleSheet("color: #2c3e50; margin-bottom: 20px; margin-top: 50px")
+        self.inp_search = QLineEdit(); self.inp_search.setPlaceholderText("Digite para pesquisar..."); self.inp_search.setStyleSheet("font-size: 16px; padding: 10px;"); self.inp_search.textChanged.connect(self.filtrar_contratos)
+        self.tabela_resultados = QTableWidget(); self.tabela_resultados.setColumnCount(4); self.tabela_resultados.setHorizontalHeaderLabels(["Número", "Prestador", "Objeto", "Status"]); self.tabela_resultados.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch); self.tabela_resultados.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows); self.tabela_resultados.cellDoubleClicked.connect(self.abrir_contrato_pesquisa); self.tabela_resultados.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu); self.tabela_resultados.customContextMenuRequested.connect(self.menu_pesquisa)
+        l_cont.addWidget(lbl_logo); l_cont.addWidget(self.inp_search); l_cont.addWidget(self.tabela_resultados)
+        layout_h = QHBoxLayout(); layout_h.addStretch(); layout_h.addWidget(container); layout_h.addStretch(); layout_p.addLayout(layout_h)
 
-        # Abas
-        self.abas = QTabWidget()
-        self.layout_dir.addWidget(self.abas)
+        self.page_detalhes = QWidget(); self.layout_detalhes = QVBoxLayout(self.page_detalhes)
+        top_bar = QHBoxLayout(); btn_voltar = QPushButton("← Voltar"); btn_voltar.clicked.connect(self.voltar_para_pesquisa)
+        self.lbl_titulo = QLabel("Contrato X"); self.lbl_titulo.setFont(QFont("Arial", 16, QFont.Weight.Bold))
+        top_bar.addWidget(btn_voltar); top_bar.addSpacing(20); top_bar.addWidget(self.lbl_titulo); top_bar.addStretch(); self.layout_detalhes.addLayout(top_bar)
+        self.lbl_prestador = QLabel(""); self.lbl_prestador.setStyleSheet("font-size: 12px; color: #555; margin-left: 120px"); self.layout_detalhes.addWidget(self.lbl_prestador)
+        self.abas = QTabWidget(); self.layout_detalhes.addWidget(self.abas)
 
-        # --- ABA 0: DADOS DO CONTRATO ---
-        self.tab_dados = QWidget()
-        l_dados = QFormLayout(self.tab_dados)
-        self.lbl_d_licitacao = QLabel("-")
-        self.lbl_d_dispensa = QLabel("-")
-        self.lbl_d_vigencia = QLabel("-")
-        self.lbl_d_comp = QLabel("-")
-        l_dados.addRow("Licitação/Edital:", self.lbl_d_licitacao)
-        l_dados.addRow("Inexigibilidade/Dispensa:", self.lbl_d_dispensa)
-        l_dados.addRow("Período de Vigência:", self.lbl_d_vigencia)
-        l_dados.addRow("Período de Competência:", self.lbl_d_comp)
-        self.abas.addTab(self.tab_dados, "Dados do Contrato")
+        self.tab_dados = QWidget(); l_dados = QFormLayout(self.tab_dados)
+        self.lbl_d_licitacao = QLabel("-"); self.lbl_d_dispensa = QLabel("-"); self.lbl_d_vigencia = QLabel("-"); self.lbl_d_comp = QLabel("-"); self.lbl_d_resumo_ciclos = QLabel("-")
+        l_dados.addRow("Licitação:", self.lbl_d_licitacao); l_dados.addRow("Dispensa:", self.lbl_d_dispensa); l_dados.addRow("Vigência:", self.lbl_d_vigencia); l_dados.addRow("Competência:", self.lbl_d_comp); l_dados.addRow("Ciclos:", self.lbl_d_resumo_ciclos)
+        self.abas.addTab(self.tab_dados, "Dados")
 
-        # --- ABA 1: FINANCEIRO (Notas de Empenho) ---
-        tab_fin = QWidget()
-        l_fin = QVBoxLayout(tab_fin)
-        
-        btns_fin = QHBoxLayout()
-        b_ne = QPushButton("+ Nova Nota de Empenho")
-        b_ne.clicked.connect(self.dialogo_nova_ne)
-        b_pg = QPushButton("Registrar Pagamento")
-        b_pg.setStyleSheet("background-color: #27ae60; color: white; font-weight: bold")
-        b_pg.clicked.connect(self.abrir_pagamento)
-        btns_fin.addWidget(b_ne)
-        btns_fin.addWidget(b_pg)
-        btns_fin.addStretch()
-        l_fin.addLayout(btns_fin)
+        tab_fin = QWidget(); l_fin = QVBoxLayout(tab_fin)
+        btns_fin = QHBoxLayout(); b_ne = QPushButton("+ NE"); b_ne.clicked.connect(self.dialogo_nova_ne); b_pg = QPushButton("Pagar"); b_pg.clicked.connect(self.abrir_pagamento); btns_fin.addWidget(b_ne); btns_fin.addWidget(b_pg); btns_fin.addStretch(); l_fin.addLayout(btns_fin)
+        self.tab_empenhos = QTableWidget(); self.tab_empenhos.setColumnCount(11); self.tab_empenhos.setHorizontalHeaderLabels(["Ciclo", "Aditivo", "NE", "Emissão", "Fonte", "Serviço", "Descrição", "Valor", "Pago", "Saldo", "Média"]); self.tab_empenhos.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch); self.tab_empenhos.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows); self.tab_empenhos.itemClicked.connect(self.selecionar_ne); self.tab_empenhos.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu); self.tab_empenhos.customContextMenuRequested.connect(self.menu_empenho); l_fin.addWidget(self.tab_empenhos)
+        self.tab_mov = QTableWidget(); self.tab_mov.setColumnCount(4); self.tab_mov.setHorizontalHeaderLabels(["Comp.", "Tipo", "Valor", "Saldo"]); self.tab_mov.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch); self.tab_mov.setMaximumHeight(200); self.tab_mov.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu); self.tab_mov.customContextMenuRequested.connect(self.menu_movimentacao); l_fin.addWidget(self.tab_mov)
+        self.abas.addTab(tab_fin, "Financeiro")
 
-        self.tab_empenhos = QTableWidget()
-        self.tab_empenhos.setColumnCount(8) 
-        self.tab_empenhos.setHorizontalHeaderLabels(["Nota (NE)", "Fonte", "Serviço/Sub", "Descrição", "Valor NE", "Pago", "Saldo NE", "Média"])
-        self.tab_empenhos.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        self.tab_empenhos.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self.tab_empenhos.itemClicked.connect(self.selecionar_ne)
-        self.tab_empenhos.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self.tab_empenhos.customContextMenuRequested.connect(self.menu_empenho)
-        l_fin.addWidget(self.tab_empenhos)
+        tab_serv = QWidget(); l_serv = QVBoxLayout(tab_serv); b_nserv = QPushButton("+ Serviço"); b_nserv.clicked.connect(self.abrir_novo_servico); l_serv.addWidget(b_nserv)
+        self.tab_subcontratos = QTableWidget(); self.tab_subcontratos.setColumnCount(4); self.tab_subcontratos.setHorizontalHeaderLabels(["Descrição", "Estimado", "Empenhado", "Saldo"]); self.tab_subcontratos.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch); self.tab_subcontratos.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu); self.tab_subcontratos.customContextMenuRequested.connect(self.menu_subcontrato); l_serv.addWidget(self.tab_subcontratos)
+        self.abas.addTab(tab_serv, "Serviços")
 
-        l_fin.addWidget(QLabel("Histórico da Nota Selecionada:"))
-        self.tab_mov = QTableWidget()
-        self.tab_mov.setColumnCount(4)
-        self.tab_mov.setHorizontalHeaderLabels(["Comp.", "Tipo", "Valor Mov.", "Saldo Nota"])
-        self.tab_mov.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        self.tab_mov.setMaximumHeight(200)
-        self.tab_mov.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self.tab_mov.customContextMenuRequested.connect(self.menu_movimentacao)
-        l_fin.addWidget(self.tab_mov)
-
-        self.abas.addTab(tab_fin, "Financeiro (Notas de Empenho)")
-
-        # --- ABA 2: SERVIÇOS (Subcontratos) ---
-        tab_serv = QWidget()
-        l_serv = QVBoxLayout(tab_serv)
-        
-        btn_novo_serv = QPushButton("+ Novo Serviço/Subcontrato")
-        btn_novo_serv.clicked.connect(self.abrir_novo_servico)
-        l_serv.addWidget(btn_novo_serv)
-
-        self.tab_subcontratos = QTableWidget()
-        self.tab_subcontratos.setColumnCount(4)
-        self.tab_subcontratos.setHorizontalHeaderLabels(["Descrição Serviço", "Valor Estimado", "Empenhado", "Saldo Serviço"])
-        self.tab_subcontratos.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        self.tab_subcontratos.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self.tab_subcontratos.customContextMenuRequested.connect(self.menu_subcontrato)
-        l_serv.addWidget(self.tab_subcontratos)
-        self.abas.addTab(tab_serv, "Serviços / Subcontratos")
-        
-        # --- ABA 3: ADITIVOS ---
-        tab_adit = QWidget()
-        l_adit = QVBoxLayout(tab_adit)
-        
-        btn_novo_adit = QPushButton("+ Novo Aditivo")
-        btn_novo_adit.clicked.connect(self.abrir_novo_aditivo)
-        l_adit.addWidget(btn_novo_adit)
-
-        self.tab_aditivos = QTableWidget()
-        self.tab_aditivos.setColumnCount(5)
-        self.tab_aditivos.setHorizontalHeaderLabels(["Tipo", "Renov. Valor?", "Valor", "Nova Data", "Justificativa"])
-        self.tab_aditivos.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        self.tab_aditivos.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self.tab_aditivos.customContextMenuRequested.connect(self.menu_aditivo)
-        l_adit.addWidget(self.tab_aditivos)
+        tab_adit = QWidget(); l_adit = QVBoxLayout(tab_adit); b_nadit = QPushButton("+ Aditivo"); b_nadit.clicked.connect(self.abrir_novo_aditivo); l_adit.addWidget(b_nadit)
+        self.tab_aditivos = QTableWidget(); self.tab_aditivos.setColumnCount(6); self.tab_aditivos.setHorizontalHeaderLabels(["Tipo", "Renova?", "Vigência", "Valor", "Fim", "Desc"]); self.tab_aditivos.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch); self.tab_aditivos.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu); self.tab_aditivos.customContextMenuRequested.connect(self.menu_aditivo); l_adit.addWidget(self.tab_aditivos)
         self.abas.addTab(tab_adit, "Aditivos")
 
-        splitter.addWidget(p_dir)
-        splitter.setSizes([300, 950])
+        self.stack.addWidget(self.page_pesquisa); self.stack.addWidget(self.page_detalhes); self.stack.setCurrentIndex(0)
 
-    # --- LÓGICA DE MENUS DE CONTEXTO ---
+    # --- LÓGICA GERAL ---
 
-    def menu_contrato(self, pos):
-        item = self.lista_contratos_widget.itemAt(pos)
-        if not item: return
-        menu = QMenu()
-        menu.addAction("Editar Contrato", self.editar_contrato)
-        menu.addAction("Excluir Contrato", self.excluir_contrato)
-        menu.exec(self.lista_contratos_widget.mapToGlobal(pos))
+    def voltar_para_pesquisa(self):
+        self.salvar_dados()
+        self.contrato_selecionado = None; self.ne_selecionada = None; self.inp_search.setText(""); self.filtrar_contratos(); self.stack.setCurrentIndex(0)
 
-    def menu_empenho(self, pos):
-        if not self.ne_selecionada: return
-        menu = QMenu()
-        menu.addAction("Editar NE", self.editar_ne)
-        menu.addAction("Excluir NE", self.excluir_ne)
-        menu.exec(self.tab_empenhos.mapToGlobal(pos))
+    def filtrar_contratos(self):
+        texto = self.inp_search.text().lower(); self.tabela_resultados.setRowCount(0)
+        for c in self.db_contratos:
+            if (texto in c.numero.lower() or texto in c.prestador.lower() or texto in c.descricao.lower() or texto == ""):
+                row = self.tabela_resultados.rowCount(); self.tabela_resultados.insertRow(row)
+                self.tabela_resultados.setItem(row, 0, QTableWidgetItem(c.numero)); self.tabela_resultados.setItem(row, 1, QTableWidgetItem(c.prestador)); self.tabela_resultados.setItem(row, 2, QTableWidgetItem(c.descricao))
+                hoje = datetime.now(); fim = str_to_date(c.get_vigencia_final_atual()); st = "Vigente" if fim >= hoje else "Vencido"; i_st = QTableWidgetItem(st); i_st.setForeground(QColor("green" if st=="Vigente" else "red")); self.tabela_resultados.setItem(row, 3, i_st)
+                self.tabela_resultados.item(row, 0).setData(Qt.ItemDataRole.UserRole, c)
 
-    def menu_subcontrato(self, pos):
-        item = self.tab_subcontratos.itemAt(pos)
-        if not item: return
-        row = item.row()
-        menu = QMenu()
-        menu.addAction("Editar Serviço", lambda: self.editar_servico(row))
-        menu.addAction("Excluir Serviço", lambda: self.excluir_servico(row))
-        menu.exec(self.tab_subcontratos.mapToGlobal(pos))
-
-    def menu_aditivo(self, pos):
-        item = self.tab_aditivos.itemAt(pos)
-        if not item: return
-        row = item.row()
-        menu = QMenu()
-        menu.addAction("Editar Aditivo", lambda: self.editar_aditivo(row))
-        menu.addAction("Excluir Aditivo", lambda: self.excluir_aditivo(row))
-        menu.exec(self.tab_aditivos.mapToGlobal(pos))
+    def abrir_contrato_pesquisa(self, row, col):
+        self.contrato_selecionado = self.tabela_resultados.item(row, 0).data(Qt.ItemDataRole.UserRole); self.ne_selecionada = None; self.atualizar_painel_detalhes(); self.stack.setCurrentIndex(1)
     
-    def menu_movimentacao(self, pos):
-        item = self.tab_mov.itemAt(pos)
-        if not item: return
-        row = item.row()
-        # Verificar se é original
-        mov = self.ne_selecionada.historico[row]
-        if mov.tipo == "Emissão Original": return
-        
-        menu = QMenu()
-        menu.addAction("Editar Pagamento", lambda: self.editar_pagamento(row))
-        menu.addAction("Excluir Pagamento", lambda: self.excluir_pagamento(row))
-        menu.exec(self.tab_mov.mapToGlobal(pos))
-
-    # --- FUNÇÕES DE CRUD (Create, Read, Update, Delete) ---
+    def menu_pesquisa(self, pos):
+        item = self.tabela_resultados.itemAt(pos)
+        if item:
+            c = self.tabela_resultados.item(item.row(), 0).data(Qt.ItemDataRole.UserRole)
+            QMenu(self).addAction("Abrir", lambda: self.abrir_contrato_pesquisa(item.row(), 0)).exec(self.tabela_resultados.mapToGlobal(pos))
 
     def abrir_novo_contrato(self):
         dial = DialogoCriarContrato(parent=self)
-        if dial.exec():
-            # Desempacotar
-            dados = dial.get_dados()
-            c = Contrato(*dados)
-            self.db_contratos.append(c)
-            self.atualizar_lista_contratos()
-
-    def editar_contrato(self):
-        c = self.contrato_selecionado
-        if not c: return
-        dial = DialogoCriarContrato(contrato_editar=c, parent=self)
-        if dial.exec():
-            dados = dial.get_dados()
-            # Atualiza atributos
-            c.numero, c.prestador, c.descricao, c.valor_inicial, \
-            c.vigencia_inicio, c.vigencia_fim, c.comp_inicio, c.comp_fim, \
-            c.licitacao, c.dispensa = dados
-            self.atualizar_lista_contratos()
-            self.atualizar_painel_detalhes()
-
-    def excluir_contrato(self):
-        if not self.contrato_selecionado: return
-        res = QMessageBox.question(self, "Excluir", "Excluir este contrato e todos os dados?", 
-                                   QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        if res == QMessageBox.StandardButton.Yes:
-            self.db_contratos.remove(self.contrato_selecionado)
-            self.contrato_selecionado = None
-            self.ne_selecionada = None
-            self.atualizar_lista_contratos()
-            self.lbl_titulo.setText("Selecione um contrato")
+        if dial.exec(): self.db_contratos.append(Contrato(*dial.get_dados())); self.filtrar_contratos(); self.salvar_dados()
 
     def dialogo_nova_ne(self):
         if not self.contrato_selecionado: return
-        if not self.contrato_selecionado.lista_servicos:
-            QMessageBox.warning(self, "Atenção", "Crie pelo menos um Serviço/Subcontrato antes.")
-            return
-
-        dial = DialogoNovoEmpenho(self.contrato_selecionado.lista_servicos, parent=self)
+        if not self.contrato_selecionado.lista_servicos: QMessageBox.warning(self, "Aviso", "Cadastre um Serviço antes."); return
+        dial = DialogoNovoEmpenho(self.contrato_selecionado, parent=self)
         if dial.exec():
-            num, desc, idx, val, fonte = dial.get_dados()
-            nova_ne = NotaEmpenho(num, val, desc, idx, fonte)
+            num, desc, idx, val, fonte, data_em, id_ciclo, id_aditivo = dial.get_dados()
+            nova_ne = NotaEmpenho(num, val, desc, idx, fonte, data_em, id_ciclo, id_aditivo)
             ok, msg = self.contrato_selecionado.adicionar_nota_empenho(nova_ne)
-            if ok: self.atualizar_painel_detalhes()
-            else: QMessageBox.critical(self, "Erro de Saldo", msg)
+            if ok: self.atualizar_painel_detalhes(); self.salvar_dados()
+            else: QMessageBox.critical(self, "Bloqueio", msg)
 
-    def editar_ne(self):
-        ne = self.ne_selecionada
-        if not ne: return
-        # Logica simplificada: permite editar texto, mas valor é complexo pois afeta saldo
-        # Para simplificar, permitimos editar dados cadastrais. Valor só se não tiver pagamentos.
-        
-        dial = DialogoNovoEmpenho(self.contrato_selecionado.lista_servicos, ne_editar=ne, parent=self)
-        # Se ja tiver pagamentos, bloqueia valor
-        if len(ne.historico) > 1:
-            dial.inp_val.setEnabled(False)
-            dial.setWindowTitle("Editar NE (Valor fixo pois há pagamentos)")
-
+    def abrir_pagamento(self):
+        if not self.ne_selecionada: 
+            QMessageBox.warning(self, "Aviso", "Selecione uma Nota de Empenho primeiro.")
+            return
+        dial = DialogoPagamento(self.contrato_selecionado.comp_inicio, self.contrato_selecionado.comp_fim, parent=self)
         if dial.exec():
-            num, desc, idx, val, fonte = dial.get_dados()
-            ne.numero = num
-            ne.descricao = desc
-            ne.fonte_recurso = fonte
-            ne.subcontrato_idx = idx
-            
-            # Atualiza valor se permitido
-            if len(ne.historico) == 1:
-                ne.valor_inicial = val
-                ne.historico[0].valor = val
-            
-            self.atualizar_painel_detalhes()
+            c, v = dial.get_dados(); ok, msg = self.ne_selecionada.realizar_pagamento(v, c)
+            if not ok: QMessageBox.warning(self, "Erro", msg)
+            self.atualizar_painel_detalhes(); self.atualizar_movimentos(); self.salvar_dados()
 
-    def excluir_ne(self):
-        if not self.ne_selecionada: return
-        res = QMessageBox.question(self, "Excluir", "Excluir esta Nota de Empenho?", 
-                                   QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        if res == QMessageBox.StandardButton.Yes:
-            self.contrato_selecionado.lista_notas_empenho.remove(self.ne_selecionada)
-            self.ne_selecionada = None
-            self.atualizar_painel_detalhes()
+    def abrir_novo_servico(self):
+        if not self.contrato_selecionado: return
+        dial = DialogoSubContrato(parent=self); 
+        if dial.exec(): self.contrato_selecionado.lista_servicos.append(SubContrato(*dial.get_dados())); self.atualizar_painel_detalhes(); self.salvar_dados()
 
     def abrir_novo_aditivo(self):
         if not self.contrato_selecionado: return
         dial = DialogoAditivo(parent=self)
         if dial.exec():
-            dados = dial.get_dados() # tipo, val, data, desc, renova_bool
-            adt = Aditivo(*dados)
-            self.contrato_selecionado.lista_aditivos.append(adt)
-            self.atualizar_painel_detalhes()
+            d = dial.get_dados(); adt = Aditivo(0, *d) 
+            msg = self.contrato_selecionado.adicionar_aditivo(adt); QMessageBox.information(self, "Aditivo", msg); self.atualizar_painel_detalhes(); self.salvar_dados()
 
-    def editar_aditivo(self, row):
-        adt = self.contrato_selecionado.lista_aditivos[row]
-        dial = DialogoAditivo(aditivo_editar=adt, parent=self)
+    # --- EXPORTAÇÃO E IMPORTAÇÃO ---
+
+    def exportar_contrato_completo(self):
+        if not self.contrato_selecionado: QMessageBox.warning(self, "Aviso", "Selecione um contrato."); return
+        fname, _ = QFileDialog.getSaveFileName(self, "Exportar Contrato", f"Contrato_{self.contrato_selecionado.numero}.csv", "CSV Files (*.csv)")
+        if not fname: return
+        try:
+            with open(fname, 'w', newline='', encoding='utf-8') as f:
+                writer = csv.writer(f, delimiter=';'); c = self.contrato_selecionado
+                writer.writerow(["=== DADOS ==="]); writer.writerow(["Número", "Prestador", "Objeto", "Vigência"])
+                writer.writerow([c.numero, c.prestador, c.descricao, f"{c.vigencia_inicio} a {c.get_vigencia_final_atual()}"])
+                writer.writerow([])
+                writer.writerow(["=== EMPENHOS ==="]); writer.writerow(["NE", "Valor", "Pago", "Saldo"])
+                for ne in c.lista_notas_empenho: writer.writerow([ne.numero, f"{ne.valor_inicial:.2f}", f"{ne.valor_pago:.2f}", f"{ne.valor_inicial-ne.valor_pago:.2f}"])
+            QMessageBox.information(self, "Sucesso", "Exportado!")
+        except Exception as e: QMessageBox.critical(self, "Erro", str(e))
+
+    def exportar_ne_atual(self):
+        if not self.ne_selecionada: QMessageBox.warning(self, "Aviso", "Selecione uma NE."); return
+        fname, _ = QFileDialog.getSaveFileName(self, "Exportar NE", f"NE_{self.ne_selecionada.numero}.csv", "CSV Files (*.csv)")
+        if not fname: return
+        try:
+            with open(fname, 'w', newline='', encoding='utf-8') as f:
+                writer = csv.writer(f, delimiter=';'); ne = self.ne_selecionada
+                writer.writerow(["NE", ne.numero, "Valor", f"{ne.valor_inicial:.2f}"])
+                writer.writerow(["Histórico"]); writer.writerow(["Comp", "Tipo", "Valor"])
+                for m in ne.historico: writer.writerow([m.competencia, m.tipo, f"{m.valor:.2f}"])
+            QMessageBox.information(self, "Sucesso", "Exportado!")
+        except Exception as e: QMessageBox.critical(self, "Erro", str(e))
+
+    def importar_contratos(self):
+        instrucao = "CSV (ponto e vírgula):\nNum;Prest;Obj;Valor;VigIni;VigFim;CompIni;CompFim;Lic;Disp"
+        QMessageBox.information(self, "Instruções", instrucao)
+        fname, _ = QFileDialog.getOpenFileName(self, "CSV Contratos", "", "CSV (*.csv)")
+        if not fname: return
+        try:
+            with open(fname, 'r', encoding='utf-8') as f:
+                reader = csv.reader(f, delimiter=';'); next(reader, None)
+                for row in reader:
+                    if len(row) < 10: continue
+                    self.db_contratos.append(Contrato(row[0], row[1], row[2], parse_float_br(row[3]), row[4], row[5], row[6], row[7], row[8], row[9]))
+            self.filtrar_contratos(); self.salvar_dados(); QMessageBox.information(self, "Sucesso", "Importado!")
+        except Exception as e: QMessageBox.critical(self, "Erro", str(e))
+
+    def importar_empenhos(self):
+        if not self.contrato_selecionado: QMessageBox.warning(self, "Aviso", "Abra um contrato."); return
+        instrucao = "CSV:\nNE;Valor;Desc;NomeServico;Fonte;Data"
+        QMessageBox.information(self, "Instruções", instrucao)
+        fname, _ = QFileDialog.getOpenFileName(self, "CSV Empenhos", "", "CSV (*.csv)")
+        if not fname: return
+        try:
+            with open(fname, 'r', encoding='utf-8') as f:
+                reader = csv.reader(f, delimiter=';'); next(reader, None)
+                for row in reader:
+                    if len(row) < 6: continue
+                    idx_serv = -1
+                    for idx, s in enumerate(self.contrato_selecionado.lista_servicos):
+                        if s.descricao.lower() == row[3].strip().lower(): idx_serv = idx; break
+                    if idx_serv == -1: continue
+                    ne = NotaEmpenho(row[0], parse_float_br(row[1]), row[2], idx_serv, row[4], row[5], 0, None)
+                    self.contrato_selecionado.adicionar_nota_empenho(ne)
+            self.atualizar_painel_detalhes(); self.salvar_dados(); QMessageBox.information(self, "Sucesso", "Importado!")
+        except Exception as e: QMessageBox.critical(self, "Erro", str(e))
+
+    # --- MENUS CONTEXTO E AUXILIARES ---
+    def selecionar_ne(self, item): self.ne_selecionada = self.tab_empenhos.item(item.row(), 0).data(Qt.ItemDataRole.UserRole); self.atualizar_movimentos()
+    def menu_empenho(self, pos):
+        if self.ne_selecionada: QMenu(self).addAction("Editar", self.editar_ne).addAction("Excluir", self.excluir_ne).exec(self.tab_empenhos.mapToGlobal(pos))
+    def editar_ne(self):
+        if not self.ne_selecionada: return
+        dial = DialogoNovoEmpenho(self.contrato_selecionado, ne_editar=self.ne_selecionada, parent=self)
         if dial.exec():
-            tipo, val, data, desc, renova = dial.get_dados()
-            adt.tipo = tipo
-            adt.valor = val
-            adt.data_nova = data
-            adt.descricao = desc
-            adt.renovacao_valor = renova
-            self.atualizar_painel_detalhes()
+            num, desc, idx, val, fonte, data_em, id_ciclo, id_adt = dial.get_dados()
+            self.ne_selecionada.numero = num; self.ne_selecionada.descricao = desc; self.ne_selecionada.fonte_recurso = fonte
+            self.ne_selecionada.data_emissao = data_em; self.ne_selecionada.subcontrato_idx = idx
+            self.ne_selecionada.ciclo_id = id_ciclo; self.ne_selecionada.aditivo_vinculado_id = id_adt
+            if len(self.ne_selecionada.historico) == 1: self.ne_selecionada.valor_inicial = val; self.ne_selecionada.historico[0].valor = val
+            self.atualizar_painel_detalhes(); self.salvar_dados()
+    def excluir_ne(self):
+        if self.ne_selecionada and QMessageBox.question(self, "Confirma", "Excluir?") == QMessageBox.StandardButton.Yes:
+            self.contrato_selecionado.lista_notas_empenho.remove(self.ne_selecionada); self.ne_selecionada = None; self.atualizar_painel_detalhes(); self.salvar_dados()
 
-    def excluir_aditivo(self, row):
-        del self.contrato_selecionado.lista_aditivos[row]
-        self.atualizar_painel_detalhes()
-
-    def abrir_novo_servico(self):
-        if not self.contrato_selecionado: return
-        dial = DialogoSubContrato(parent=self)
-        if dial.exec():
-            desc, val = dial.get_dados()
-            sub = SubContrato(desc, val)
-            self.contrato_selecionado.lista_servicos.append(sub)
-            self.atualizar_painel_detalhes()
-
-    def editar_servico(self, row):
+    def menu_subcontrato(self, pos):
+        item = self.tab_subcontratos.itemAt(pos)
+        if item: row = item.row(); QMenu(self).addAction("Editar", lambda: self.editar_servico(row)).addAction("Excluir", lambda: self.excluir_servico(row)).addAction("Exportar", lambda: self.exportar_servico(row)).exec(self.tab_subcontratos.mapToGlobal(pos))
+    def exportar_servico(self, row):
         sub = self.contrato_selecionado.lista_servicos[row]
-        dial = DialogoSubContrato(sub_editar=sub, parent=self)
-        if dial.exec():
-            d, v = dial.get_dados()
-            sub.descricao = d
-            sub.valor_estimado = v
-            self.atualizar_painel_detalhes()
-
+        fname, _ = QFileDialog.getSaveFileName(self, "Exp Serv", f"Serv_{sub.descricao[:5]}.csv", "CSV (*.csv)")
+        if fname:
+            with open(fname, 'w', newline='', encoding='utf-8') as f:
+                w = csv.writer(f, delimiter=';'); w.writerow([sub.descricao, f"{sub.valor_estimado:.2f}"])
+    def editar_servico(self, row):
+        sub = self.contrato_selecionado.lista_servicos[row]; dial = DialogoSubContrato(sub_editar=sub, parent=self)
+        if dial.exec(): sub.descricao, sub.valor_estimado = dial.get_dados(); self.atualizar_painel_detalhes(); self.salvar_dados()
     def excluir_servico(self, row):
-        # Verificar se tem NEs vinculadas
-        tem_vinculo = any(ne.subcontrato_idx == row for ne in self.contrato_selecionado.lista_notas_empenho)
-        if tem_vinculo:
-            QMessageBox.warning(self, "Erro", "Não pode excluir serviço com NEs vinculadas.")
-            return
-        del self.contrato_selecionado.lista_servicos[row]
-        self.atualizar_painel_detalhes()
+        if any(ne.subcontrato_idx == row for ne in self.contrato_selecionado.lista_notas_empenho): QMessageBox.warning(self, "Erro", "Em uso"); return
+        del self.contrato_selecionado.lista_servicos[row]; self.atualizar_painel_detalhes(); self.salvar_dados()
 
-    def abrir_pagamento(self):
-        if not self.ne_selecionada: 
-            QMessageBox.warning(self, "Aviso", "Selecione uma Nota de Empenho.")
-            return
-        
-        c_ini = self.contrato_selecionado.comp_inicio
-        c_fim = self.contrato_selecionado.comp_fim
-        d = DialogoPagamento(c_ini, c_fim, parent=self)
-        
-        if d.exec():
-            comp, val = d.get_dados()
-            ok, msg = self.ne_selecionada.realizar_pagamento(val, comp)
-            if not ok: QMessageBox.warning(self, "Erro", msg)
-            self.atualizar_painel_detalhes()
-            self.atualizar_movimentos()
+    def menu_aditivo(self, pos):
+        item = self.tab_aditivos.itemAt(pos)
+        if item: row = item.row(); QMenu(self).addAction("Editar", lambda: self.editar_aditivo(row)).addAction("Excluir", lambda: self.excluir_aditivo(row)).exec(self.tab_aditivos.mapToGlobal(pos))
+    def editar_aditivo(self, row):
+        adt = self.contrato_selecionado.lista_aditivos[row]; dial = DialogoAditivo(aditivo_editar=adt, parent=self)
+        if dial.exec(): adt.tipo, adt.valor, adt.data_nova, adt.descricao, adt.renovacao_valor, adt.data_inicio_vigencia = dial.get_dados(); self.atualizar_painel_detalhes(); self.salvar_dados()
+    def excluir_aditivo(self, row): del self.contrato_selecionado.lista_aditivos[row]; self.atualizar_painel_detalhes(); self.salvar_dados()
 
+    def menu_movimentacao(self, pos):
+        item = self.tab_mov.itemAt(pos)
+        if item:
+            row = item.row()
+            if self.ne_selecionada.historico[row].tipo == "Pagamento": QMenu(self).addAction("Editar", lambda: self.editar_pagamento(row)).addAction("Excluir", lambda: self.excluir_pagamento(row)).exec(self.tab_mov.mapToGlobal(pos))
     def editar_pagamento(self, row):
-        mov = self.ne_selecionada.historico[row]
-        c_ini = self.contrato_selecionado.comp_inicio
-        c_fim = self.contrato_selecionado.comp_fim
-        d = DialogoPagamento(c_ini, c_fim, pg_editar=mov, parent=self)
-        if d.exec():
-            comp, val = d.get_dados()
-            ok, msg = self.ne_selecionada.editar_movimentacao(row, val, comp)
-            if ok: 
-                self.atualizar_painel_detalhes()
-                self.atualizar_movimentos()
-            else:
-                QMessageBox.warning(self, "Erro", msg)
-
+        mov = self.ne_selecionada.historico[row]; dial = DialogoPagamento(self.contrato_selecionado.comp_inicio, self.contrato_selecionado.comp_fim, pg_editar=mov, parent=self)
+        if dial.exec():
+            c, v = dial.get_dados(); ok, m = self.ne_selecionada.editar_movimentacao(row, v, c)
+            if ok: self.atualizar_painel_detalhes(); self.atualizar_movimentos(); self.salvar_dados()
     def excluir_pagamento(self, row):
-        ok = self.ne_selecionada.excluir_movimentacao(row)
-        if ok:
-            self.atualizar_painel_detalhes()
-            self.atualizar_movimentos()
-        else:
-            QMessageBox.warning(self, "Erro", "Não foi possível excluir.")
+        if self.ne_selecionada.excluir_movimentacao(row): self.atualizar_painel_detalhes(); self.atualizar_movimentos(); self.salvar_dados()
 
-    # --- ATUALIZAÇÕES DE UI ---
-
-    def atualizar_lista_contratos(self):
-        self.lista_contratos_widget.clear()
-        for c in self.db_contratos:
-            item = QListWidgetItem(f"{c.numero}\n{c.prestador}")
-            self.lista_contratos_widget.addItem(item)
-
-    def selecionar_contrato(self, item):
-        row = self.lista_contratos_widget.row(item)
-        self.contrato_selecionado = self.db_contratos[row]
-        self.ne_selecionada = None 
-        self.atualizar_painel_detalhes()
+    def atualizar_movimentos(self):
+        if not self.ne_selecionada: return
+        self.tab_mov.setRowCount(0); saldo_corrente = self.ne_selecionada.valor_inicial
+        for row, m in enumerate(self.ne_selecionada.historico):
+            self.tab_mov.insertRow(row)
+            if m.tipo == "Pagamento": saldo_corrente -= m.valor
+            self.tab_mov.setItem(row, 0, QTableWidgetItem(m.competencia)); self.tab_mov.setItem(row, 1, QTableWidgetItem(m.tipo))
+            self.tab_mov.setItem(row, 2, QTableWidgetItem(f"{m.valor:,.2f}")); item_s = QTableWidgetItem(f"{saldo_corrente:,.2f}"); item_s.setForeground(QColor("#27ae60")); self.tab_mov.setItem(row, 3, item_s)
 
     def atualizar_painel_detalhes(self):
         if not self.contrato_selecionado: return
         c = self.contrato_selecionado
-        
-        self.lbl_titulo.setText(f"Contrato {c.numero} - {c.descricao}")
-        self.lbl_prestador.setText(f"Prestador: {c.prestador}")
-        
-        # Aba Dados
-        self.lbl_d_licitacao.setText(c.licitacao)
-        self.lbl_d_dispensa.setText(c.dispensa)
-        self.lbl_d_vigencia.setText(f"{c.vigencia_inicio} a {c.get_vigencia_final_atual()}")
-        self.lbl_d_comp.setText(f"{c.comp_inicio} a {c.comp_fim}")
+        self.lbl_titulo.setText(f"{c.numero} - {c.descricao}"); self.lbl_prestador.setText(c.prestador)
+        self.lbl_d_licitacao.setText(c.licitacao); self.lbl_d_dispensa.setText(c.dispensa); self.lbl_d_vigencia.setText(f"{c.vigencia_inicio} a {c.get_vigencia_final_atual()}"); self.lbl_d_comp.setText(f"{c.comp_inicio} a {c.comp_fim}")
+        txt_ciclos = ""
+        for ciclo in c.ciclos:
+            total = ciclo.get_teto_total(); saldo = c.get_saldo_ciclo_geral(ciclo.id_ciclo)
+            txt_ciclos += f"{ciclo.nome}: Teto R$ {total:,.2f} | Livre Geral R$ {saldo:,.2f}\n"
+        self.lbl_d_resumo_ciclos.setText(txt_ciclos)
 
-        val_total = c.get_valor_total_contrato()
-        val_empenhado_geral = sum(e.valor_inicial for e in c.lista_notas_empenho)
-        saldo_livre = val_total - val_empenhado_geral
-        
-        # Cor verde para saldo
-        cor_verde = "#27ae60"
-        txt_saldo = f"Total Contrato: R$ {val_total:,.2f} | Empenhado: R$ {val_empenhado_geral:,.2f} | <span style='color:{cor_verde}'><b>Saldo Livre: R$ {saldo_livre:,.2f}</b></span>"
-        self.lbl_saldo.setText(txt_saldo)
-
-        # Atualiza Tabelas
-        self.tab_empenhos.setRowCount(0)
-        self.tab_mov.setRowCount(0)
-        
+        self.tab_empenhos.setRowCount(0); self.tab_mov.setRowCount(0)
         for row, ne in enumerate(c.lista_notas_empenho):
             self.tab_empenhos.insertRow(row)
-            nome_servico = "Desconhecido"
-            if 0 <= ne.subcontrato_idx < len(c.lista_servicos):
-                nome_servico = c.lista_servicos[ne.subcontrato_idx].descricao
-
-            self.tab_empenhos.setItem(row, 0, QTableWidgetItem(ne.numero))
-            self.tab_empenhos.setItem(row, 1, QTableWidgetItem(ne.fonte_recurso))
-            self.tab_empenhos.setItem(row, 2, QTableWidgetItem(nome_servico))
-            self.tab_empenhos.setItem(row, 3, QTableWidgetItem(ne.descricao))
-            self.tab_empenhos.setItem(row, 4, QTableWidgetItem(f"{ne.valor_inicial:,.2f}"))
-            self.tab_empenhos.setItem(row, 5, QTableWidgetItem(f"{ne.valor_pago:,.2f}"))
-            
-            saldo_ne = ne.valor_inicial - ne.valor_pago
-            item_saldo = QTableWidgetItem(f"{saldo_ne:,.2f}")
-            item_saldo.setForeground(QColor(cor_verde)) # Verde
-            item_saldo.setFont(QFont("Arial", 9, QFont.Weight.Bold))
-            self.tab_empenhos.setItem(row, 6, item_saldo)
-            
-            self.tab_empenhos.setItem(row, 7, QTableWidgetItem(f"{ne.calcular_media_mensal():,.2f}"))
-            self.tab_empenhos.item(row, 0).setData(Qt.ItemDataRole.UserRole, ne)
+            nome_ciclo = c.ciclos[ne.ciclo_id].nome if ne.ciclo_id < len(c.ciclos) else "?"
+            n_serv = c.lista_servicos[ne.subcontrato_idx].descricao if 0 <= ne.subcontrato_idx < len(c.lista_servicos) else "?"
+            info_aditivo = "-"
+            if ne.aditivo_vinculado_id:
+                for a in c.lista_aditivos:
+                    if a.id_aditivo == ne.aditivo_vinculado_id: info_aditivo = "Sim (Vinculado)"; break
+            self.tab_empenhos.setItem(row, 0, QTableWidgetItem(nome_ciclo)); self.tab_empenhos.setItem(row, 1, QTableWidgetItem(info_aditivo))
+            self.tab_empenhos.setItem(row, 2, QTableWidgetItem(ne.numero)); self.tab_empenhos.setItem(row, 3, QTableWidgetItem(ne.data_emissao))
+            self.tab_empenhos.setItem(row, 4, QTableWidgetItem(ne.fonte_recurso)); self.tab_empenhos.setItem(row, 5, QTableWidgetItem(n_serv))
+            self.tab_empenhos.setItem(row, 6, QTableWidgetItem(ne.descricao)); self.tab_empenhos.setItem(row, 7, QTableWidgetItem(f"{ne.valor_inicial:,.2f}"))
+            self.tab_empenhos.setItem(row, 8, QTableWidgetItem(f"{ne.valor_pago:,.2f}")); s = ne.valor_inicial - ne.valor_pago
+            i_s = QTableWidgetItem(f"{s:,.2f}"); i_s.setForeground(QColor("#27ae60")); self.tab_empenhos.setItem(row, 9, i_s)
+            self.tab_empenhos.setItem(row, 10, QTableWidgetItem(f"{ne.calcular_media_mensal():,.2f}")); self.tab_empenhos.item(row, 0).setData(Qt.ItemDataRole.UserRole, ne)
 
         self.tab_subcontratos.setRowCount(0)
         for idx, sub in enumerate(c.lista_servicos):
-            empenhado_sub = sum(ne.valor_inicial for ne in c.lista_notas_empenho if ne.subcontrato_idx == idx)
-            saldo_sub = sub.valor_estimado - empenhado_sub
-            
-            row = self.tab_subcontratos.rowCount()
-            self.tab_subcontratos.insertRow(row)
-            self.tab_subcontratos.setItem(row, 0, QTableWidgetItem(sub.descricao))
-            self.tab_subcontratos.setItem(row, 1, QTableWidgetItem(f"{sub.valor_estimado:,.2f}"))
-            self.tab_subcontratos.setItem(row, 2, QTableWidgetItem(f"{empenhado_sub:,.2f}"))
-            item_saldo_sub = QTableWidgetItem(f"{saldo_sub:,.2f}")
-            item_saldo_sub.setForeground(QColor(cor_verde if saldo_sub >= 0 else "red"))
-            self.tab_subcontratos.setItem(row, 3, item_saldo_sub)
+            gasto = sum(ne.valor_inicial for ne in c.lista_notas_empenho if ne.subcontrato_idx == idx); saldo = sub.valor_estimado - gasto
+            self.tab_subcontratos.insertRow(idx); self.tab_subcontratos.setItem(idx, 0, QTableWidgetItem(sub.descricao)); self.tab_subcontratos.setItem(idx, 1, QTableWidgetItem(f"{sub.valor_estimado:,.2f}"))
+            self.tab_subcontratos.setItem(idx, 2, QTableWidgetItem(f"{gasto:,.2f}")); i_s = QTableWidgetItem(f"{saldo:,.2f}"); i_s.setForeground(QColor("#27ae60" if saldo >= 0 else "red")); self.tab_subcontratos.setItem(idx, 3, i_s)
 
         self.tab_aditivos.setRowCount(0)
         for row, adt in enumerate(c.lista_aditivos):
-            self.tab_aditivos.insertRow(row)
-            self.tab_aditivos.setItem(row, 0, QTableWidgetItem(adt.tipo))
-            self.tab_aditivos.setItem(row, 1, QTableWidgetItem("Sim" if adt.renovacao_valor else "Não"))
-            val_txt = f"{adt.valor:,.2f}" if (adt.tipo == "Valor" or adt.renovacao_valor) else "-"
-            self.tab_aditivos.setItem(row, 2, QTableWidgetItem(val_txt))
-            data_txt = adt.data_nova if adt.tipo == "Prazo" else "-"
-            self.tab_aditivos.setItem(row, 3, QTableWidgetItem(data_txt))
-            self.tab_aditivos.setItem(row, 4, QTableWidgetItem(adt.descricao))
-
-    def selecionar_ne(self, item):
-        row = item.row()
-        self.ne_selecionada = self.tab_empenhos.item(row, 0).data(Qt.ItemDataRole.UserRole)
-        self.atualizar_movimentos()
-
-    def atualizar_movimentos(self):
-        if not self.ne_selecionada: return
-        self.tab_mov.setRowCount(0)
-        saldo_corrente = self.ne_selecionada.valor_inicial
-        
-        for row, m in enumerate(self.ne_selecionada.historico):
-            self.tab_mov.insertRow(row)
-            if m.tipo == "Pagamento":
-                saldo_corrente -= m.valor
-            
-            self.tab_mov.setItem(row, 0, QTableWidgetItem(m.competencia))
-            self.tab_mov.setItem(row, 1, QTableWidgetItem(m.tipo))
-            self.tab_mov.setItem(row, 2, QTableWidgetItem(f"{m.valor:,.2f}"))
-            
-            item_saldo = QTableWidgetItem(f"{saldo_corrente:,.2f}")
-            item_saldo.setForeground(QColor("#27ae60")) # Verde
-            self.tab_mov.setItem(row, 3, item_saldo)
+            self.tab_aditivos.insertRow(row); self.tab_aditivos.setItem(row, 0, QTableWidgetItem(adt.tipo)); self.tab_aditivos.setItem(row, 1, QTableWidgetItem("Sim" if adt.renovacao_valor else "Não"))
+            self.tab_aditivos.setItem(row, 2, QTableWidgetItem(adt.data_inicio_vigencia if adt.renovacao_valor else "-")); v = f"{adt.valor:,.2f}" if (adt.tipo == "Valor" or adt.renovacao_valor) else "-"; self.tab_aditivos.setItem(row, 3, QTableWidgetItem(v))
+            self.tab_aditivos.setItem(row, 4, QTableWidgetItem(adt.data_nova if adt.tipo == "Prazo" else "-")); self.tab_aditivos.setItem(row, 5, QTableWidgetItem(adt.descricao))
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)

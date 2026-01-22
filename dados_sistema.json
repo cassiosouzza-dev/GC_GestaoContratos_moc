@@ -1,0 +1,72 @@
+[
+    {
+        "numero": "321",
+        "prestador": "santa casa",
+        "descricao": "hospital",
+        "valor_inicial": 100000000.0,
+        "vigencia_inicio": "22/01/2026",
+        "vigencia_fim": "22/01/2027",
+        "comp_inicio": "01/2026",
+        "comp_fim": "01/2027",
+        "licitacao": "02/2023",
+        "dispensa": "123/2023",
+        "ciclos": [
+            {
+                "id_ciclo": 0,
+                "nome": "Contrato Inicial",
+                "valor_base": 100000000.0
+            }
+        ],
+        "lista_notas_empenho": [
+            {
+                "numero": "01/2026",
+                "valor_inicial": 10000.0,
+                "descricao": "PRÉ FIXADO",
+                "subcontrato_idx": 0,
+                "fonte_recurso": "1600 FEDERAL",
+                "data_emissao": "22/01/2026",
+                "ciclo_id": 0,
+                "aditivo_vinculado_id": null,
+                "valor_pago": 0.0,
+                "historico": [
+                    {
+                        "tipo": "Emissão Original",
+                        "valor": 10000.0,
+                        "competencia": "-"
+                    }
+                ]
+            }
+        ],
+        "lista_aditivos": [],
+        "lista_servicos": [
+            {
+                "descricao": "PRÉ FIXADO",
+                "valor_estimado": 100000.0
+            }
+        ],
+        "_contador_aditivos": 0
+    },
+    {
+        "numero": "54",
+        "prestador": "",
+        "descricao": "",
+        "valor_inicial": 0.0,
+        "vigencia_inicio": "22/01/2026",
+        "vigencia_fim": "22/01/2027",
+        "comp_inicio": "01/2026",
+        "comp_fim": "01/2027",
+        "licitacao": "",
+        "dispensa": "",
+        "ciclos": [
+            {
+                "id_ciclo": 0,
+                "nome": "Contrato Inicial",
+                "valor_base": 0.0
+            }
+        ],
+        "lista_notas_empenho": [],
+        "lista_aditivos": [],
+        "lista_servicos": [],
+        "_contador_aditivos": 0
+    }
+]
