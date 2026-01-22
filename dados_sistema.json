@@ -15,6 +15,11 @@
                 "id_ciclo": 0,
                 "nome": "Contrato Inicial",
                 "valor_base": 1111111111111.11
+            },
+            {
+                "id_ciclo": 1,
+                "nome": "1º TA Prazo/Valor",
+                "valor_base": 0.0
             }
         ],
         "lista_notas_empenho": [
@@ -42,13 +47,24 @@
                 ]
             }
         ],
-        "lista_aditivos": [],
+        "lista_aditivos": [
+            {
+                "id_aditivo": 1,
+                "tipo": "Prazo",
+                "valor": 0.0,
+                "data_nova": "22/01/2028",
+                "descricao": "asdfasdfasdfasdfasdfasdf",
+                "renovacao_valor": true,
+                "data_inicio_vigencia": "22/01/2027",
+                "ciclo_pertencente_id": 1
+            }
+        ],
         "lista_servicos": [
             {
                 "descricao": "SDFGSDFG",
                 "valor_estimado": 11111.11
             }
         ],
-        "_contador_aditivos": 0
+        "_contador_aditivos": 1
     }
 ]

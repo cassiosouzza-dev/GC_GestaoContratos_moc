@@ -670,7 +670,7 @@ class SistemaGestao(QMainWindow):
             app.setPalette(QPalette())
 
     def init_ui(self):
-        self.setWindowTitle("SGF - Gestão Profissional")
+        self.setWindowTitle("SGF - Gestão de Contratos")
         self.setGeometry(50, 50, 1300, 850)
         mb = self.menuBar()
         m_arq = mb.addMenu("Arquivo")
@@ -871,7 +871,7 @@ class SistemaGestao(QMainWindow):
         l_adit.addWidget(b_nadit)
         self.tab_aditivos = TabelaExcel()
         self.tab_aditivos.setColumnCount(6);
-        self.tab_aditivos.setHorizontalHeaderLabels(["Tipo", "Renova?", "Vigência", "Valor", "Fim", "Desc"]);
+        self.tab_aditivos.setHorizontalHeaderLabels(["Tipo", "Renova valor?", "início Vigência", "Fim Vigência", "Valor", "Justificativa"]);
         self.tab_aditivos.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch);
         self.tab_aditivos.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu);
         self.tab_aditivos.customContextMenuRequested.connect(self.menu_aditivo);
@@ -1421,7 +1421,7 @@ class SistemaGestao(QMainWindow):
         for ciclo in c.ciclos:
             total = ciclo.get_teto_total()
             saldo = c.get_saldo_ciclo_geral(ciclo.id_ciclo)
-            txt_ciclos += f"{ciclo.nome}: Teto R$ {fmt_br(total)} | Livre Geral R$ {fmt_br(saldo)}\n"
+            txt_ciclos += f"{ciclo.nome}: Teto R$ {fmt_br(total)} | Saldo Livre Geral R$ {fmt_br(saldo)}\n"
         self.lbl_d_resumo_ciclos.setText(txt_ciclos)
 
         # TABELA EMPENHOS (Usando fmt_br)
@@ -1480,9 +1480,9 @@ class SistemaGestao(QMainWindow):
                                       QTableWidgetItem(adt.data_inicio_vigencia if adt.renovacao_valor else "-"))
 
             val_txt = fmt_br(adt.valor) if (adt.tipo == "Valor" or adt.renovacao_valor) else "-"
-            self.tab_aditivos.setItem(row, 3, QTableWidgetItem(val_txt))
+            self.tab_aditivos.setItem(row, 4, QTableWidgetItem(val_txt))
 
-            self.tab_aditivos.setItem(row, 4, QTableWidgetItem(adt.data_nova if adt.tipo == "Prazo" else "-"))
+            self.tab_aditivos.setItem(row, 3, QTableWidgetItem(adt.data_nova if adt.tipo == "Prazo" else "-"))
             self.tab_aditivos.setItem(row, 5, QTableWidgetItem(adt.descricao))
 
 if __name__ == "__main__":
