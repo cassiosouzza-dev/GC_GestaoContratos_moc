@@ -1,168 +1,95 @@
 ﻿[
     {
-        "numero": "2452452",
-        "prestador": "45245245",
-        "descricao": "SDFGSDFGSDFG",
-        "valor_inicial": 1111111111111.11,
-        "vigencia_inicio": "22/01/2026",
-        "vigencia_fim": "22/01/2027",
-        "comp_inicio": "01/2026",
-        "comp_fim": "01/2027",
-        "licitacao": "32136SDFG",
-        "dispensa": "654164",
-        "ciclos": [
-            {
-                "id_ciclo": 0,
-                "nome": "Contrato Inicial",
-                "valor_base": 1111111111111.11
-            },
-            {
-                "id_ciclo": 1,
-                "nome": "1º TA Prazo/Valor",
-                "valor_base": 0.0
-            }
-        ],
-        "lista_notas_empenho": [
-            {
-                "numero": "0001",
-                "valor_inicial": 1111.11,
-                "descricao": "Federal",
-                "subcontrato_idx": 0,
-                "fonte_recurso": "1600",
-                "data_emissao": "22/01/2026",
-                "ciclo_id": 0,
-                "aditivo_vinculado_id": null,
-                "valor_pago": 60.0,
-                "historico": [
-                    {
-                        "tipo": "Emissão Original",
-                        "valor": 1111.11,
-                        "competencia": "-"
-                    },
-                    {
-                        "tipo": "Pagamento",
-                        "valor": 60.0,
-                        "competencia": "02/2026"
-                    }
-                ]
-            }
-        ],
-        "lista_aditivos": [
-            {
-                "id_aditivo": 1,
-                "tipo": "Prazo",
-                "valor": 0.0,
-                "data_nova": "22/01/2028",
-                "descricao": "asdfasdfasdfasdfasdfasdf",
-                "renovacao_valor": true,
-                "data_inicio_vigencia": "22/01/2027",
-                "ciclo_pertencente_id": 1,
-                "servico_idx": -1
-            }
-        ],
-        "lista_servicos": [
-            {
-                "descricao": "SDFGSDFG",
-                "valores_por_ciclo": {
-                    "0": 11111.11
-                }
-            }
-        ],
-        "_contador_aditivos": 1
-    },
-    {
-        "numero": "P111/2023-01",
-        "prestador": "Hospital Santa Casa",
+        "numero": "P100/2026",
+        "prestador": "HOSPITAL UM",
         "descricao": "Contratualização Hospitalar",
-        "valor_inicial": 10000000000.0,
-        "vigencia_inicio": "01/01/2026",
-        "vigencia_fim": "31/12/2026",
+        "valor_inicial": 1000000.0,
+        "vigencia_inicio": "23/01/2026",
+        "vigencia_fim": "23/01/2027",
         "comp_inicio": "01/2026",
         "comp_fim": "12/2026",
-        "licitacao": "01/2023",
-        "dispensa": "02/2023",
+        "licitacao": "01/2026",
+        "dispensa": "10/2026",
         "ciclos": [
             {
                 "id_ciclo": 0,
                 "nome": "Contrato Inicial",
-                "valor_base": 10000000000.0
+                "valor_base": 1000000.0
             },
             {
                 "id_ciclo": 1,
-                "nome": "1º TA Prazo/Valor",
+                "nome": "1º TA Prazo/Valor (CANCELADO)",
                 "valor_base": 0.0
+            },
+            {
+                "id_ciclo": 2,
+                "nome": "1º TA Prazo/Valor",
+                "valor_base": 100000000.0
+            },
+            {
+                "id_ciclo": 3,
+                "nome": "2º TA Prazo/Valor",
+                "valor_base": 100000000.0
             }
         ],
         "lista_notas_empenho": [
             {
                 "numero": "01/2026",
-                "valor_inicial": 1000000.0,
+                "valor_inicial": 60000.0,
                 "descricao": "-",
                 "subcontrato_idx": 0,
                 "fonte_recurso": "1600 federal",
-                "data_emissao": "22/01/2026",
-                "ciclo_id": 0,
+                "data_emissao": "23/01/2028",
+                "ciclo_id": 3,
                 "aditivo_vinculado_id": null,
-                "valor_pago": 1000.0,
+                "valor_pago": 2000.0,
                 "historico": [
                     {
                         "tipo": "Emissão Original",
-                        "valor": 1000000.0,
+                        "valor": 60000.0,
                         "competencia": "-"
                     },
                     {
                         "tipo": "Pagamento",
-                        "valor": 1000.0,
+                        "valor": 2000.0,
                         "competencia": "01/2026"
-                    }
-                ]
-            },
-            {
-                "numero": "02/2026",
-                "valor_inicial": 3000.0,
-                "descricao": "-",
-                "subcontrato_idx": 0,
-                "fonte_recurso": "1600 federal",
-                "data_emissao": "22/01/2026",
-                "ciclo_id": 0,
-                "aditivo_vinculado_id": null,
-                "valor_pago": 300.0,
-                "historico": [
-                    {
-                        "tipo": "Emissão Original",
-                        "valor": 3000.0,
-                        "competencia": "-"
-                    },
-                    {
-                        "tipo": "Pagamento",
-                        "valor": 300.0,
-                        "competencia": "02/2026"
                     }
                 ]
             }
         ],
         "lista_aditivos": [
             {
-                "id_aditivo": 1,
+                "id_aditivo": 5,
                 "tipo": "Prazo",
-                "valor": 0.0,
-                "data_nova": "22/01/2027",
-                "descricao": "1º TA",
+                "valor": 100000000.0,
+                "data_nova": "31/01/2028",
+                "descricao": "prorrogação",
                 "renovacao_valor": true,
-                "data_inicio_vigencia": "22/01/2026",
-                "ciclo_pertencente_id": 1,
+                "data_inicio_vigencia": "01/01/2027",
+                "ciclo_pertencente_id": 2,
+                "servico_idx": -1
+            },
+            {
+                "id_aditivo": 6,
+                "tipo": "Prazo",
+                "valor": 100000000.0,
+                "data_nova": "23/01/2029",
+                "descricao": "teste",
+                "renovacao_valor": true,
+                "data_inicio_vigencia": "23/01/2028",
+                "ciclo_pertencente_id": 3,
                 "servico_idx": -1
             }
         ],
         "lista_servicos": [
             {
-                "descricao": "PRÉ FIXADO",
+                "descricao": "PÓS FIXADO",
+                "valor_mensal": 10000.0,
                 "valores_por_ciclo": {
-                    "0": 2000000.0,
-                    "1": 2000000.0
+                    "3": 120000.0
                 }
             }
         ],
-        "_contador_aditivos": 1
+        "_contador_aditivos": 6
     }
 ]
