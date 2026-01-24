@@ -2,6 +2,8 @@ import sys
 import csv
 import json
 import os
+import ctypes
+from ctypes import wintypes
 from datetime import datetime
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QLabel, QLineEdit, QPushButton,
@@ -10,8 +12,67 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QDialog, QComboBox, QFormLayout, QDialogButtonBox,
                              QAbstractItemView, QDateEdit, QTabWidget, QMenu,
                              QCheckBox, QStackedWidget, QFrame, QFileDialog, QInputDialog)
-from PyQt6.QtCore import Qt, QDate
+from PyQt6.QtCore import Qt, QDate, QEvent, QTimer
 from PyQt6.QtGui import QAction, QColor, QFont, QPalette
+
+
+# --- FUNÇÃO GLOBAL PARA ESTILIZAR JANELAS (CORRIGE O BUG DOS DIÁLOGOS) ---
+# Substitua a função antiga por esta versão COMPLETA:
+def aplicar_estilo_janela(window_instance):
+    """
+    Tenta forçar a barra escura usando códigos do Win10 (19 e 20) e Win11.
+    Executa imediatamente e reforça após 100ms.
+    """
+    def _aplicar():
+        try:
+            hwnd = int(window_instance.winId())
+            if hwnd <= 0: return
+            
+            # Tenta o código padrão (Win 10 2004+ / Win 11)
+            DWMWA_USE_IMMERSIVE_DARK_MODE = 20
+            val_dark = ctypes.c_int(1)
+            ctypes.windll.dwmapi.DwmSetWindowAttribute(
+                hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, ctypes.byref(val_dark), ctypes.sizeof(val_dark)
+            )
+            
+            # Tenta o código antigo (Win 10 builds antigas - 1903/1909)
+            # Se um falhar, o outro pega.
+            DWMWA_USE_IMMERSIVE_DARK_MODE_OLD = 19
+            ctypes.windll.dwmapi.DwmSetWindowAttribute(
+                hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE_OLD, ctypes.byref(val_dark), ctypes.sizeof(val_dark)
+            )
+
+            # Tenta Cor Personalizada (Apenas Win 11, ignorado no 10)
+            DWMWA_CAPTION_COLOR = 35
+            cor_hex = "1e3b4d" 
+            r, g, b = int(cor_hex[0:2], 16), int(cor_hex[2:4], 16), int(cor_hex[4:6], 16)
+            color_ref = (b << 16) | (g << 8) | r
+            val_color = ctypes.c_int(color_ref)
+            ctypes.windll.dwmapi.DwmSetWindowAttribute(
+                hwnd, DWMWA_CAPTION_COLOR, ctypes.byref(val_color), ctypes.sizeof(val_color)
+            )
+
+            # Força o redesenho da barra (Gatilho visual)
+            ctypes.windll.user32.SetWindowPos(hwnd, 0, 0, 0, 0, 0, 0x0027)
+            
+        except Exception:
+            pass
+
+    # ESTRATÉGIA DUPLA:
+    # 1. Tenta executar AGORA (se a janela já tiver ID)
+    _aplicar()
+    # 2. Agenda uma repetição para garantir (caso o Windows esteja lento)
+    QTimer.singleShot(100, _aplicar)
+
+
+# --- CLASSES BASE ---
+# Classe base para diálogos
+# Corrige o bug da barra de título clara
+class BaseDialog(QDialog): 
+    """Classe base que força a barra escura assim que a janela aparece na tela (showEvent)"""
+    def showEvent(self, event):
+        aplicar_estilo_janela(self)
+        super().showEvent(event)
 
 
 def fmt_br(valor):
@@ -408,11 +469,11 @@ class Contrato:
 
 # --- 2. DIÁLOGOS ---
 
-class DialogoCriarContrato(QDialog):
+class DialogoCriarContrato(BaseDialog):
     def __init__(self, contrato_editar=None, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Cadastro de Contrato")
-        self.setFixedWidth(600)
+        self.resize(700, 600)
         layout = QFormLayout(self)
         self.inp_numero = QLineEdit();
         self.inp_prestador = QLineEdit()
@@ -456,18 +517,19 @@ class DialogoCriarContrato(QDialog):
         botoes.accepted.connect(self.accept);
         botoes.rejected.connect(self.reject);
         layout.addWidget(botoes)
+        
 
     def get_dados(self): return (self.inp_numero.text(), self.inp_prestador.text(), self.inp_desc.text(),
                                  self.inp_valor.get_value(), self.date_vig_ini.text(), self.date_vig_fim.text(),
                                  self.inp_comp_ini.text(), self.inp_comp_fim.text(), self.inp_licitacao.text(),
                                  self.inp_dispensa.text())
 
-class DialogoNovoEmpenho(QDialog):
+class DialogoNovoEmpenho(BaseDialog):
     def __init__(self, contrato, ne_editar=None, parent=None):
         super().__init__(parent);
         self.contrato = contrato;
         self.setWindowTitle("Nota de Empenho");
-        self.setFixedWidth(500)
+        self.resize(600, 450)
         layout = QFormLayout(self)
         self.inp_num = QLineEdit();
         self.inp_desc = QLineEdit();
@@ -524,7 +586,7 @@ class DialogoNovoEmpenho(QDialog):
         botoes.accepted.connect(self.accept)
         botoes.rejected.connect(self.reject)
         layout.addWidget(botoes)
-
+        
     def ao_mudar_ciclo(self):
         self.atualizar_combo_aditivos()
         self.atualizar_combo_servicos()
@@ -561,10 +623,11 @@ class DialogoNovoEmpenho(QDialog):
                 self.combo_aditivo.currentData())
 
 
-class DialogoAditivo(QDialog):
+class DialogoAditivo(BaseDialog):
     def __init__(self, contrato, aditivo_editar=None, parent=None):
         super().__init__(parent); self.contrato = contrato 
-        self.setWindowTitle("Aditivo Contratual"); self.setFixedWidth(450)
+        self.setWindowTitle("Aditivo Contratual"); 
+        self.resize(550, 500)
         layout = QFormLayout(self)
         
         self.combo_tipo = QComboBox(); self.combo_tipo.addItems(["Valor (Acréscimo/Decréscimo)", "Prazo (Prorrogação)"])
@@ -609,6 +672,7 @@ class DialogoAditivo(QDialog):
         botoes.accepted.connect(self.accept)
         botoes.rejected.connect(self.reject) # <--- LINHA QUE FALTAVA
         layout.addWidget(botoes)
+        
 
     def mudar_tipo(self):
         is_prazo = self.combo_tipo.currentText().startswith("Prazo")
@@ -628,7 +692,7 @@ class DialogoAditivo(QDialog):
         tipo = "Valor" if self.combo_tipo.currentText().startswith("Valor") else "Prazo"
         return tipo, self.inp_valor.get_value(), self.date_nova.text(), self.inp_desc.text(), self.chk_renovacao.isChecked(), self.date_inicio.text(), self.combo_servico.currentData()
     
-class DialogoPagamento(QDialog):
+class DialogoPagamento(BaseDialog):
     def __init__(self, comp_inicio, comp_fim, pg_editar=None, parent=None):
         super().__init__(parent);
         self.setWindowTitle("Pagamento");
@@ -648,16 +712,17 @@ class DialogoPagamento(QDialog):
         botoes.accepted.connect(self.accept)
         botoes.rejected.connect(self.reject) # <--- LINHA QUE FALTAVA
         layout.addWidget(botoes)
+        
 
     def get_dados(self):
         return self.combo_comp.currentText(), self.inp_valor.get_value()
+        
 
-
-class DialogoSubContrato(QDialog):
+class DialogoSubContrato(BaseDialog):
     def __init__(self, lista_ciclos, ciclo_atual_id=0, sub_editar=None, valor_editar=None, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Serviço / Subcontrato")
-        self.setFixedWidth(400)
+        self.resize(500, 400)
         layout = QFormLayout(self)
 
         self.inp_desc = QLineEdit()
@@ -699,7 +764,7 @@ class DialogoSubContrato(QDialog):
         botoes.accepted.connect(self.accept)
         botoes.rejected.connect(self.reject)
         layout.addWidget(botoes)
-
+        
     def get_dados(self):
         return (self.inp_desc.text(),
                 self.inp_valor.get_value(),
@@ -708,42 +773,42 @@ class DialogoSubContrato(QDialog):
                 self.combo_ciclo_alvo.currentData())
 
 
-class DialogoDetalheServico(QDialog):
+class DialogoDetalheServico(BaseDialog):
     def __init__(self, servico, ciclo_nome, valor_orcamento, lista_nes_do_servico, parent=None):
         super().__init__(parent)
         self.setWindowTitle(f"Detalhes: {servico.descricao}")
-        self.resize(900, 650)
+        
+        # MUDANÇA 1: Largura mínima garantida. O resize apenas sugere, o setMinimum obriga.
+        self.setMinimumWidth(950) 
+        self.setMinimumHeight(650)
 
         layout = QVBoxLayout(self)
 
-        # --- CABEÇALHO (Resumo com Destaque) ---
+        # --- CABEÇALHO ---
         frm_resumo = QFrame()
-        frm_resumo.setStyleSheet("background-color: #f0f0f0; border-radius: 5px; padding: 15px;")
+        frm_resumo.setObjectName("frm_resumo") 
         l_resumo = QVBoxLayout(frm_resumo)
 
-        # 1. NOME DO SERVIÇO (Maior Destaque)
+        # 1. NOME DO SERVIÇO
         lbl_servico = QLabel(servico.descricao)
-        lbl_servico.setFont(QFont("Arial", 16, QFont.Weight.Bold))  # Fonte Maior
-        lbl_servico.setStyleSheet("color: #2c3e50; margin-bottom: 5px;")
-        lbl_servico.setWordWrap(True)  # Quebra linha se o nome for grande
+        lbl_servico.setObjectName("lbl_titulo_servico") 
+        lbl_servico.setWordWrap(True) # Já tinha, mantemos
         lbl_servico.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        # 2. Informação do Ciclo
+        # 2. Informação do Ciclo (CORREÇÃO AQUI)
         lbl_ciclo = QLabel(f"Ciclo Financeiro: {ciclo_nome}")
-        lbl_ciclo.setFont(QFont("Arial", 11, QFont.Weight.Bold))
-        lbl_ciclo.setStyleSheet("color: #555;")
+        lbl_ciclo.setObjectName("lbl_subtitulo")
         lbl_ciclo.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        lbl_ciclo.setWordWrap(True) # <--- ADICIONADO: Permite que nomes longos de ciclo quebrem a linha
 
         # 3. Valor do Orçamento
         lbl_orcamento = QLabel(f"Orçamento Disponível: {fmt_br(valor_orcamento)}")
-        lbl_orcamento.setFont(QFont("Arial", 11))
         lbl_orcamento.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         # Barra de Progresso
         from PyQt6.QtWidgets import QProgressBar
         self.progresso = QProgressBar()
-        self.progresso.setStyleSheet(
-            "QProgressBar { border: 1px solid grey; border-radius: 5px; text-align: center; height: 20px; } QProgressBar::chunk { background-color: #27ae60; }")
+        self.progresso.setStyleSheet("QProgressBar { border: 1px solid grey; border-radius: 5px; text-align: center; height: 20px; } QProgressBar::chunk { background-color: #27ae60; }")
 
         l_resumo.addWidget(lbl_servico)
         l_resumo.addWidget(lbl_ciclo)
@@ -751,6 +816,7 @@ class DialogoDetalheServico(QDialog):
         l_resumo.addSpacing(10)
         l_resumo.addWidget(self.progresso)
         layout.addWidget(frm_resumo)
+
 
         # --- SISTEMA DE ABAS ---
         self.abas = QTabWidget()
@@ -790,7 +856,6 @@ class DialogoDetalheServico(QDialog):
         for ne in lista_nes_do_servico:
             for mov in ne.historico:
                 if mov.tipo == "Pagamento":
-                    # 1. Guarda dados para a tabela detalhada
                     movimentos_detalhados.append({
                         "data_sort": self.converter_competencia(mov.competencia),
                         "comp": mov.competencia,
@@ -798,15 +863,12 @@ class DialogoDetalheServico(QDialog):
                         "ne_num": ne.numero,
                         "ne_desc": ne.descricao
                     })
-
-                    # 2. Acumula dados para a tabela de resumo
                     c = mov.competencia
                     if c not in soma_por_competencia: soma_por_competencia[c] = 0.0
                     soma_por_competencia[c] += mov.valor
-
                     total_pago_geral += mov.valor
 
-        # --- PREENCHER TABELA 1 (RESUMO MENSAL) ---
+        # Preencher Tabela 1
         lista_comp_ordenada = []
         for c, v in soma_por_competencia.items():
             lista_comp_ordenada.append({"comp": c, "valor": v, "data_sort": self.converter_competencia(c)})
@@ -814,33 +876,28 @@ class DialogoDetalheServico(QDialog):
 
         saldo_atual = valor_orcamento
         acumulado = 0.0
-
         self.tabela_comp.setRowCount(0)
         for i, item in enumerate(lista_comp_ordenada):
             val = item["valor"]
             saldo_atual -= val
             acumulado += val
             pct = (acumulado / valor_orcamento * 100) if valor_orcamento > 0 else 0
-
             self.tabela_comp.insertRow(i)
             self.tabela_comp.setItem(i, 0, self.item_centro(item["comp"]))
             self.tabela_comp.setItem(i, 1, self.item_valor(val))
             self.tabela_comp.setItem(i, 2, self.item_saldo(saldo_atual))
             self.tabela_comp.setItem(i, 3, self.item_centro(f"{pct:.1f}%"))
 
-        # --- PREENCHER TABELA 2 (DETALHADA) ---
+        # Preencher Tabela 2
         movimentos_detalhados.sort(key=lambda x: x["data_sort"])
-
         saldo_atual = valor_orcamento
         acumulado = 0.0
-
         self.tabela_ne.setRowCount(0)
         for i, m in enumerate(movimentos_detalhados):
             val = m["valor"]
             saldo_atual -= val
             acumulado += val
             pct = (acumulado / valor_orcamento * 100) if valor_orcamento > 0 else 0
-
             self.tabela_ne.insertRow(i)
             self.tabela_ne.setItem(i, 0, self.item_centro(m["comp"]))
             self.tabela_ne.setItem(i, 1, self.item_centro(m["ne_num"]))
@@ -849,40 +906,25 @@ class DialogoDetalheServico(QDialog):
             self.tabela_ne.setItem(i, 4, self.item_saldo(saldo_atual))
             self.tabela_ne.setItem(i, 5, self.item_centro(f"{pct:.1f}%"))
 
-        # Atualiza Barra de Progresso
         pct_final = int((total_pago_geral / valor_orcamento * 100)) if valor_orcamento > 0 else 0
         self.progresso.setValue(min(pct_final, 100))
         if pct_final > 100: self.progresso.setStyleSheet("QProgressBar::chunk { background-color: red; }")
 
-        # Botão Fechar
         btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
         btns.rejected.connect(self.close)
         layout.addWidget(btns)
+        
 
-    # Métodos auxiliares
     def item_centro(self, text):
-        i = QTableWidgetItem(str(text))
-        i.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-        return i
-
+        i = QTableWidgetItem(str(text)); i.setTextAlignment(Qt.AlignmentFlag.AlignCenter); return i
     def item_valor(self, val):
-        i = QTableWidgetItem(fmt_br(val))
-        i.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-        i.setForeground(QColor("#c0392b"))
-        return i
-
+        i = QTableWidgetItem(fmt_br(val)); i.setTextAlignment(Qt.AlignmentFlag.AlignCenter); i.setForeground(QColor("#c0392b")); return i
     def item_saldo(self, val):
-        i = QTableWidgetItem(fmt_br(val))
-        i.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-        i.setFont(QFont("Arial", 9, QFont.Weight.Bold))
-        i.setForeground(QColor("#27ae60" if val >= 0 else "red"))
-        return i
-
+        i = QTableWidgetItem(fmt_br(val)); i.setTextAlignment(Qt.AlignmentFlag.AlignCenter); i.setFont(QFont("Arial", 9, QFont.Weight.Bold)); i.setForeground(QColor("#27ae60" if val >= 0 else "red")); return i
     def converter_competencia(self, comp_str):
-        try:
-            return datetime.strptime(comp_str, "%m/%Y")
-        except:
-            return datetime.min
+        try: return datetime.strptime(comp_str, "%m/%Y")
+        except: return datetime.min
+
 
 # --- 3. SISTEMA PRINCIPAL ---
 
@@ -900,6 +942,20 @@ class SistemaGestao(QMainWindow):
 
         self.init_ui()
         self.carregar_dados()
+
+        
+    def showEvent(self, event):
+        # Garante que a barra fique escura assim que o programa abre
+        aplicar_estilo_janela(self)
+        super().showEvent(event)
+
+    def changeEvent(self, event):
+        if event.type() == QEvent.Type.WindowStateChange:
+            # O QTimer dentro da função garantirá que a cor é reaplicada
+            # DEPOIS da animação de maximizar terminar.
+            aplicar_estilo_janela(self) 
+        super().changeEvent(event)
+
 
     def closeEvent(self, event):
         self.salvar_dados()
@@ -924,43 +980,98 @@ class SistemaGestao(QMainWindow):
             QMessageBox.critical(self, "Erro ao Carregar", f"Não foi possível ler os dados salvos:\n{str(e)}")
 
     def alternar_tema(self):
-        # Inverte o estado atual
-        self.tema_escuro = not self.tema_escuro
+        self.tema_escuro = not self.tema_escuro # Inverte o estado atual
+        aplicar_estilo_janela(self) # Chama a função global
+        
         app = QApplication.instance()
-        palette = QPalette()
-
+        
         if self.tema_escuro:
-            # --- TEMA ESCURO PERSONALIZADO ---
-            palette.setColor(QPalette.ColorRole.Window, QColor(53, 53, 53))
-            palette.setColor(QPalette.ColorRole.WindowText, Qt.GlobalColor.white)
-            palette.setColor(QPalette.ColorRole.Base, QColor(25, 25, 25))
-            palette.setColor(QPalette.ColorRole.AlternateBase, QColor(53, 53, 53))
-            palette.setColor(QPalette.ColorRole.ToolTipBase, Qt.GlobalColor.white)
-            palette.setColor(QPalette.ColorRole.ToolTipText, Qt.GlobalColor.white)
-            palette.setColor(QPalette.ColorRole.Text, Qt.GlobalColor.white)
-            palette.setColor(QPalette.ColorRole.Button, QColor(53, 53, 53))
-            palette.setColor(QPalette.ColorRole.ButtonText, Qt.GlobalColor.white)
-            palette.setColor(QPalette.ColorRole.BrightText, Qt.GlobalColor.red)
-            palette.setColor(QPalette.ColorRole.Link, QColor(42, 130, 218))
-            palette.setColor(QPalette.ColorRole.Highlight, QColor(42, 130, 218))
-            palette.setColor(QPalette.ColorRole.HighlightedText, Qt.GlobalColor.black)
+            # DARK
+            c_fundo = "#2b2b2b"; c_fundo_alt = "#1e1e1e"; c_texto = "#ffffff"; c_texto_sec = "#cccccc"
+            c_borda = "#555555"; c_borda_foco = "#4da6ff"; c_azul = "#4da6ff"; c_azul_fundo = "#3e3e3e"
+            c_btn = "#3c3c3c"; c_btn_hover = "#505050"; c_header = "#444444"; c_selecao = "#4da6ff"; c_texto_sel = "#000000"
+            
+            # --- COR ESPECIAL PARA O QUADRO DE RESUMO NO MODO ESCURO ---
+            c_resumo_bg = "#383838" # Um cinza um pouco mais claro que o fundo, mas escuro o suficiente para texto branco
         else:
-            # --- TEMA CLARO FORÇADO (Ignora o Windows Dark Mode) ---
-            palette.setColor(QPalette.ColorRole.Window, QColor(240, 240, 240))  # Cinza muito claro padrão
-            palette.setColor(QPalette.ColorRole.WindowText, Qt.GlobalColor.black)
-            palette.setColor(QPalette.ColorRole.Base, Qt.GlobalColor.white)  # Fundo de campos de texto
-            palette.setColor(QPalette.ColorRole.AlternateBase, QColor(233, 231, 227))
-            palette.setColor(QPalette.ColorRole.ToolTipBase, Qt.GlobalColor.white)
-            palette.setColor(QPalette.ColorRole.ToolTipText, Qt.GlobalColor.black)
-            palette.setColor(QPalette.ColorRole.Text, Qt.GlobalColor.black)
-            palette.setColor(QPalette.ColorRole.Button, QColor(240, 240, 240))
-            palette.setColor(QPalette.ColorRole.ButtonText, Qt.GlobalColor.black)
-            palette.setColor(QPalette.ColorRole.BrightText, Qt.GlobalColor.red)
-            palette.setColor(QPalette.ColorRole.Link, QColor(0, 0, 255))
-            palette.setColor(QPalette.ColorRole.Highlight, QColor(0, 120, 215))  # Azul padrão seleção
-            palette.setColor(QPalette.ColorRole.HighlightedText, Qt.GlobalColor.white)
+            # LIGHT
+            c_fundo = "#f0f0f0"; c_fundo_alt = "#ffffff"; c_texto = "#2b2b2b"; c_texto_sec = "#555555"
+            c_borda = "#cccccc"; c_borda_foco = "#0078d7"; c_azul = "#0078d7"; c_azul_fundo = "#e1e1e1"
+            c_btn = "#e1e1e1"; c_btn_hover = "#d4d4d4"; c_header = "#e6e6e6"; c_selecao = "#0078d7"; c_texto_sel = "#ffffff"
+            
+            # --- COR ESPECIAL PARA O QUADRO DE RESUMO NO MODO CLARO ---
+            c_resumo_bg = "#ffffff" # Branco ou cinza bem clarinho
 
+        # Força labels antigos
+        estilo_labels = f"color: {c_texto}; margin-bottom: 5px;"
+        estilo_titulo = f"color: {c_texto_sec};"
+        estilo_logo   = f"color: {c_texto}; margin-bottom: 20px; margin-top: 50px;"
+        if hasattr(self, 'lbl_prestador'): self.lbl_prestador.setStyleSheet(estilo_labels)
+        if hasattr(self, 'lbl_titulo'): self.lbl_titulo.setStyleSheet(estilo_titulo)
+        if hasattr(self, 'lbl_logo'): self.lbl_logo.setStyleSheet(estilo_logo)
+
+        palette = QPalette()
+        palette.setColor(QPalette.ColorRole.Window, QColor(c_fundo))
+        palette.setColor(QPalette.ColorRole.WindowText, QColor(c_texto))
+        palette.setColor(QPalette.ColorRole.Base, QColor(c_fundo_alt))
+        palette.setColor(QPalette.ColorRole.AlternateBase, QColor(c_fundo))
+        palette.setColor(QPalette.ColorRole.ToolTipBase, QColor(c_texto))
+        palette.setColor(QPalette.ColorRole.ToolTipText, QColor(c_texto))
+        palette.setColor(QPalette.ColorRole.Text, QColor(c_texto))
+        palette.setColor(QPalette.ColorRole.Button, QColor(c_fundo))
+        palette.setColor(QPalette.ColorRole.ButtonText, QColor(c_texto))
+        palette.setColor(QPalette.ColorRole.Link, QColor(c_azul))
+        palette.setColor(QPalette.ColorRole.Highlight, QColor(c_selecao))
+        palette.setColor(QPalette.ColorRole.HighlightedText, QColor(c_texto_sel))
         app.setPalette(palette)
+
+        estilo_css = f"""
+        QMainWindow, QDialog {{ background-color: {c_fundo}; }}
+        QWidget {{ color: {c_texto}; font-size: 14px; }}
+        QLabel {{ color: {c_texto}; }}
+        
+        /* ESTILO DO QUADRO DE RESUMO DO SERVIÇO */
+        #frm_resumo {{
+            background-color: {c_resumo_bg};
+            border: 1px solid {c_borda};
+            border-radius: 6px;
+        }}
+        #lbl_titulo_servico {{
+            color: {c_azul};
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }}
+        #lbl_subtitulo {{
+            color: {c_texto_sec};
+            font-weight: bold;
+        }}
+
+        QGroupBox {{ border: 1px solid {c_borda}; border-radius: 6px; margin-top: 25px; font-weight: bold; }}
+        QGroupBox::title {{ subcontrol-origin: margin; left: 10px; padding: 0 5px; color: {c_azul}; font-size: 16px; font-weight: bold; }}
+
+        QLineEdit, QDateEdit, QComboBox, QSpinBox {{ background-color: {c_fundo_alt}; border: 1px solid {c_borda}; border-radius: 4px; padding: 6px; color: {c_texto}; font-size: 14px; }}
+        QLineEdit:focus, QDateEdit:focus, QComboBox:focus {{ border: 2px solid {c_borda_foco}; }}
+        QLineEdit:disabled, QDateEdit:disabled {{ background-color: {c_fundo}; color: {c_texto_sec}; border: 1px solid {c_borda}; }}
+        
+        QTableWidget {{ background-color: {c_fundo_alt}; gridline-color: {c_borda}; border: 1px solid {c_borda}; color: {c_texto}; font-size: 14px; }}
+        QHeaderView::section {{ background-color: {c_header}; color: {c_texto}; padding: 6px; border: 1px solid {c_borda}; font-weight: bold; font-size: 14px; }}
+        QTableCornerButton::section {{ background-color: {c_header}; border: 1px solid {c_borda}; }}
+        
+        QPushButton {{ background-color: {c_btn}; border: 1px solid {c_borda}; border-radius: 4px; padding: 8px 16px; color: {c_texto}; font-weight: bold; font-size: 14px; }}
+        QPushButton:hover {{ background-color: {c_btn_hover}; border: 1px solid {c_azul}; }}
+        QPushButton:pressed {{ background-color: {c_azul}; color: {c_texto_sel}; }}
+        
+        QTabWidget::pane {{ border: 1px solid {c_borda}; background-color: {c_fundo}; }}
+        QTabBar::tab {{ background-color: {c_fundo}; border: 1px solid {c_borda}; padding: 10px 20px; color: {c_texto_sec}; font-size: 13px; }}
+        QTabBar::tab:selected {{ background-color: {c_azul_fundo}; color: {c_azul}; font-weight: bold; border-bottom: 3px solid {c_azul}; }}
+        
+        QMenu {{ background-color: {c_fundo_alt}; border: 1px solid {c_borda}; }}
+        QMenu::item {{ padding: 8px 25px; color: {c_texto}; }}
+        QMenu::item:selected {{ background-color: {c_azul}; color: {c_texto_sel}; }}
+        """
+        app.setStyleSheet(estilo_css)
+
 
     def init_ui(self):
         self.setWindowTitle("SGF - Gestão de Contratos")
@@ -1003,10 +1114,11 @@ class SistemaGestao(QMainWindow):
         container.setFixedWidth(900);
         l_cont = QVBoxLayout(container)
 
-        lbl_logo = QLabel("Pesquisa de Contratos")
-        lbl_logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        lbl_logo.setFont(QFont("Arial", 24, QFont.Weight.Bold))
-        lbl_logo.setStyleSheet("color: #2c3e50; margin-bottom: 20px; margin-top: 50px")
+        self.lbl_logo = QLabel("Pesquisa de Contratos")
+        self.lbl_logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.lbl_logo.setFont(QFont("Arial", 24, QFont.Weight.Bold))
+        # Removemos a cor fixa daqui. Agora ela será controlada pelo tema.
+        self.lbl_logo.setStyleSheet("margin-bottom: 20px; margin-top: 50px")
 
         self.inp_search = QLineEdit()
         self.inp_search.setPlaceholderText("Digite para pesquisar...")
@@ -1022,7 +1134,7 @@ class SistemaGestao(QMainWindow):
         self.tabela_resultados.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.tabela_resultados.customContextMenuRequested.connect(self.menu_pesquisa)
 
-        l_cont.addWidget(lbl_logo);
+        l_cont.addWidget(self.lbl_logo);
         l_cont.addWidget(self.inp_search);
         l_cont.addWidget(self.tabela_resultados)
         layout_h = QHBoxLayout();
@@ -1166,7 +1278,7 @@ class SistemaGestao(QMainWindow):
         self.tab_subcontratos = TabelaExcel()
         self.tab_subcontratos.setColumnCount(8)
         self.tab_subcontratos.setHorizontalHeaderLabels([
-            "Descrição", "Valor Mensal", "Orçamento (neste ciclo)", "Empenhado", "Não Empenhado",
+            "Descrição", "Valor Mensal", "Orçamento\n(neste ciclo)", "Empenhado", "Não Empenhado",
             "Total Pago", "Saldo de Empenhos", "Saldo Serviço"
         ])
 
@@ -2230,6 +2342,16 @@ class SistemaGestao(QMainWindow):
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
+    
     win = SistemaGestao()
-    win.show()
+    
+    # 1. Força a criação do ID da janela (invisível) para podermos pintar antes de mostrar
+    win.winId()
+    
+    # 2. Aplica a cor escura AGORA (antes de aparecer na tela)
+    aplicar_estilo_janela(win)
+    
+    # 3. Abre Maximizada (Isso força o Windows a desenhar já com a cor certa)
+    win.showMaximized()
+    
     sys.exit(app.exec())
