@@ -1,0 +1,35 @@
+# --- Python e Bytecode (Arquivos gerados automaticamente) ---
+__pycache__/
+*.py[cod]
+*$py.class
+
+# --- Ambientes Virtuais (Não envie isso para o Git!) ---
+venv/
+.venv/
+env/
+.env
+
+# --- Dados do Sistema (IMPORTANTE) ---
+# Ignora o banco de dados real para não expor seus contratos
+dados_sistema.json
+
+# Ignora as configurações locais (tema escuro/claro salvo)
+config.json
+
+# --- Arquivos Temporários de Teste ---
+# Ignora os arquivos falsos criados pelos scripts de teste que fizemos
+dados_teste_unitario.json
+temp_test_db.json
+
+# --- Arquivos Exportados (Relatórios) ---
+# Ignora CSVs que você exporta, para não poluir o repositório
+*.csv
+
+# --- IDEs e Editores ---
+.vscode/
+.idea/
+*.swp
+
+# --- Sistema Operacional ---
+Thumbs.db
+Desktop.ini

@@ -13,7 +13,7 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QAbstractItemView, QDateEdit, QTabWidget, QMenu,
                              QCheckBox, QStackedWidget, QFrame, QFileDialog, QInputDialog)
 from PyQt6.QtCore import Qt, QDate, QEvent, QTimer
-from PyQt6.QtGui import QAction, QColor, QFont, QPalette
+from PyQt6.QtGui import QAction, QColor, QFont, QPalette, QIcon
 
 
 # --- FUNÇÃO GLOBAL PARA ESTILIZAR JANELAS (CORRIGE O BUG DOS DIÁLOGOS) ---
@@ -74,12 +74,12 @@ class BaseDialog(QDialog):
         aplicar_estilo_janela(self)
         super().showEvent(event)
 
-
 def fmt_br(valor):
-    """Formata float para BRL: 1234.50 vira 1.234,50"""
-    if valor is None: return "0,00"
+    """Formata float para BRL: 1234.50 vira R$ 1.234,50"""
+    if valor is None: return "R$ 0,00"
     texto = f"{valor:,.2f}"
-    return texto.replace(",", "X").replace(".", ",").replace("X", ".")
+    texto_formatado = texto.replace(",", "X").replace(".", ",").replace("X", ".")
+    return f"R$ {texto_formatado}"
 
 class TabelaExcel(QTableWidget):
     """Uma tabela que permite copiar dados (Ctrl+C) e BLOQUEIA edição direta"""
@@ -347,6 +347,7 @@ class Contrato:
         self.lista_aditivos = []
         self.lista_servicos = []
         self._contador_aditivos = 0
+        self.ultimo_ciclo_id = 0
 
     def get_vigencia_final_atual(self):
         aditivos_prazo = [a for a in self.lista_aditivos if a.tipo == "Prazo"]
@@ -450,20 +451,21 @@ class Contrato:
 
     @staticmethod
     def from_dict(d):
-        c = Contrato(d['numero'], d['prestador'], d['descricao'], d['valor_inicial'], d['vigencia_inicio'],
-                     d['vigencia_fim'], d['comp_inicio'], d['comp_fim'], d.get('licitacao', ''), d.get('dispensa', ''))
+        c = Contrato(d['numero'], d['prestador'], d['descricao'], d['valor_inicial'], d['vigencia_inicio'], d['vigencia_fim'], d['comp_inicio'], d['comp_fim'], d.get('licitacao', ''), d.get('dispensa', ''))
         c.ciclos = [CicloFinanceiro.from_dict(cd) for cd in d['ciclos']]
         c.lista_servicos = [SubContrato.from_dict(sd) for sd in d['lista_servicos']]
         c.lista_aditivos = [Aditivo.from_dict(ad) for ad in d['lista_aditivos']]
         c.lista_notas_empenho = [NotaEmpenho.from_dict(nd) for nd in d['lista_notas_empenho']]
         c._contador_aditivos = d.get('_contador_aditivos', 0)
-
+        
+        # --- NOVO: Carrega o último ciclo ---
+        c.ultimo_ciclo_id = d.get('ultimo_ciclo_id', 0)
+        
         for adt in c.lista_aditivos:
             if adt.tipo == "Valor" and adt.ciclo_pertencente_id != -1:
                 for ciclo in c.ciclos:
                     if ciclo.id_ciclo == adt.ciclo_pertencente_id:
-                        ciclo.aditivos_valor.append(adt)
-                        break
+                        ciclo.aditivos_valor.append(adt); break
         return c
 
 
@@ -910,9 +912,22 @@ class DialogoDetalheServico(BaseDialog):
         self.progresso.setValue(min(pct_final, 100))
         if pct_final > 100: self.progresso.setStyleSheet("QProgressBar::chunk { background-color: red; }")
 
-        btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
-        btns.rejected.connect(self.close)
-        layout.addWidget(btns)
+        # --- BOTÕES DE AÇÃO (MODIFICADO) ---
+        btns = QHBoxLayout()
+        
+        btn_copiar = QPushButton("Copiar Tabela Atual")
+        btn_copiar.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_copiar.clicked.connect(self.copiar_tabela_ativa)
+        btn_copiar.setStyleSheet("background-color: #27ae60; color: white; font-weight: bold; padding: 8px;")
+        
+        btn_fechar = QPushButton("Fechar")
+        btn_fechar.clicked.connect(self.close)
+        
+        btns.addWidget(btn_copiar)
+        btns.addStretch()
+        btns.addWidget(btn_fechar)
+        
+        layout.addLayout(btns)
         
 
     def item_centro(self, text):
@@ -924,6 +939,108 @@ class DialogoDetalheServico(BaseDialog):
     def converter_competencia(self, comp_str):
         try: return datetime.strptime(comp_str, "%m/%Y")
         except: return datetime.min
+    def copiar_tabela_ativa(self):
+        # Verifica qual aba está aberta (0 = Resumo Mensal, 1 = Detalhamento NE)
+        idx = self.abas.currentIndex()
+        
+        if idx == 0:
+            tabela = self.tabela_comp
+            nome = "Resumo Mensal"
+        else:
+            tabela = self.tabela_ne
+            nome = "Detalhamento por NE"
+            
+        # Executa a cópia
+        tabela.selectAll()
+        tabela.copiar_selecao()
+        tabela.clearSelection()
+        
+        QMessageBox.information(self, "Copiado", f"Tabela '{nome}' copiada para a área de transferência!\n(Cole no Excel com Ctrl+V)")
+
+
+#-- Diálogo de Histórico Maximizado ---
+class DialogoHistoricoMaximizado(BaseDialog):
+    def __init__(self, ne, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(f"Histórico Completo: NE {ne.numero}")
+        self.resize(800, 600) # Janela grande
+        
+        layout = QVBoxLayout(self)
+        
+        # Cabeçalho
+        lbl_titulo = QLabel(f"Histórico Financeiro da NE {ne.numero}")
+        lbl_titulo.setFont(QFont("Arial", 14, QFont.Weight.Bold))
+        lbl_titulo.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        
+        lbl_desc = QLabel(ne.descricao)
+        lbl_desc.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        lbl_desc.setStyleSheet("color: #aaa; margin-bottom: 10px;")
+        
+        layout.addWidget(lbl_titulo)
+        layout.addWidget(lbl_desc)
+        
+        # Tabela
+        self.tabela = TabelaExcel()
+        self.tabela.setColumnCount(4)
+        self.tabela.setHorizontalHeaderLabels(["Competência", "Tipo de Movimento", "Valor", "Saldo Restante"])
+        self.tabela.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        layout.addWidget(self.tabela)
+        
+        # Preenchimento dos Dados
+        self.preencher_dados(ne)
+        
+        # Botões de Ação
+        btns = QHBoxLayout()
+        btn_copiar = QPushButton("Copiar Tabela")
+        btn_copiar.clicked.connect(self.copiar_tudo)
+        btn_copiar.setStyleSheet("background-color: #27ae60; color: white; font-weight: bold; padding: 8px;") # Verde
+        
+        btn_fechar = QPushButton("Fechar")
+        btn_fechar.clicked.connect(self.close)
+        
+        btns.addWidget(btn_copiar)
+        btns.addStretch()
+        btns.addWidget(btn_fechar)
+        
+        layout.addLayout(btns)
+        
+    def preencher_dados(self, ne):
+        self.tabela.setRowCount(0)
+        saldo_corrente = ne.valor_inicial
+        fonte_negrito = QFont(); fonte_negrito.setBold(True)
+        
+        for row, m in enumerate(ne.historico):
+            self.tabela.insertRow(row)
+            
+            if m.tipo == "Pagamento":
+                saldo_corrente -= m.valor
+            
+            # Formatação
+            item_comp = QTableWidgetItem(m.competencia)
+            item_tipo = QTableWidgetItem(m.tipo)
+            item_valor = QTableWidgetItem(fmt_br(m.valor))
+            item_saldo = QTableWidgetItem(fmt_br(saldo_corrente))
+            item_saldo.setForeground(QColor("#27ae60")) # Verde
+            
+            # Alinhamento Centro
+            for i in [item_comp, item_tipo, item_valor, item_saldo]:
+                i.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            
+            # Destaque para Emissão Original
+            if m.tipo == "Emissão Original":
+                for i in [item_comp, item_tipo, item_valor, item_saldo]:
+                    i.setFont(fonte_negrito)
+            
+            self.tabela.setItem(row, 0, item_comp)
+            self.tabela.setItem(row, 1, item_tipo)
+            self.tabela.setItem(row, 2, item_valor)
+            self.tabela.setItem(row, 3, item_saldo)
+
+    def copiar_tudo(self):
+        self.tabela.selectAll()
+        self.tabela.copiar_selecao()
+        self.tabela.clearSelection()
+        QMessageBox.information(self, "Copiado", "Tabela copiada para a área de transferência!\nBasta colar no Excel (Ctrl+V).")
 
 
 # --- 3. SISTEMA PRINCIPAL ---
@@ -936,14 +1053,31 @@ class SistemaGestao(QMainWindow):
         self.ne_selecionada = None
         self.arquivo_db = "dados_sistema.json"
 
-        # Começa como False (Claro), mas vamos forçar a aplicação das cores
-        self.tema_escuro = True  # Truque: Setamos como True...
-        self.alternar_tema()  # ...e chamamos a função, que inverte para False e aplica o Tema Claro Forçado
+        # 1. Carrega a configuração salva (Tema)
+        self.carregar_config()
 
+        # 2. Inicializa UI
         self.init_ui()
         self.carregar_dados()
-
         
+        # 3. Aplica o tema carregado (sem inverter)
+        self.aplicar_tema_visual()
+        aplicar_estilo_janela(self)
+
+    def carregar_config(self):
+        try:
+            with open("config.json", "r") as f:
+                cfg = json.load(f)
+                self.tema_escuro = cfg.get("tema_escuro", False)
+        except:
+            self.tema_escuro = False # Padrão se não existir arquivo
+
+    def salvar_config(self):
+        try:
+            with open("config.json", "w") as f:
+                json.dump({"tema_escuro": self.tema_escuro}, f)
+        except: pass
+
     def showEvent(self, event):
         # Garante que a barra fique escura assim que o programa abre
         aplicar_estilo_janela(self)
@@ -980,29 +1114,61 @@ class SistemaGestao(QMainWindow):
             QMessageBox.critical(self, "Erro ao Carregar", f"Não foi possível ler os dados salvos:\n{str(e)}")
 
     def alternar_tema(self):
-        self.tema_escuro = not self.tema_escuro # Inverte o estado atual
-        aplicar_estilo_janela(self) # Chama a função global
+        # 1. Inverte o estado (AQUI é o lugar certo de inverter)
+        self.tema_escuro = not self.tema_escuro
         
+        # 2. Aplica visualmente
+        self.aplicar_tema_visual()
+        aplicar_estilo_janela(self)
+        
+        # 3. Salva no arquivo
+        self.salvar_config()
+
+    def aplicar_tema_visual(self):
+        # <--- REMOVIDA A LINHA DE INVERSÃO DAQUI
+        # Apenas lê o estado atual e aplica as cores
+        
+        # (O código abaixo continua igual, apenas corrigindo a indentação se necessário)
+        self.tema_escuro = self.tema_escuro # Linha inútil, mas inofensiva. Pode apagar se quiser.
+        aplicar_estilo_janela(self)
+
         app = QApplication.instance()
-        
+
         if self.tema_escuro:
-            # DARK
+            # DARK THEME (Mantido igual)
             c_fundo = "#2b2b2b"; c_fundo_alt = "#1e1e1e"; c_texto = "#ffffff"; c_texto_sec = "#cccccc"
             c_borda = "#555555"; c_borda_foco = "#4da6ff"; c_azul = "#4da6ff"; c_azul_fundo = "#3e3e3e"
             c_btn = "#3c3c3c"; c_btn_hover = "#505050"; c_header = "#444444"; c_selecao = "#4da6ff"; c_texto_sel = "#000000"
+            c_resumo_bg = "#383838"
             
-            # --- COR ESPECIAL PARA O QUADRO DE RESUMO NO MODO ESCURO ---
-            c_resumo_bg = "#383838" # Um cinza um pouco mais claro que o fundo, mas escuro o suficiente para texto branco
-        else:
-            # LIGHT
-            c_fundo = "#f0f0f0"; c_fundo_alt = "#ffffff"; c_texto = "#2b2b2b"; c_texto_sec = "#555555"
-            c_borda = "#cccccc"; c_borda_foco = "#0078d7"; c_azul = "#0078d7"; c_azul_fundo = "#e1e1e1"
-            c_btn = "#e1e1e1"; c_btn_hover = "#d4d4d4"; c_header = "#e6e6e6"; c_selecao = "#0078d7"; c_texto_sel = "#ffffff"
-            
-            # --- COR ESPECIAL PARA O QUADRO DE RESUMO NO MODO CLARO ---
-            c_resumo_bg = "#ffffff" # Branco ou cinza bem clarinho
+            s_borda_foco = "2px solid"
+            s_borda_aba_sel = "3px solid"
 
-        # Força labels antigos
+        else:
+            # TEMA ESCALA DE CINZA (Uniforme e Plano)
+            c_fundo = "#e0e0e0"      
+            c_fundo_alt = "#ffffff"  
+            c_texto = "#1a1a1a"      
+            c_texto_sec = "#555555"  
+            
+            c_borda = "#b0b0b0"      # A cor padrão de todas as bordas
+            c_borda_foco = "#505050" # Foco um pouco mais escuro, mas não preto
+            
+            s_borda_foco = "1px solid" 
+            s_borda_aba_sel = "1px solid" # Aba agora tem borda fina igual ao resto
+
+            c_azul = "#333333"       
+            c_azul_fundo = "#d0d0d0" 
+            
+            c_btn = "#e6e6e6"        
+            c_btn_hover = "#d4d4d4"
+            c_header = "#d9d9d9"     
+            
+            c_selecao = "#606060"    
+            c_texto_sel = "#ffffff"
+            c_resumo_bg = "#f8f8f8"  
+
+        # (Mantém a atualização dos labels antigos...)
         estilo_labels = f"color: {c_texto}; margin-bottom: 5px;"
         estilo_titulo = f"color: {c_texto_sec};"
         estilo_logo   = f"color: {c_texto}; margin-bottom: 20px; margin-top: 50px;"
@@ -1030,30 +1196,22 @@ class SistemaGestao(QMainWindow):
         QWidget {{ color: {c_texto}; font-size: 14px; }}
         QLabel {{ color: {c_texto}; }}
         
-        /* ESTILO DO QUADRO DE RESUMO DO SERVIÇO */
         #frm_resumo {{
             background-color: {c_resumo_bg};
             border: 1px solid {c_borda};
             border-radius: 6px;
         }}
-        #lbl_titulo_servico {{
-            color: {c_azul};
-            font-size: 18px;
-            font-weight: bold;
-            margin-bottom: 5px;
-        }}
-        #lbl_subtitulo {{
-            color: {c_texto_sec};
-            font-weight: bold;
-        }}
+        #lbl_titulo_servico {{ color: {c_azul}; font-size: 18px; font-weight: bold; margin-bottom: 5px; }}
+        #lbl_subtitulo {{ color: {c_texto_sec}; font-weight: bold; }}
 
         QGroupBox {{ border: 1px solid {c_borda}; border-radius: 6px; margin-top: 25px; font-weight: bold; }}
         QGroupBox::title {{ subcontrol-origin: margin; left: 10px; padding: 0 5px; color: {c_azul}; font-size: 16px; font-weight: bold; }}
 
         QLineEdit, QDateEdit, QComboBox, QSpinBox {{ background-color: {c_fundo_alt}; border: 1px solid {c_borda}; border-radius: 4px; padding: 6px; color: {c_texto}; font-size: 14px; }}
-        QLineEdit:focus, QDateEdit:focus, QComboBox:focus {{ border: 2px solid {c_borda_foco}; }}
+        QLineEdit:focus, QDateEdit:focus, QComboBox:focus {{ border: {s_borda_foco} {c_borda_foco}; }}
         QLineEdit:disabled, QDateEdit:disabled {{ background-color: {c_fundo}; color: {c_texto_sec}; border: 1px solid {c_borda}; }}
         
+        /* CORREÇÃO AQUI: Removemos o 'border-bottom' específico. Agora todas as bordas são iguais. */
         QTableWidget {{ background-color: {c_fundo_alt}; gridline-color: {c_borda}; border: 1px solid {c_borda}; color: {c_texto}; font-size: 14px; }}
         QHeaderView::section {{ background-color: {c_header}; color: {c_texto}; padding: 6px; border: 1px solid {c_borda}; font-weight: bold; font-size: 14px; }}
         QTableCornerButton::section {{ background-color: {c_header}; border: 1px solid {c_borda}; }}
@@ -1063,18 +1221,38 @@ class SistemaGestao(QMainWindow):
         QPushButton:pressed {{ background-color: {c_azul}; color: {c_texto_sel}; }}
         
         QTabWidget::pane {{ border: 1px solid {c_borda}; background-color: {c_fundo}; }}
-        QTabBar::tab {{ background-color: {c_fundo}; border: 1px solid {c_borda}; padding: 10px 20px; color: {c_texto_sec}; font-size: 13px; }}
-        QTabBar::tab:selected {{ background-color: {c_azul_fundo}; color: {c_azul}; font-weight: bold; border-bottom: 3px solid {c_azul}; }}
+        QTabBar::tab {{ background-color: {c_fundo}; border: 1px solid {c_borda}; border-bottom: none; padding: 10px 20px; color: {c_texto_sec}; font-size: 13px; }}
+        
+        /* CORREÇÃO DA ABA: Usa a mesma borda padrão, sem engrossar */
+        QTabBar::tab:selected {{ background-color: {c_azul_fundo}; color: {c_azul}; font-weight: bold; border: 1px solid {c_borda}; border-bottom: 1px solid {c_azul_fundo}; }}
         
         QMenu {{ background-color: {c_fundo_alt}; border: 1px solid {c_borda}; }}
         QMenu::item {{ padding: 8px 25px; color: {c_texto}; }}
-        QMenu::item:selected {{ background-color: {c_azul}; color: {c_texto_sel}; }}
+        QMenu::item:selected {{ background-color: {c_selecao}; color: {c_texto_sel}; }}
         """
         app.setStyleSheet(estilo_css)
 
+    def salvar_ciclo_atual(self):
+        if self.contrato_selecionado:
+            id_atual = self.combo_ciclo_visualizacao.currentData()
+            if id_atual is not None:
+                self.contrato_selecionado.ultimo_ciclo_id = id_atual
+                # Não chamamos salvar_dados() aqui para não ficar lento gravando disco a cada clique
+                # O salvar_dados() será chamado ao fechar ou ao sair da tela.
 
     def init_ui(self):
-        self.setWindowTitle("SGF - Gestão de Contratos")
+        # --- CONFIGURAÇÃO DO ÍCONE ---
+        # Pega o caminho da pasta onde o script está
+        caminho_script = os.path.dirname(os.path.abspath(__file__))
+        caminho_icone = os.path.join(caminho_script, "icon_gc.png")
+        
+        # Define o ícone da janela se o arquivo existir
+        if os.path.exists(caminho_icone):
+            self.setWindowIcon(QIcon(caminho_icone))
+        # -----------------------------
+
+
+        self.setWindowTitle("GC - Gestor de Contratos")
         self.setGeometry(50, 50, 1300, 850)
         mb = self.menuBar()
 
@@ -1114,7 +1292,7 @@ class SistemaGestao(QMainWindow):
         container.setFixedWidth(900);
         l_cont = QVBoxLayout(container)
 
-        self.lbl_logo = QLabel("Pesquisa de Contratos")
+        self.lbl_logo = QLabel("Pesquisa de Contratos / Notas de Empenho")
         self.lbl_logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.lbl_logo.setFont(QFont("Arial", 24, QFont.Weight.Bold))
         # Removemos a cor fixa daqui. Agora ela será controlada pelo tema.
@@ -1147,7 +1325,8 @@ class SistemaGestao(QMainWindow):
         self.layout_detalhes = QVBoxLayout(self.page_detalhes)
 
         top_bar = QHBoxLayout()
-        btn_voltar = QPushButton("← Voltar")
+        btn_voltar = QPushButton("←")
+        btn_voltar.setStyleSheet("font-size: 20px; padding: 7px; font-weight: bold; height: 15px; width: 20px;")
         btn_voltar.clicked.connect(self.voltar_para_pesquisa)
 
         header_text_layout = QVBoxLayout()
@@ -1177,6 +1356,7 @@ class SistemaGestao(QMainWindow):
         self.combo_ciclo_visualizacao = QComboBox()
         self.combo_ciclo_visualizacao.setFixedWidth(300)
         self.combo_ciclo_visualizacao.currentIndexChanged.connect(self.atualizar_painel_detalhes)
+        self.combo_ciclo_visualizacao.currentIndexChanged.connect(self.salvar_ciclo_atual)
 
         layout_filtro.addWidget(lbl_filtro)
         layout_filtro.addWidget(self.combo_ciclo_visualizacao)
@@ -1255,8 +1435,26 @@ class SistemaGestao(QMainWindow):
         self.tab_empenhos.customContextMenuRequested.connect(self.menu_empenho)
         l_fin.addWidget(self.tab_empenhos)
 
-        l_fin.addWidget(QLabel("Histórico Financeiro:"))
+        # --- CABEÇALHO DO HISTÓRICO COM BOTÃO MAXIMIZAR ---
+        layout_hist_header = QHBoxLayout()
+        lbl_hist = QLabel("Histórico Financeiro:")
+        lbl_hist.setFont(QFont("Arial", 11, QFont.Weight.Bold))
+        
+        btn_max_hist = QPushButton("Maximizar Histórico")
+        btn_max_hist.setFixedWidth(120)
+        btn_max_hist.setStyleSheet("font-size: 11px; padding: 5px;")
+        btn_max_hist.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_max_hist.clicked.connect(self.abrir_historico_maximizado) # Conecta ao novo método
+        
+        layout_hist_header.addWidget(lbl_hist)
+        layout_hist_header.addStretch()
+        layout_hist_header.addWidget(btn_max_hist)
+        
+        l_fin.addLayout(layout_hist_header)
+        # --------------------------------------------------
+
         self.tab_mov = TabelaExcel()
+        
         self.tab_mov.setColumnCount(4)
         self.tab_mov.setHorizontalHeaderLabels(["Competência", "Tipo", "Valor", "Saldo"])
         self.tab_mov.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
@@ -1324,7 +1522,7 @@ class SistemaGestao(QMainWindow):
         self.stack.setCurrentIndex(0)
 
     def filtrar_contratos(self):
-        texto = self.inp_search.text().lower();
+        texto = self.inp_search.text().lower()
         self.tabela_resultados.setRowCount(0)
         
         def item_centro(txt):
@@ -1332,36 +1530,113 @@ class SistemaGestao(QMainWindow):
             i.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             return i
 
+        # 1. Pesquisa Contratos (Como já fazia)
         for c in self.db_contratos:
-            if (texto in c.numero.lower() or texto in c.prestador.lower() or texto in c.descricao.lower() or texto == ""):
-                row = self.tabela_resultados.rowCount();
+            # Verifica se o contrato bate com a pesquisa
+            match_contrato = (texto in c.numero.lower() or 
+                              texto in c.prestador.lower() or 
+                              texto in c.descricao.lower())
+            
+            # Se a busca estiver vazia, mostra todos os contratos (mas não as NEs, para não poluir)
+            if match_contrato or texto == "":
+                row = self.tabela_resultados.rowCount()
                 self.tabela_resultados.insertRow(row)
-                self.tabela_resultados.setItem(row, 0, item_centro(c.numero));
-                self.tabela_resultados.setItem(row, 1, item_centro(c.prestador));
+                self.tabela_resultados.setItem(row, 0, item_centro(c.numero))
+                self.tabela_resultados.setItem(row, 1, item_centro(c.prestador))
                 self.tabela_resultados.setItem(row, 2, item_centro(c.descricao))
-                hoje = datetime.now();
-                fim = str_to_date(c.get_vigencia_final_atual());
-                st = "Vigente" if fim >= hoje else "Vencido";
-                i_st = QTableWidgetItem(st); i_st.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                i_st.setForeground(QColor("green" if st == "Vigente" else "red"));
+                
+                hoje = datetime.now()
+                fim = str_to_date(c.get_vigencia_final_atual())
+                st = "Vigente" if fim >= hoje else "Vencido"
+                i_st = QTableWidgetItem(st)
+                i_st.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                i_st.setForeground(QColor("green" if st == "Vigente" else "red"))
                 self.tabela_resultados.setItem(row, 3, i_st)
-                self.tabela_resultados.item(row, 0).setData(Qt.ItemDataRole.UserRole, c)
+                
+                # GUARDAMOS UM DICIONÁRIO AGORA: Tipo + Objeto
+                dados_linha = {"tipo": "CONTRATO", "obj": c}
+                self.tabela_resultados.item(row, 0).setData(Qt.ItemDataRole.UserRole, dados_linha)
+
+            # 2. Pesquisa Notas de Empenho (Só se tiver texto digitado)
+            if texto != "":
+                for ne in c.lista_notas_empenho:
+                    if texto in ne.numero.lower() or texto in ne.descricao.lower():
+                        row = self.tabela_resultados.rowCount()
+                        self.tabela_resultados.insertRow(row)
+                        
+                        # Mostra visualmente que é uma NE
+                        txt_num = f"NE {ne.numero} (Ctr {c.numero})"
+                        
+                        self.tabela_resultados.setItem(row, 0, item_centro(txt_num))
+                        self.tabela_resultados.setItem(row, 1, item_centro(c.prestador))
+                        self.tabela_resultados.setItem(row, 2, item_centro(ne.descricao)) # Descrição da NE
+                        self.tabela_resultados.setItem(row, 3, item_centro("Empenho"))
+                        
+                        # Guarda os dados para abrir direto na NE
+                        dados_linha = {"tipo": "NE", "obj": ne, "contrato": c}
+                        self.tabela_resultados.item(row, 0).setData(Qt.ItemDataRole.UserRole, dados_linha)
+
 
     def abrir_contrato_pesquisa(self, row, col):
-        self.contrato_selecionado = self.tabela_resultados.item(row, 0).data(Qt.ItemDataRole.UserRole);
-        self.ne_selecionada = None;
-        self.atualizar_painel_detalhes();
-        self.stack.setCurrentIndex(1)
+        data = self.tabela_resultados.item(row, 0).data(Qt.ItemDataRole.UserRole)
+        
+        if not data: return
+        
+        if data["tipo"] == "CONTRATO":
+            # Comportamento Padrão
+            self.contrato_selecionado = data["obj"]
+            self.ne_selecionada = None
+            self.atualizar_painel_detalhes()
+            self.stack.setCurrentIndex(1)
+            self.abas.setCurrentIndex(0) # Aba Dados
+            
+        elif data["tipo"] == "NE":
+            # Comportamento Inteligente (Vai direto para a NE)
+            ne_alvo = data["obj"]
+            contrato = data["contrato"]
+            
+            self.contrato_selecionado = contrato
+            self.ne_selecionada = ne_alvo # Já deixa selecionada na memória
+            
+            # 1. Carrega a tela do contrato
+            self.atualizar_painel_detalhes()
+            self.stack.setCurrentIndex(1)
+            
+            # 2. Muda para a aba Financeiro (Índice 1)
+            self.abas.setCurrentIndex(1)
+            
+            # 3. Seleciona visualmente a linha na tabela de empenhos
+            # Precisamos achar em qual linha da tabela essa NE ficou
+            for r in range(self.tab_empenhos.rowCount()):
+                item = self.tab_empenhos.item(r, 0)
+                ne_na_tabela = item.data(Qt.ItemDataRole.UserRole)
+                
+                if ne_na_tabela and ne_na_tabela.numero == ne_alvo.numero:
+                    self.tab_empenhos.selectRow(r)
+                    # Simula o clique para carregar o histórico financeiro lá embaixo
+                    self.selecionar_ne(item)
+                    break
+
 
     def menu_pesquisa(self, pos):
         item = self.tabela_resultados.itemAt(pos)
         if item:
-            c = self.tabela_resultados.item(item.row(), 0).data(Qt.ItemDataRole.UserRole)
+            data = self.tabela_resultados.item(item.row(), 0).data(Qt.ItemDataRole.UserRole)
+            
             menu = QMenu(self)
-            menu.addAction("Abrir", lambda: self.abrir_contrato_pesquisa(item.row(), 0))
-            menu.addAction("Editar", lambda: self.editar_contrato_externo(c))
-            menu.addAction("Excluir", lambda: self.excluir_contrato_externo(c))
+            
+            # Ação de abrir funciona para ambos
+            menu.addAction("Abrir Detalhes", lambda: self.abrir_contrato_pesquisa(item.row(), 0))
+            
+            # Edição/Exclusão só permitimos se for CONTRATO (para evitar confusão)
+            if data["tipo"] == "CONTRATO":
+                c = data["obj"]
+                menu.addSeparator()
+                menu.addAction("Editar Contrato", lambda: self.editar_contrato_externo(c))
+                menu.addAction("Excluir Contrato", lambda: self.excluir_contrato_externo(c))
+            
             menu.exec(self.tabela_resultados.mapToGlobal(pos))
+
 
     def abrir_novo_contrato(self):
         dial = DialogoCriarContrato(parent=self)
@@ -1423,6 +1698,15 @@ class SistemaGestao(QMainWindow):
             self.atualizar_painel_detalhes();
             self.atualizar_movimentos();
             self.salvar_dados()
+
+    def abrir_historico_maximizado(self):
+        if not self.ne_selecionada:
+            QMessageBox.warning(self, "Aviso", "Selecione uma Nota de Empenho na tabela acima primeiro.")
+            return
+            
+        dial = DialogoHistoricoMaximizado(self.ne_selecionada, parent=self)
+        dial.exec()
+
 
     def abrir_novo_servico(self):
         if not self.contrato_selecionado: return
@@ -2090,15 +2374,13 @@ class SistemaGestao(QMainWindow):
         if self.ne_selecionada.excluir_movimentacao(
             row): self.atualizar_painel_detalhes(); self.atualizar_movimentos(); self.salvar_dados()
 
+
     def atualizar_movimentos(self):
         if not self.ne_selecionada: return
         self.tab_mov.setRowCount(0)
 
         saldo_corrente = self.ne_selecionada.valor_inicial
-
-        # 1. Criamos a fonte em Negrito
-        fonte_negrito = QFont()
-        fonte_negrito.setBold(True)
+        fonte_negrito = QFont(); fonte_negrito.setBold(True)
 
         for row, m in enumerate(self.ne_selecionada.historico):
             self.tab_mov.insertRow(row)
@@ -2106,31 +2388,32 @@ class SistemaGestao(QMainWindow):
             if m.tipo == "Pagamento":
                 saldo_corrente -= m.valor
 
-            # Cria os itens da tabela
+            # Cria os itens da tabela (já com o R$ automático do fmt_br)
             item_comp = QTableWidgetItem(m.competencia)
             item_tipo = QTableWidgetItem(m.tipo)
             item_valor = QTableWidgetItem(fmt_br(m.valor))
             item_saldo = QTableWidgetItem(fmt_br(saldo_corrente))
 
-            # Mantém a cor verde do saldo (que já existia)
-            item_saldo.setForeground(QColor("#27ae60"))
+            # --- CORREÇÃO: CENTRALIZAR TUDO ---
+            item_comp.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            item_tipo.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            item_valor.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            item_saldo.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            # ----------------------------------
 
-            # --- AQUI ESTÁ A MUDANÇA ---
-            # Se for a Emissão Original, aplica a fonte negrito em toda a linha
+            item_saldo.setForeground(QColor("#27ae60")) # Verde para saldo
+
             if m.tipo == "Emissão Original":
                 item_comp.setFont(fonte_negrito)
                 item_tipo.setFont(fonte_negrito)
                 item_valor.setFont(fonte_negrito)
                 item_saldo.setFont(fonte_negrito)
-            # ---------------------------
 
-            # Adiciona os itens na tabela
             self.tab_mov.setItem(row, 0, item_comp)
             self.tab_mov.setItem(row, 1, item_tipo)
             self.tab_mov.setItem(row, 2, item_valor)
             self.tab_mov.setItem(row, 3, item_saldo)
 
-        # Substitua este método para limpar a aba Dados e o Seletor
 
     def atualizar_painel_detalhes(self):
         if not self.contrato_selecionado: return
@@ -2223,7 +2506,10 @@ class SistemaGestao(QMainWindow):
             self.tab_ciclos_resumo.setItem(row, 3, item_vne)
 
         # --- ATUALIZAÇÃO DO SELETOR (COMBOBOX) ---
+        # Tenta pegar o que está na combo. Se for None (abriu agora), pega do contrato salvo.
         id_selecionado = self.combo_ciclo_visualizacao.currentData()
+        if id_selecionado is None and c.ultimo_ciclo_id is not None:
+            id_selecionado = c.ultimo_ciclo_id
         self.combo_ciclo_visualizacao.blockSignals(True)
         self.combo_ciclo_visualizacao.clear()
 
@@ -2342,7 +2628,15 @@ class SistemaGestao(QMainWindow):
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
-    
+
+    # --- ÍCONE DA APLICAÇÃO ---
+    # Define o ícone globalmente para a barra de tarefas
+    caminho_script = os.path.dirname(os.path.abspath(__file__))
+    caminho_icone = os.path.join(caminho_script, "icon_gc.png")
+    if os.path.exists(caminho_icone):
+        app.setWindowIcon(QIcon(caminho_icone))
+    # --------------------------------
+
     win = SistemaGestao()
     
     # 1. Força a criação do ID da janela (invisível) para podermos pintar antes de mostrar

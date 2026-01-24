@@ -58,6 +58,66 @@
                         "tipo": "Pagamento",
                         "valor": 3000.0,
                         "competencia": "02/2026"
+                    },
+                    {
+                        "tipo": "Pagamento",
+                        "valor": 0.0,
+                        "competencia": "01/2026"
+                    },
+                    {
+                        "tipo": "Pagamento",
+                        "valor": 0.0,
+                        "competencia": "01/2026"
+                    },
+                    {
+                        "tipo": "Pagamento",
+                        "valor": 0.0,
+                        "competencia": "01/2026"
+                    },
+                    {
+                        "tipo": "Pagamento",
+                        "valor": 0.0,
+                        "competencia": "01/2026"
+                    },
+                    {
+                        "tipo": "Pagamento",
+                        "valor": 0.0,
+                        "competencia": "01/2026"
+                    },
+                    {
+                        "tipo": "Pagamento",
+                        "valor": 0.0,
+                        "competencia": "01/2026"
+                    },
+                    {
+                        "tipo": "Pagamento",
+                        "valor": 0.0,
+                        "competencia": "01/2026"
+                    },
+                    {
+                        "tipo": "Pagamento",
+                        "valor": 0.0,
+                        "competencia": "01/2026"
+                    },
+                    {
+                        "tipo": "Pagamento",
+                        "valor": 0.0,
+                        "competencia": "01/2026"
+                    },
+                    {
+                        "tipo": "Pagamento",
+                        "valor": 0.0,
+                        "competencia": "01/2026"
+                    },
+                    {
+                        "tipo": "Pagamento",
+                        "valor": 0.0,
+                        "competencia": "01/2026"
+                    },
+                    {
+                        "tipo": "Pagamento",
+                        "valor": 0.0,
+                        "competencia": "01/2026"
                     }
                 ]
             },
@@ -118,6 +178,7 @@
                 }
             }
         ],
-        "_contador_aditivos": 6
+        "_contador_aditivos": 6,
+        "ultimo_ciclo_id": 3
     }
 ]
