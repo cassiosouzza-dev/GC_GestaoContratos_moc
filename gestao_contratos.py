@@ -76,6 +76,49 @@ class BaseDialog(QDialog):
         aplicar_estilo_janela(self)
         super().showEvent(event)
 
+class DarkMessageBox(QMessageBox):
+    """Substitui o QMessageBox para garantir o tema escuro na barra de título"""
+    def showEvent(self, event):
+        aplicar_estilo_janela(self)
+        super().showEvent(event)
+
+    @staticmethod
+    def info(parent, titulo, texto, buttons=QMessageBox.StandardButton.Ok):
+        box = DarkMessageBox(parent)
+        box.setWindowTitle(titulo)
+        box.setText(texto)
+        box.setIcon(QMessageBox.Icon.Information)
+        box.setStandardButtons(buttons)
+        return box.exec()
+
+    @staticmethod
+    def warning(parent, titulo, texto, buttons=QMessageBox.StandardButton.Ok):
+        box = DarkMessageBox(parent)
+        box.setWindowTitle(titulo)
+        box.setText(texto)
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setStandardButtons(buttons)
+        return box.exec()
+
+    @staticmethod
+    def critical(parent, titulo, texto, buttons=QMessageBox.StandardButton.Ok):
+        box = DarkMessageBox(parent)
+        box.setWindowTitle(titulo)
+        box.setText(texto)
+        box.setIcon(QMessageBox.Icon.Critical)
+        box.setStandardButtons(buttons)
+        return box.exec()
+        
+    @staticmethod
+    def question(parent, titulo, texto, buttons=QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No):
+        box = DarkMessageBox(parent)
+        box.setWindowTitle(titulo)
+        box.setText(texto)
+        box.setIcon(QMessageBox.Icon.Question)
+        box.setStandardButtons(buttons)
+        return box.exec()
+
+
 def fmt_br(valor):
     """Formata float para BRL: 1234.50 vira R$ 1.234,50"""
     if valor is None: return "R$ 0,00"
@@ -209,48 +252,101 @@ class NotaEmpenho:
         self.data_emissao = data_emissao
         self.ciclo_id = ciclo_id
         self.aditivo_vinculado_id = aditivo_vinculado_id
-        self.valor_pago = 0.0
+        
+        # Não vamos mais confiar na variável 'valor_pago' persistida, 
+        # vamos calcular sempre baseados no histórico para evitar erros.
+        self.valor_pago_cache = 0.0 
+        
         self.historico = []
         self.historico.append(Movimentacao("Emissão Original", valor, "-"))
 
+    @property
+    def total_pago(self):
+        """Soma apenas os Pagamentos reais"""
+        return sum(m.valor for m in self.historico if m.tipo == "Pagamento")
+
+    @property
+    def total_anulado(self):
+        """Soma apenas as Anulações (sempre positivo aqui para cálculo)"""
+        # Nota: no histórico salvamos negativo, então usamos abs()
+        return sum(abs(m.valor) for m in self.historico if m.tipo == "Anulação")
+
+    @property
+    def saldo_disponivel(self):
+        """Saldo = Valor Inicial - Anulações - Pagamentos"""
+        return self.valor_inicial - self.total_anulado - self.total_pago
+    
+    # Mantemos essa propriedade para compatibilidade com códigos antigos que chamam .valor_pago
+    @property
+    def valor_pago(self):
+        return self.total_pago
+    @valor_pago.setter
+    def valor_pago(self, val):
+        self.valor_pago_cache = val # Dummy setter
+
     def realizar_pagamento(self, valor, competencia, obs=""):
-        saldo = self.valor_inicial - self.valor_pago
-        if valor > saldo + 0.01: return False, f"Saldo insuficiente! Resta: {saldo:.2f}"
-        self.valor_pago += valor
-        # Agora salva a observação também
+        if valor > self.saldo_disponivel + 0.01: 
+            return False, f"Saldo insuficiente! Resta: {fmt_br(self.saldo_disponivel)}"
+        
         self.historico.append(Movimentacao("Pagamento", valor, competencia, obs))
         return True, "Pagamento realizado."
+
+    def realizar_anulacao(self, valor, justificativa=""):
+        # Agora a anulação consome o SALDO, não o PAGO.
+        if valor > self.saldo_disponivel + 0.01:
+             return False, f"Impossível anular R$ {fmt_br(valor)}. Saldo disponível na nota é apenas R$ {fmt_br(self.saldo_disponivel)}."
+
+        # Salvamos negativo para indicar redução no histórico visual
+        self.historico.append(Movimentacao("Anulação", -valor, "-", justificativa))
+        return True, "Anulação registrada (Saldo reduzido)."
 
     def excluir_movimentacao(self, index):
         if index < 0 or index >= len(self.historico): return False
         mov = self.historico[index]
         if mov.tipo == "Emissão Original": return False
-        if mov.tipo == "Pagamento": self.valor_pago -= mov.valor
+        
+        # Apenas removemos do histórico, as properties recalculam tudo sozinhas
         self.historico.pop(index)
         return True
 
     def editar_movimentacao(self, index, novo_valor, nova_comp, nova_obs=""):
         mov = self.historico[index]
+        old_valor = mov.valor
+        
+        # Simula a remoção para testar saldo
+        mov.valor = 0 
+        
         if mov.tipo == "Pagamento":
-            self.valor_pago -= mov.valor
-            saldo = self.valor_inicial - self.valor_pago
-            if novo_valor > saldo + 0.01:
-                self.valor_pago += mov.valor
-                return False, "Novo valor excede o saldo."
-            self.valor_pago += novo_valor
-            mov.valor = novo_valor;
-            mov.competencia = nova_comp
-            mov.observacao = nova_obs # Atualiza obs
-            return True, "Sucesso"
-        return False, "Erro"
+            if novo_valor > self.saldo_disponivel + 0.01:
+                mov.valor = old_valor # Restaura
+                return False, "Novo valor excede o saldo disponível."
+            mov.valor = novo_valor
+            
+        elif mov.tipo == "Anulação":
+            novo_valor_neg = -abs(novo_valor)
+            # Verifica se dá para anular esse valor
+            # O saldo aumentou temporariamente porque zeramos o mov.valor acima
+            if abs(novo_valor) > self.saldo_disponivel + 0.01:
+                mov.valor = old_valor
+                return False, "Novo valor de anulação excede o saldo disponível."
+            mov.valor = novo_valor_neg
+
+        mov.competencia = nova_comp
+        mov.observacao = nova_obs
+        return True, "Sucesso"
 
     def calcular_media_mensal(self):
-        if self.valor_pago == 0: return 0.0
-        meses = set(m.competencia for m in self.historico if m.tipo == "Pagamento" and m.competencia)
-        return self.valor_pago / len(meses) if len(meses) > 0 else 0.0
+        pagamentos = [m for m in self.historico if m.tipo == "Pagamento"]
+        if not pagamentos: return 0.0
+        soma_bruta = sum(m.valor for m in pagamentos)
+        meses = set(m.competencia for m in pagamentos if m.competencia and m.competencia != "-")
+        return soma_bruta / len(meses) if len(meses) > 0 else 0.0
 
     def to_dict(self):
         d = self.__dict__.copy()
+        # Removemos cache do dict salvo
+        if 'valor_pago_cache' in d: del d['valor_pago_cache']
+        d['valor_pago'] = self.total_pago # Salva para compatibilidade
         d['historico'] = [h.to_dict() for h in self.historico]
         return d
 
@@ -258,10 +354,8 @@ class NotaEmpenho:
     def from_dict(d):
         ne = NotaEmpenho(d['numero'], d['valor_inicial'], d['descricao'], d['subcontrato_idx'],
                          d['fonte_recurso'], d['data_emissao'], d.get('ciclo_id', 0), d.get('aditivo_vinculado_id'))
-        ne.valor_pago = d['valor_pago']
         ne.historico = [Movimentacao.from_dict(h) for h in d['historico']]
         return ne
-
 
 class Aditivo:
     def __init__(self, id_aditivo, tipo, valor=0.0, data_nova=None, descricao="", renovacao_valor=False,
@@ -766,13 +860,13 @@ class DialogoAditivo(BaseDialog):
         return tipo, self.inp_valor.get_value(), self.date_nova.text(), self.inp_desc.text(), self.chk_renovacao.isChecked(), self.date_inicio.text(), self.combo_servico.currentData()
 
 class DialogoPagamento(BaseDialog):
-    def __init__(self, comp_inicio, comp_fim, pg_editar=None, parent=None):
+    # Adicionado parametro 'titulo' e 'label_valor'
+    def __init__(self, comp_inicio, comp_fim, pg_editar=None, titulo="Realizar Pagamento", label_valor="Valor:", parent=None):
         super().__init__(parent);
-        self.setWindowTitle("Realizar Pagamento");
-        self.resize(400, 500) # Aumentei a altura para caber a lista
+        self.setWindowTitle(titulo); # Usa o título dinâmico
+        self.resize(400, 500)
         layout = QVBoxLayout(self)
         
-        # 1. Lista de Competências com Checkbox
         layout.addWidget(QLabel("Competência(s) Referente(s):"))
         self.lista_comp = QListWidget()
         meses = gerar_competencias(comp_inicio, comp_fim)
@@ -780,39 +874,35 @@ class DialogoPagamento(BaseDialog):
         
         competencias_selecionadas = []
         if pg_editar:
-            # Se for edição, quebra a string "01/2025, 02/2025" em lista
             competencias_selecionadas = [c.strip() for c in pg_editar.competencia.split(',')]
 
         for m in meses:
             item = QListWidgetItem(m)
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-            
-            # Se estiver editando e esse mês estava na lista, marca
             if pg_editar and m in competencias_selecionadas:
                 item.setCheckState(Qt.CheckState.Checked)
             else:
                 item.setCheckState(Qt.CheckState.Unchecked)
-                
             self.lista_comp.addItem(item)
             
         layout.addWidget(self.lista_comp)
         
-        # 2. Valor
-        layout.addWidget(QLabel("Valor do Pagamento:"))
+        # Usa o label dinâmico
+        layout.addWidget(QLabel(label_valor))
         self.inp_valor = CurrencyInput()
         layout.addWidget(self.inp_valor)
         
-        # 3. Observação
-        layout.addWidget(QLabel("Observação (Opcional):"))
+        layout.addWidget(QLabel("Justificativa / Observação:")) # Texto genérico
         self.inp_obs = QLineEdit()
-        self.inp_obs.setPlaceholderText("Ex: Ref. NF 123, Medição Final...")
+        self.inp_obs.setPlaceholderText("Descreva o motivo...")
         layout.addWidget(self.inp_obs)
 
         if pg_editar:
-            self.inp_valor.set_value(pg_editar.valor)
+            # Se for edição, usamos o valor absoluto (sem sinal negativo) para editar
+            val_abs = abs(pg_editar.valor)
+            self.inp_valor.set_value(val_abs)
             self.inp_obs.setText(pg_editar.observacao)
         else:
-            # Se for novo, sugere marcar o primeiro mês disponível da lista
             if self.lista_comp.count() > 0:
                  self.lista_comp.item(0).setCheckState(Qt.CheckState.Checked)
 
@@ -822,18 +912,53 @@ class DialogoPagamento(BaseDialog):
         layout.addWidget(botoes)
 
     def get_dados(self):
-        # Coleta todos os meses marcados
         selecionados = []
         for i in range(self.lista_comp.count()):
             item = self.lista_comp.item(i)
             if item.checkState() == Qt.CheckState.Checked:
                 selecionados.append(item.text())
         
-        # Junta em uma string: "01/2025, 02/2025"
         comp_str = ", ".join(selecionados) if selecionados else "Nenhuma"
-        
         return comp_str, self.inp_valor.get_value(), self.inp_obs.text()
 
+class DialogoAnulacao(BaseDialog):
+    """Diálogo simplificado para anulação: Apenas Valor e Justificativa"""
+    def __init__(self, editar_valor=None, editar_obs=None, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Anular / Estornar Empenho")
+        self.resize(350, 200)
+        
+        layout = QVBoxLayout(self)
+        
+        layout.addWidget(QLabel("Valor a Anular/Estornar:"))
+        self.inp_valor = CurrencyInput()
+        layout.addWidget(self.inp_valor)
+        
+        layout.addWidget(QLabel("Justificativa:"))
+        self.inp_obs = QLineEdit()
+        self.inp_obs.setPlaceholderText("Motivo da anulação...")
+        layout.addWidget(self.inp_obs)
+
+        # Se for edição, preenche os dados
+        if editar_valor is not None:
+            self.inp_valor.set_value(abs(editar_valor)) # Usa valor positivo visualmente
+        if editar_obs is not None:
+            self.inp_obs.setText(editar_obs)
+        
+        layout.addSpacing(10)
+        
+        lbl_info = QLabel("ℹ A anulação abate o 'Valor Pago' e devolve o saldo para a Nota de Empenho.\nNão altera a média mensal do serviço.")
+        lbl_info.setWordWrap(True)
+        lbl_info.setStyleSheet("color: #555; font-size: 11px; font-style: italic;")
+        layout.addWidget(lbl_info)
+
+        botoes = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        botoes.accepted.connect(self.accept)
+        botoes.rejected.connect(self.reject)
+        layout.addWidget(botoes)
+
+    def get_dados(self):
+        return self.inp_valor.get_value(), self.inp_obs.text()
 
 class DialogoSubContrato(BaseDialog):
     def __init__(self, lista_ciclos, ciclo_atual_id=0, sub_editar=None, valor_editar=None, parent=None):
@@ -891,152 +1016,149 @@ class DialogoSubContrato(BaseDialog):
 
 
 class DialogoDetalheServico(BaseDialog):
-    def __init__(self, servico, ciclo_nome, valor_orcamento, lista_nes_do_servico, parent=None):
+    def __init__(self, servico, lista_nes_do_servico, data_inicio, data_fim, parent=None):
         super().__init__(parent)
-        self.setWindowTitle(f"Detalhes: {servico.descricao}")
+        self.setWindowTitle(f"Detalhamento: {servico.descricao}")
+        self.resize(1200, 600)
+        self.showMaximized() 
         
-        # MUDANÇA 1: Largura mínima garantida. O resize apenas sugere, o setMinimum obriga.
-        self.setMinimumWidth(950) 
-        self.setMinimumHeight(650)
-
         layout = QVBoxLayout(self)
-
-        # --- CABEÇALHO ---
-        frm_resumo = QFrame()
-        frm_resumo.setObjectName("frm_resumo") 
-        l_resumo = QVBoxLayout(frm_resumo)
-
-        # 1. NOME DO SERVIÇO
-        lbl_servico = QLabel(servico.descricao)
-        lbl_servico.setObjectName("lbl_titulo_servico") 
-        lbl_servico.setWordWrap(True) # Já tinha, mantemos
-        lbl_servico.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-        # 2. Informação do Ciclo (CORREÇÃO AQUI)
-        lbl_ciclo = QLabel(f"Ciclo Financeiro: {ciclo_nome}")
-        lbl_ciclo.setObjectName("lbl_subtitulo")
-        lbl_ciclo.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        lbl_ciclo.setWordWrap(True) # <--- ADICIONADO: Permite que nomes longos de ciclo quebrem a linha
-
-        # 3. Valor do Orçamento
-        lbl_orcamento = QLabel(f"Orçamento Disponível: {fmt_br(valor_orcamento)}")
-        lbl_orcamento.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-        # Barra de Progresso
-        from PyQt6.QtWidgets import QProgressBar
-        self.progresso = QProgressBar()
-        self.progresso.setStyleSheet("QProgressBar { border: 1px solid grey; border-radius: 5px; text-align: center; height: 20px; } QProgressBar::chunk { background-color: #27ae60; }")
-
-        l_resumo.addWidget(lbl_servico)
-        l_resumo.addWidget(lbl_ciclo)
-        l_resumo.addWidget(lbl_orcamento)
-        l_resumo.addSpacing(10)
-        l_resumo.addWidget(self.progresso)
-        layout.addWidget(frm_resumo)
-
-
-        # --- SISTEMA DE ABAS ---
-        self.abas = QTabWidget()
-        layout.addWidget(self.abas)
-
-        # --- ABA 1: RESUMO POR COMPETÊNCIA ---
-        tab_comp = QWidget()
-        l_comp = QVBoxLayout(tab_comp)
-
-        self.tabela_comp = TabelaExcel()
-        self.tabela_comp.setColumnCount(4)
-        self.tabela_comp.setHorizontalHeaderLabels(
-            ["Competência", "Total Pago (Soma)", "Saldo do Serviço", "% Executado"])
-        self.tabela_comp.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        l_comp.addWidget(self.tabela_comp)
-
-        self.abas.addTab(tab_comp, "Resumo Mensal (Competência)")
-
-        # --- ABA 2: DETALHAMENTO POR NE ---
-        tab_ne = QWidget()
-        l_ne = QVBoxLayout(tab_ne)
-
-        self.tabela_ne = TabelaExcel()
-        self.tabela_ne.setColumnCount(6)
-        self.tabela_ne.setHorizontalHeaderLabels(
-            ["Data/Comp.", "NE", "Descrição/Histórico", "Valor Pago", "Saldo", "%"])
-        self.tabela_ne.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        l_ne.addWidget(self.tabela_ne)
-
-        self.abas.addTab(tab_ne, "Detalhamento por NE")
-
-        # --- PROCESSAMENTO DOS DADOS ---
-        movimentos_detalhados = []
-        soma_por_competencia = {}
-        total_pago_geral = 0.0
+        
+        # --- 1. Processamento dos Pagamentos ---
+        mapa_pagamentos = {}
+        meses = gerar_competencias(data_inicio, data_fim)
+        
+        # Calcula o Orçamento TOTAL do período
+        total_meses_count = len(meses)
+        valor_total_orcamento = servico.valor_mensal * total_meses_count
+        
+        for m in meses:
+             mapa_pagamentos[m] = {'pago': 0.0, 'detalhes_texto': [], 'tem_obs': False}
 
         for ne in lista_nes_do_servico:
             for mov in ne.historico:
                 if mov.tipo == "Pagamento":
-                    movimentos_detalhados.append({
-                        "data_sort": self.converter_competencia(mov.competencia),
-                        "comp": mov.competencia,
-                        "valor": mov.valor,
-                        "ne_num": ne.numero,
-                        "ne_desc": ne.descricao
-                    })
-                    c = mov.competencia
-                    if c not in soma_por_competencia: soma_por_competencia[c] = 0.0
-                    soma_por_competencia[c] += mov.valor
-                    total_pago_geral += mov.valor
+                    comps = [c.strip() for c in mov.competencia.split(',') if c.strip()]
+                    qtd = len(comps)
+                    if qtd == 0: continue
+                    
+                    valor_parcela = mov.valor / qtd 
+                    obs_str = f" | Obs: {mov.observacao}" if mov.observacao else ""
+                    texto_info = f"• NE {ne.numero}: {fmt_br(mov.valor)} (Ref. {qtd} meses){obs_str}"
 
-        # Preencher Tabela 1
-        lista_comp_ordenada = []
-        for c, v in soma_por_competencia.items():
-            lista_comp_ordenada.append({"comp": c, "valor": v, "data_sort": self.converter_competencia(c)})
-        lista_comp_ordenada.sort(key=lambda x: x["data_sort"])
+                    for c in comps:
+                        if c in mapa_pagamentos:
+                            mapa_pagamentos[c]['pago'] += valor_parcela
+                            mapa_pagamentos[c]['detalhes_texto'].append(texto_info)
+                            if qtd > 1 or mov.observacao:
+                                mapa_pagamentos[c]['tem_obs'] = True
 
-        saldo_atual = valor_orcamento
-        acumulado = 0.0
-        self.tabela_comp.setRowCount(0)
-        for i, item in enumerate(lista_comp_ordenada):
-            val = item["valor"]
-            saldo_atual -= val
-            acumulado += val
-            pct = (acumulado / valor_orcamento * 100) if valor_orcamento > 0 else 0
-            self.tabela_comp.insertRow(i)
-            self.tabela_comp.setItem(i, 0, self.item_centro(item["comp"]))
-            self.tabela_comp.setItem(i, 1, self.item_valor(val))
-            self.tabela_comp.setItem(i, 2, self.item_saldo(saldo_atual))
-            self.tabela_comp.setItem(i, 3, self.item_centro(f"{pct:.1f}%"))
+        # --- 2. Montagem da Tabela ---
+        self.tabela = TabelaExcel()
+        colunas = ["Competência", "Det.", "Valor Mensal", "Valor Pago", "Saldo Mês", "% Mês", "Saldo Global", "% Acum."]
+        self.tabela.setColumnCount(len(colunas))
+        self.tabela.setHorizontalHeaderLabels(colunas)
+        
+        # Ajuste Visual
+        header = self.tabela.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed); self.tabela.setColumnWidth(1, 50)
+        
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(6, QHeaderView.ResizeMode.Stretch)
+        
+        header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(7, QHeaderView.ResizeMode.ResizeToContents)
 
-        # Preencher Tabela 2
-        movimentos_detalhados.sort(key=lambda x: x["data_sort"])
-        saldo_atual = valor_orcamento
-        acumulado = 0.0
-        self.tabela_ne.setRowCount(0)
-        for i, m in enumerate(movimentos_detalhados):
-            val = m["valor"]
-            saldo_atual -= val
-            acumulado += val
-            pct = (acumulado / valor_orcamento * 100) if valor_orcamento > 0 else 0
-            self.tabela_ne.insertRow(i)
-            self.tabela_ne.setItem(i, 0, self.item_centro(m["comp"]))
-            self.tabela_ne.setItem(i, 1, self.item_centro(m["ne_num"]))
-            self.tabela_ne.setItem(i, 2, self.item_centro(m["ne_desc"]))
-            self.tabela_ne.setItem(i, 3, self.item_valor(val))
-            self.tabela_ne.setItem(i, 4, self.item_saldo(saldo_atual))
-            self.tabela_ne.setItem(i, 5, self.item_centro(f"{pct:.1f}%"))
+        self.tabela.cellClicked.connect(self.mostrar_detalhes_clique)
 
-        pct_final = int((total_pago_geral / valor_orcamento * 100)) if valor_orcamento > 0 else 0
-        self.progresso.setValue(min(pct_final, 100))
-        if pct_final > 100: self.progresso.setStyleSheet("QProgressBar::chunk { background-color: red; }")
+        self.tabela.setRowCount(0)
+        
+        total_previsto = 0
+        total_pago = 0
+        acumulado_pago_ate_agora = 0
 
-        # --- BOTÕES DE AÇÃO (MODIFICADO) ---
+        def item_centro(texto, cor=None, bg=None):
+            it = QTableWidgetItem(str(texto))
+            it.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            if cor: it.setForeground(QColor(cor))
+            if bg: it.setBackground(QColor(bg))
+            return it
+
+        for mes in meses:
+            dados = mapa_pagamentos[mes]
+            
+            valor_mensal = servico.valor_mensal
+            valor_pago = dados['pago']
+            saldo_mes = valor_mensal - valor_pago
+            percentual_mes = (valor_pago / valor_mensal * 100) if valor_mensal > 0 else 0
+            
+            total_previsto += valor_mensal
+            total_pago += valor_pago
+            acumulado_pago_ate_agora += valor_pago
+            
+            saldo_global = valor_total_orcamento - acumulado_pago_ate_agora
+            perc_acumulada = (acumulado_pago_ate_agora / valor_total_orcamento * 100) if valor_total_orcamento > 0 else 0
+
+            row = self.tabela.rowCount()
+            self.tabela.insertRow(row)
+            
+            self.tabela.setItem(row, 0, item_centro(mes, bg=None))
+            
+            item_link = item_centro("")
+            if dados['tem_obs']:
+                item_link.setText("🔗") 
+                item_link.setForeground(QColor("blue"))
+                texto_completo = "Detalhes do Pagamento:\n\n" + "\n".join(dados['detalhes_texto'])
+                item_link.setToolTip(texto_completo)
+                item_link.setData(Qt.ItemDataRole.UserRole, texto_completo)
+            self.tabela.setItem(row, 1, item_link)
+
+            self.tabela.setItem(row, 2, item_centro(fmt_br(valor_mensal)))
+            
+            cor_pago = "#27ae60" if valor_pago > 0 else None
+            self.tabela.setItem(row, 3, item_centro(fmt_br(valor_pago), cor=cor_pago))
+            
+            cor_saldo = "red" if saldo_mes < -0.01 else None
+            self.tabela.setItem(row, 4, item_centro(fmt_br(saldo_mes), cor=cor_saldo))
+            
+            # --- MUDANÇA AQUI: REMOVIDO FUNDO AMARELO ---
+            # Antes: bg_perc = "#d5f5e3" if percentual_mes >= 100 else ("#fcf3cf" if percentual_mes > 0 else None)
+            bg_perc = "#16A856" if percentual_mes >= 100 else None
+            self.tabela.setItem(row, 5, item_centro(f"{percentual_mes:.1f}%", bg=bg_perc))
+            
+            self.tabela.setItem(row, 6, item_centro(fmt_br(saldo_global)))
+            self.tabela.setItem(row, 7, item_centro(f"{perc_acumulada:.1f}%"))
+
+        row = self.tabela.rowCount()
+        self.tabela.insertRow(row)
+        font_bold = QFont(); font_bold.setBold(True)
+        
+        i_tot = item_centro("TOTAL"); i_tot.setFont(font_bold)
+        self.tabela.setItem(row, 0, i_tot)
+        
+        i_v_tot = item_centro(fmt_br(total_previsto)); i_v_tot.setFont(font_bold)
+        self.tabela.setItem(row, 2, i_v_tot)
+        
+        i_p_tot = item_centro(fmt_br(total_pago)); i_p_tot.setFont(font_bold)
+        self.tabela.setItem(row, 3, i_p_tot)
+        
+        layout.addWidget(self.tabela)
+        
+        # --- BOTÕES ---
         btns = QHBoxLayout()
         
-        btn_copiar = QPushButton("Copiar Tabela Atual")
+        btn_copiar = QPushButton("Copiar Tabela")
         btn_copiar.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_copiar.clicked.connect(self.copiar_tabela_ativa)
-        btn_copiar.setStyleSheet("background-color: #27ae60; color: white; font-weight: bold; padding: 8px;")
+        btn_copiar.setStyleSheet("background-color: #27ae60; color: white; font-weight: bold; padding: 8px 15px;")
+        btn_copiar.clicked.connect(self.copiar_tabela)
         
         btn_fechar = QPushButton("Fechar")
-        btn_fechar.clicked.connect(self.close)
+        btn_fechar.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_fechar.setStyleSheet("padding: 8px 15px;")
+        btn_fechar.clicked.connect(self.accept)
         
         btns.addWidget(btn_copiar)
         btns.addStretch()
@@ -1044,34 +1166,174 @@ class DialogoDetalheServico(BaseDialog):
         
         layout.addLayout(btns)
         
+        aplicar_estilo_janela(self)
 
-    def item_centro(self, text):
-        i = QTableWidgetItem(str(text)); i.setTextAlignment(Qt.AlignmentFlag.AlignCenter); return i
-    def item_valor(self, val):
-        i = QTableWidgetItem(fmt_br(val)); i.setTextAlignment(Qt.AlignmentFlag.AlignCenter); i.setForeground(QColor("#c0392b")); return i
-    def item_saldo(self, val):
-        i = QTableWidgetItem(fmt_br(val)); i.setTextAlignment(Qt.AlignmentFlag.AlignCenter); i.setFont(QFont("Arial", 9, QFont.Weight.Bold)); i.setForeground(QColor("#27ae60" if val >= 0 else "red")); return i
-    def converter_competencia(self, comp_str):
-        try: return datetime.strptime(comp_str, "%m/%Y")
-        except: return datetime.min
-    def copiar_tabela_ativa(self):
-        # Verifica qual aba está aberta (0 = Resumo Mensal, 1 = Detalhamento NE)
-        idx = self.abas.currentIndex()
+    def mostrar_detalhes_clique(self, row, col):
+        if col == 1:
+            item = self.tabela.item(row, col)
+            if item and item.text() == "🔗":
+                texto = item.data(Qt.ItemDataRole.UserRole)
+                if texto: DarkMessageBox.info(self, "Detalhes", texto)
+
+    def copiar_tabela(self):
+        self.tabela.selectAll()
+        self.tabela.copiar_selecao()
+        self.tabela.clearSelection()
+        DarkMessageBox.info(self, "Sucesso", "Tabela copiada para a área de transferência!")
+
+class PainelDetalheGlobal(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        layout = QVBoxLayout(self)
         
-        if idx == 0:
-            tabela = self.tabela_comp
-            nome = "Resumo Mensal"
-        else:
-            tabela = self.tabela_ne
-            nome = "Detalhamento por NE"
+        self.lbl_titulo = QLabel("Visão Detalhada do Ciclo (Todos os Serviços)")
+        self.lbl_titulo.setStyleSheet("font-size: 14px; font-weight: bold; color: #555;")
+        layout.addWidget(self.lbl_titulo)
+        
+        self.tabela = TabelaExcel()
+        colunas = ["Competência", "Det.", "Meta Mensal", "Executado", "Saldo Mês", "% Mês", "Saldo Global", "% Acum."]
+        self.tabela.setColumnCount(len(colunas))
+        self.tabela.setHorizontalHeaderLabels(colunas)
+        
+        # Ajuste Visual
+        header = self.tabela.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed); self.tabela.setColumnWidth(1, 50)
+        
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(6, QHeaderView.ResizeMode.Stretch)
+        
+        header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(7, QHeaderView.ResizeMode.ResizeToContents)
+        
+        self.tabela.cellClicked.connect(self.mostrar_detalhes_clique)
+        
+        layout.addWidget(self.tabela)
+        
+        # --- BOTÃO COPIAR TABELA ---
+        btns = QHBoxLayout()
+        btn_copiar = QPushButton("Copiar Tabela")
+        btn_copiar.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_copiar.setStyleSheet("background-color: #27ae60; color: white; font-weight: bold; padding: 8px 15px;")
+        btn_copiar.clicked.connect(self.copiar_tabela)
+        
+        btns.addWidget(btn_copiar)
+        btns.addStretch() # Mantém o botão à esquerda
+        layout.addLayout(btns)
+
+    def carregar_dados(self, contrato, ciclo_ativo_id):
+        self.tabela.setRowCount(0)
+        if not contrato: return
+
+        ciclo = next((c for c in contrato.ciclos if c.id_ciclo == ciclo_ativo_id), None)
+        if not ciclo: return 
+        
+        c_ini = getattr(ciclo, 'inicio', None)
+        c_fim = getattr(ciclo, 'fim', None)
+        dt_ini = c_ini if c_ini else contrato.comp_inicio
+        dt_fim = c_fim if c_fim else contrato.comp_fim
+        
+        meses = gerar_competencias(dt_ini, dt_fim)
+        
+        meta_mensal_global = sum([s.valor_mensal for s in contrato.lista_servicos])
+        valor_total_contrato = meta_mensal_global * len(meses)
+        
+        mapa_pagos = {m: {'valor': 0.0, 'detalhes_texto': [], 'tem_obs': False} for m in meses}
+        
+        for ne in contrato.lista_notas_empenho:
+            if ne.ciclo_id != ciclo.id_ciclo: continue
+            for mov in ne.historico:
+                if mov.tipo == "Pagamento":
+                    comps = [c.strip() for c in mov.competencia.split(',') if c.strip()]
+                    qtd = len(comps)
+                    if qtd == 0: continue
+                    valor_parcela = mov.valor / qtd
+                    
+                    obs_str = f" | Obs: {mov.observacao}" if mov.observacao else ""
+                    texto_info = f"• NE {ne.numero}: {fmt_br(mov.valor)} (Ref. {qtd} meses){obs_str}"
+                    
+                    for c in comps:
+                        if c in mapa_pagos: 
+                            mapa_pagos[c]['valor'] += valor_parcela
+                            mapa_pagos[c]['detalhes_texto'].append(texto_info)
+                            if qtd > 1 or mov.observacao:
+                                mapa_pagos[c]['tem_obs'] = True
+
+        def item_centro(texto, cor=None, bg=None):
+            it = QTableWidgetItem(str(texto))
+            it.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            if cor: it.setForeground(QColor(cor))
+            if bg: it.setBackground(QColor(bg))
+            return it
+
+        tot_meta = 0
+        tot_exec = 0
+        acumulado_exec_ate_agora = 0
+        
+        for mes in meses:
+            dados = mapa_pagos[mes]
+            executado = dados['valor']
+            saldo_mes = meta_mensal_global - executado
+            perc_mes = (executado / meta_mensal_global * 100) if meta_mensal_global > 0 else 0
             
-        # Executa a cópia
-        tabela.selectAll()
-        tabela.copiar_selecao()
-        tabela.clearSelection()
-        
-        QMessageBox.information(self, "Copiado", f"Tabela '{nome}' copiada para a área de transferência!\n(Cole no Excel com Ctrl+V)")
+            tot_meta += meta_mensal_global
+            tot_exec += executado
+            acumulado_exec_ate_agora += executado
+            
+            saldo_global = valor_total_contrato - acumulado_exec_ate_agora
+            perc_acumulada = (acumulado_exec_ate_agora / valor_total_contrato * 100) if valor_total_contrato > 0 else 0
 
+            row = self.tabela.rowCount()
+            self.tabela.insertRow(row)
+            
+            self.tabela.setItem(row, 0, item_centro(mes))
+            
+            item_link = item_centro("")
+            if dados['tem_obs']:
+                item_link.setText("🔗") 
+                item_link.setForeground(QColor("blue"))
+                texto_completo = "Detalhes dos Pagamentos:\n\n" + "\n".join(dados['detalhes_texto'])
+                item_link.setToolTip(texto_completo)
+                item_link.setData(Qt.ItemDataRole.UserRole, texto_completo)
+            self.tabela.setItem(row, 1, item_link)
+            
+            self.tabela.setItem(row, 2, item_centro(fmt_br(meta_mensal_global)))
+            self.tabela.setItem(row, 3, item_centro(fmt_br(executado), cor="#27ae60" if executado > 0 else None))
+            self.tabela.setItem(row, 4, item_centro(fmt_br(saldo_mes), cor="red" if saldo_mes < -0.01 else None))
+            
+            bg_perc = "#d5f5e3" if perc_mes >= 100 else None
+            self.tabela.setItem(row, 5, item_centro(f"{perc_mes:.1f}%", bg=bg_perc))
+            
+            self.tabela.setItem(row, 6, item_centro(fmt_br(saldo_global)))
+            self.tabela.setItem(row, 7, item_centro(f"{perc_acumulada:.1f}%"))
+
+        row = self.tabela.rowCount()
+        self.tabela.insertRow(row)
+        font_b = QFont(); font_b.setBold(True)
+        
+        it_tot = item_centro("TOTAL"); it_tot.setFont(font_b)
+        self.tabela.setItem(row, 0, it_tot)
+        
+        it_m = item_centro(fmt_br(tot_meta)); it_m.setFont(font_b)
+        self.tabela.setItem(row, 2, it_m)
+        
+        it_e = item_centro(fmt_br(tot_exec)); it_e.setFont(font_b)
+        self.tabela.setItem(row, 3, it_e)
+
+    def mostrar_detalhes_clique(self, row, col):
+        if col == 1:
+            item = self.tabela.item(row, col)
+            if item and item.text() == "🔗":
+                texto = item.data(Qt.ItemDataRole.UserRole)
+                if texto: DarkMessageBox.info(self, "Detalhes", texto)
+
+    def copiar_tabela(self):
+        self.tabela.selectAll()
+        self.tabela.copiar_selecao()
+        self.tabela.clearSelection()
+        DarkMessageBox.info(self, "Sucesso", "Tabela copiada para a área de transferência!")
 
 #-- Diálogo de Histórico Maximizado ---
 class DialogoHistoricoMaximizado(BaseDialog):
@@ -1155,7 +1417,7 @@ class DialogoHistoricoMaximizado(BaseDialog):
         self.tabela.selectAll()
         self.tabela.copiar_selecao()
         self.tabela.clearSelection()
-        QMessageBox.information(self, "Copiado", "Tabela copiada para a área de transferência!\nBasta colar no Excel (Ctrl+V).")
+        DarkMessageBox.info(self, "Copiado", "Tabela copiada para a área de transferência!\nBasta colar no Excel (Ctrl+V).")
 
 # --- NOVAS CLASSES DE AUDITORIA E LOGIN ---
 
@@ -1174,7 +1436,7 @@ class RegistroLog:
         return RegistroLog(d['data'], d['nome'], d['cpf'], d['acao'], d.get('detalhe', ''))
 
 
-class DialogoLogin(QDialog):
+class DialogoLogin(BaseDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Acesso ao Sistema GC")
@@ -1188,8 +1450,10 @@ class DialogoLogin(QDialog):
         header = QHBoxLayout()
         
         lbl_icon = QLabel()
-        # Tenta carregar o ícone
-        path_icon = os.path.join(os.path.dirname(os.path.abspath(__file__)), "icon_gc.png")
+        # Caminho absoluto para o ícone
+        base_path = os.path.dirname(os.path.abspath(__file__))
+        path_icon = os.path.join(base_path, "icon_gc.png")
+        
         if os.path.exists(path_icon):
             pix = QPixmap(path_icon).scaled(64, 64, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
             lbl_icon.setPixmap(pix)
@@ -1212,7 +1476,7 @@ class DialogoLogin(QDialog):
         self.inp_cpf = QLineEdit()
         self.inp_cpf.setInputMask("999.999.999-99")
         
-        # Tenta carregar último login
+        # Tenta carregar último login ao abrir a janela
         self.carregar_ultimo_login()
         
         form_layout.addRow("Nome:", self.inp_nome)
@@ -1242,46 +1506,63 @@ class DialogoLogin(QDialog):
         
         aplicar_estilo_janela(self)
 
+    def get_config_path(self):
+        """Retorna o caminho exato do config.json na mesma pasta do script"""
+        pasta_app = os.path.dirname(os.path.abspath(__file__))
+        return os.path.join(pasta_app, "config.json")
+
     def carregar_ultimo_login(self):
+        caminho = self.get_config_path()
         try:
-            if os.path.exists("config.json"):
-                with open("config.json", "r") as f:
+            if os.path.exists(caminho):
+                with open(caminho, "r", encoding='utf-8') as f:
                     cfg = json.load(f)
                     last = cfg.get("ultimo_usuario", {})
                     if last:
                         self.inp_nome.setText(last.get("nome", ""))
                         self.inp_cpf.setText(last.get("cpf", ""))
-        except: pass
+        except Exception as e:
+            print(f"Erro ao ler config: {e}")
 
     def validar(self):
         nome = self.inp_nome.text().strip()
         cpf = self.inp_cpf.text()
+        
         if len(nome) < 3 or not self.inp_cpf.hasAcceptableInput():
-            QMessageBox.warning(self, "Dados Inválidos", "Preencha seu Nome e CPF corretamente.")
+            DarkMessageBox.warning(self, "Dados Inválidos", "Preencha seu Nome e CPF corretamente.")
             return
             
-        # Salva para a próxima vez
+        # Salva ANTES de fechar a janela
         self.salvar_login_local(nome, cpf)
         self.accept()
 
     def salvar_login_local(self, nome, cpf):
+        caminho = self.get_config_path()
         try:
             cfg = {}
-            if os.path.exists("config.json"):
-                with open("config.json", "r") as f:
-                    cfg = json.load(f)
+            # Se já existir arquivo, lê o conteúdo atual para não perder outras configs (tema, etc)
+            if os.path.exists(caminho):
+                with open(caminho, "r", encoding='utf-8') as f:
+                    try:
+                        cfg = json.load(f)
+                    except:
+                        cfg = {}
             
+            # Atualiza apenas os dados de login
             cfg["ultimo_usuario"] = {"nome": nome, "cpf": cpf}
             
-            with open("config.json", "w") as f:
-                json.dump(cfg, f)
-        except: pass
+            # Grava no disco
+            with open(caminho, "w", encoding='utf-8') as f:
+                json.dump(cfg, f, indent=4)
+                
+        except Exception as e:
+            print(f"Erro ao salvar config: {e}")
 
     def get_dados(self):
         return self.inp_nome.text().strip(), self.inp_cpf.text()
 
 
-class DialogoAuditoria(QDialog):
+class DialogoAuditoria(BaseDialog):
     def __init__(self, lista_logs, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Histórico de Alterações (Auditoria)")
@@ -1359,7 +1640,7 @@ class SistemaGestao(QMainWindow):
     def __init__(self):
         super().__init__()
         self.db_contratos = []
-        self.db_logs = [] # <--- NOVA LISTA PARA OS LOGS
+        self.db_logs = [] 
         self.contrato_selecionado = None
         self.ne_selecionada = None
         self.arquivo_db = "dados_sistema.json"
@@ -1368,27 +1649,29 @@ class SistemaGestao(QMainWindow):
         self.usuario_nome = "Desconhecido"
         self.usuario_cpf = "000.000.000-00"
 
-        # Tema e Interface
-        self.tema_escuro = True 
-        self.alternar_tema()  
+        # --- CORREÇÃO DE INICIALIZAÇÃO ---
+        self.tema_escuro = False # Valor padrão
+        self.carregar_config()   # 1. Lê a config (incluindo tema e login)
         
-        # 1. PEDIR LOGIN ANTES DE TUDO
+        # 2. Aplica o visual sem inverter/salvar
+        self.aplicar_tema_visual()
+        
+        # 3. Pede Login (agora o DialogoLogin vai ler o mesmo arquivo config.json)
         self.fazer_login() 
         
         self.init_ui()
         self.carregar_dados()
         
-        # 3. Aplica o tema carregado (sem inverter)
-        self.aplicar_tema_visual()
+        # Garante o estilo da janela
         aplicar_estilo_janela(self)
         
-        self.em_tutorial = False # Flag para evitar múltiplas janelas de tutorial
+        self.em_tutorial = False
 
     def iniciar_tutorial_interativo(self):
         """Orquestra uma sequência de passos para ensinar o usuário"""
         
         # 1. Boas Vindas
-        res = QMessageBox.information(self, "Tutorial Interativo", 
+        res = DarkMessageBox.info(self, "Tutorial Interativo", 
             "Bem-vindo ao Modo de Aprendizado!\n\n"
             "Vou guiar você criando um contrato completo do zero:\n"
             "1. Criar o Contrato\n"
@@ -1403,7 +1686,7 @@ class SistemaGestao(QMainWindow):
 
         try:
             # --- PASSO 1: CRIAR CONTRATO ---
-            QMessageBox.information(self, "Passo 1/4", 
+            DarkMessageBox.info(self, "Passo 1/4", 
                 "Primeiro, vamos cadastrar o CONTRATO.\n\n"
                 "Vou abrir a janela e preencher os dados de exemplo para você.\n"
                 "Apenas confira e clique em 'OK' na janela que abrir.")
@@ -1421,7 +1704,7 @@ class SistemaGestao(QMainWindow):
             self.stack.setCurrentIndex(1) # Muda para a página de detalhes
 
             # --- PASSO 2: CRIAR SERVIÇO ---
-            QMessageBox.information(self, "Passo 2/4", 
+            DarkMessageBox.info(self, "Passo 2/4", 
                 "Ótimo! Contrato criado.\n\n"
                 "Agora precisamos definir O QUE foi contratado (Serviços/Itens).\n"
                 "Vou preencher um serviço de 'Manutenção' para você.")
@@ -1429,7 +1712,7 @@ class SistemaGestao(QMainWindow):
             self.abrir_novo_servico()
 
             # --- PASSO 3: NOTA DE EMPENHO ---
-            QMessageBox.information(self, "Passo 3/4", 
+            DarkMessageBox.info(self, "Passo 3/4", 
                 "Agora que temos o contrato e o serviço, vamos reservar o dinheiro (Empenho).\n\n"
                 "Vou criar uma Nota de Empenho vinculada ao serviço anterior.")
             
@@ -1444,20 +1727,20 @@ class SistemaGestao(QMainWindow):
                 self.atualizar_painel_detalhes()
 
             # --- PASSO 4: PAGAMENTO ---
-            QMessageBox.information(self, "Passo 4/4", 
+            DarkMessageBox.info(self, "Passo 4/4", 
                 "Dinheiro reservado! Agora a empresa trabalhou e vamos PAGAR.\n\n"
                 "Vou lançar um pagamento parcial na NE que acabamos de criar.")
             
             self.abrir_pagamento()
 
             # --- FIM ---
-            QMessageBox.information(self, "Parabéns!", 
+            DarkMessageBox.info(self, "Parabéns!", 
                 "Tutorial Concluído com Sucesso!\n\n"
                 "Você aprendeu o fluxo principal do sistema.\n"
                 "Os dados criados aqui são reais, você pode excluí-los depois se quiser.")
 
         except Exception as e:
-            QMessageBox.critical(self, "Erro no Tutorial", str(e))
+            DarkMessageBox.critical(self, "Erro no Tutorial", str(e))
         
         finally:
             self.em_tutorial = False # Desliga o modo mágico
@@ -1483,18 +1766,42 @@ class SistemaGestao(QMainWindow):
         # Nota: O salvamento no disco acontece no salvar_dados() geral
 
     def carregar_config(self):
+        caminho = self.get_config_path()
         try:
-            with open("config.json", "r") as f:
-                cfg = json.load(f)
-                self.tema_escuro = cfg.get("tema_escuro", False)
+            if os.path.exists(caminho):
+                with open(caminho, "r", encoding='utf-8') as f:
+                    cfg = json.load(f)
+                    self.tema_escuro = cfg.get("tema_escuro", False)
+            else:
+                self.tema_escuro = False # Padrão se não existir
         except:
-            self.tema_escuro = False # Padrão se não existir arquivo
+            self.tema_escuro = False 
+
+    def get_config_path(self):
+        """Retorna o caminho exato do config.json na mesma pasta do script"""
+        pasta_app = os.path.dirname(os.path.abspath(__file__))
+        return os.path.join(pasta_app, "config.json")
 
     def salvar_config(self):
+        caminho = self.get_config_path()
         try:
-            with open("config.json", "w") as f:
-                json.dump({"tema_escuro": self.tema_escuro}, f)
-        except: pass
+            cfg = {}
+            # 1. Lê o arquivo existente para NÃO PERDER o login
+            if os.path.exists(caminho):
+                with open(caminho, "r", encoding='utf-8') as f:
+                    try:
+                        cfg = json.load(f)
+                    except:
+                        cfg = {}
+            
+            # 2. Atualiza ou adiciona a configuração do tema
+            cfg["tema_escuro"] = self.tema_escuro
+            
+            # 3. Salva tudo de volta (Login + Tema)
+            with open(caminho, "w", encoding='utf-8') as f:
+                json.dump(cfg, f, indent=4)
+        except Exception as e: 
+            print(f"Erro ao salvar config: {e}")
 
     def showEvent(self, event):
         # Garante que a barra fique escura assim que o programa abre
@@ -1542,7 +1849,7 @@ class SistemaGestao(QMainWindow):
                     
             self.filtrar_contratos()
         except Exception as e:
-            QMessageBox.critical(self, "Erro ao Carregar", f"Erro: {str(e)}")
+            DarkMessageBox.critical(self, "Erro ao Carregar", f"Erro: {str(e)}")
 
    
     def sincronizar_nuvem(self):
@@ -1552,7 +1859,7 @@ class SistemaGestao(QMainWindow):
             # Teste rápido de conexão
             driver.conectar()
         except Exception as e:
-            QMessageBox.critical(self, "Erro de Conexão", 
+            DarkMessageBox.critical(self, "Erro de Conexão", 
                                  f"Não foi possível conectar ao Google Drive.\nErro: {str(e)}\n\nVerifique sua internet ou o arquivo token.json.")
             return
 
@@ -1568,7 +1875,7 @@ class SistemaGestao(QMainWindow):
         msg_status = "Arquivo encontrado no Drive!" if arquivo_remoto else "Arquivo NÃO encontrado no Drive (Será criado)."
         
         # 3. Pergunta o que fazer
-        mbox = QMessageBox(self)
+        mbox = DarkMessageBox(self)
         mbox.setWindowTitle("Sincronização Nuvem")
         mbox.setText(f"Status da Nuvem: {msg_status}\n\nO que deseja fazer?")
         
@@ -1596,15 +1903,15 @@ class SistemaGestao(QMainWindow):
                 # Chama o novo método blindado do sinc.py
                 driver.subir_json(nome_nuvem, dados_exportar, file_id_existente=file_id)
                 
-                QMessageBox.information(self, "Sucesso", "Dados enviados para a nuvem com sucesso!")
+                DarkMessageBox.info(self, "Sucesso", "Dados enviados para a nuvem com sucesso!")
             
             except Exception as e:
-                QMessageBox.critical(self, "Erro no Upload", f"Falha ao enviar: {str(e)}")
+                DarkMessageBox.critical(self, "Erro no Upload", f"Falha ao enviar: {str(e)}")
 
         # --- AÇÃO: BAIXAR/MESCLAR ---
         elif mbox.clickedButton() == btn_baixar:
             if not arquivo_remoto:
-                QMessageBox.warning(self, "Aviso", "Não há arquivo na nuvem para baixar. Use 'Apenas Enviar' primeiro.")
+                DarkMessageBox.warning(self, "Aviso", "Não há arquivo na nuvem para baixar. Use 'Apenas Enviar' primeiro.")
                 return
             
             try:
@@ -1638,10 +1945,10 @@ class SistemaGestao(QMainWindow):
                 # Opcional: Envia de volta a fusão para a nuvem ficar atualizada
                 # self.sincronizar_nuvem() -> Cuidado com loop infinito aqui
                 
-                QMessageBox.information(self, "Sucesso", "Dados sincronizados e atualizados!")
+                DarkMessageBox.info(self, "Sucesso", "Dados sincronizados e atualizados!")
                 
             except Exception as e:
-                QMessageBox.critical(self, "Erro no Download", f"Falha ao baixar: {str(e)}")
+                DarkMessageBox.critical(self, "Erro no Download", f"Falha ao baixar: {str(e)}")
 
     def alternar_tema(self):
         # 1. Inverte o estado (AQUI é o lugar certo de inverter)
@@ -1772,15 +2079,10 @@ class SistemaGestao(QMainWindow):
 
     def init_ui(self):
         # --- CONFIGURAÇÃO DO ÍCONE ---
-        # Pega o caminho da pasta onde o script está
         caminho_script = os.path.dirname(os.path.abspath(__file__))
         caminho_icone = os.path.join(caminho_script, "icon_gc.png")
-        
-        # Define o ícone da janela se o arquivo existir
         if os.path.exists(caminho_icone):
             self.setWindowIcon(QIcon(caminho_icone))
-        # -----------------------------
-
 
         self.setWindowTitle("Gestão de Contratos")
         self.setGeometry(50, 50, 1300, 850)
@@ -1810,25 +2112,22 @@ class SistemaGestao(QMainWindow):
 
         m_exi = mb.addMenu("Exibir")
         m_exi.addAction("Alternar Tema (Claro/Escuro)", self.alternar_tema)
+        m_exi.addAction("Histórico de Alterações (Auditoria)", self.abrir_auditoria)
 
         m_nuvem = mb.addMenu("Nuvem")
         m_nuvem.addAction("Sincronizar com Drive...", self.sincronizar_nuvem)
 
-        # Menu de Auditoria
-        m_exi.addAction("Histórico de Alterações (Auditoria)", self.abrir_auditoria)
-
         m_ajuda = mb.addMenu("Ajuda")
-
         m_ajuda.addAction("Iniciar Tutorial Interativo", self.iniciar_tutorial_interativo)
-
         m_ajuda.addSeparator()
-
         m_ajuda.addAction("Manual do Sistema", self.abrir_manual)
-        m_ajuda.addAction("Sobre", lambda: QMessageBox.about(self, "Sobre", "GC Gestor de Contratos\nDesenvolvido em Python/PyQt6"))
+
+        m_ajuda.addAction("Sobre", lambda: DarkMessageBox.info(self, "Sobre", "GC Gestor de Contratos - Versão 1.0\nDesenvolvido em Python/PyQt6", "Autor: Cássio de Souza Lopes"))
 
         self.stack = QStackedWidget()
         self.setCentralWidget(self.stack)
 
+        # --- PÁGINA 1: PESQUISA ---
         self.page_pesquisa = QWidget()
         layout_p = QVBoxLayout(self.page_pesquisa);
         layout_p.setAlignment(Qt.AlignmentFlag.AlignTop)
@@ -1840,7 +2139,6 @@ class SistemaGestao(QMainWindow):
         self.lbl_logo = QLabel("Pesquisa de Contratos / Notas de Empenho")
         self.lbl_logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.lbl_logo.setFont(QFont("Arial", 24, QFont.Weight.Bold))
-        # Removemos a cor fixa daqui. Agora ela será controlada pelo tema.
         self.lbl_logo.setStyleSheet("margin-bottom: 20px; margin-top: 50px")
 
         self.inp_search = QLineEdit()
@@ -1866,6 +2164,7 @@ class SistemaGestao(QMainWindow):
         layout_h.addStretch();
         layout_p.addLayout(layout_h)
 
+        # --- PÁGINA 2: DETALHES ---
         self.page_detalhes = QWidget()
         self.layout_detalhes = QVBoxLayout(self.page_detalhes)
 
@@ -1894,10 +2193,8 @@ class SistemaGestao(QMainWindow):
 
         layout_filtro = QHBoxLayout()
         layout_filtro.setContentsMargins(0, 10, 0, 0)
-
         lbl_filtro = QLabel("Visualizar dados do Ciclo:")
         lbl_filtro.setFont(QFont("Arial", 10, QFont.Weight.Bold))
-
         self.combo_ciclo_visualizacao = QComboBox()
         self.combo_ciclo_visualizacao.setFixedWidth(300)
         self.combo_ciclo_visualizacao.currentIndexChanged.connect(self.atualizar_painel_detalhes)
@@ -1906,13 +2203,12 @@ class SistemaGestao(QMainWindow):
         layout_filtro.addWidget(lbl_filtro)
         layout_filtro.addWidget(self.combo_ciclo_visualizacao)
         layout_filtro.addStretch()
-
         self.layout_detalhes.addLayout(layout_filtro)
 
         self.abas = QTabWidget()
         self.layout_detalhes.addWidget(self.abas)
 
-        # --- ABA DADOS (MODIFICADA PARA TER TABELA) ---
+        # ABA 1: DADOS
         self.tab_dados = QWidget();
         l_dados = QFormLayout(self.tab_dados)
         self.lbl_d_licitacao = QLabel("-");
@@ -1920,7 +2216,6 @@ class SistemaGestao(QMainWindow):
         self.lbl_d_vigencia = QLabel("-");
         self.lbl_d_comp = QLabel("-")
 
-        # NOVA TABELA DE RESUMO DE CICLOS
         self.tab_ciclos_resumo = TabelaExcel()
         self.tab_ciclos_resumo.setColumnCount(4)
         self.tab_ciclos_resumo.setHorizontalHeaderLabels(
@@ -1932,10 +2227,10 @@ class SistemaGestao(QMainWindow):
         l_dados.addRow("Dispensa:", self.lbl_d_dispensa)
         l_dados.addRow("Vigência:", self.lbl_d_vigencia);
         l_dados.addRow("Competência:", self.lbl_d_comp)
-        l_dados.addRow("Resumo Financeiro:", self.tab_ciclos_resumo)  # Adiciona a tabela ao layout
-
+        l_dados.addRow("Resumo Financeiro:", self.tab_ciclos_resumo)
         self.abas.addTab(self.tab_dados, "Dados")
 
+        # ABA 2: FINANCEIRO
         tab_fin = QWidget();
         l_fin = QVBoxLayout(tab_fin)
 
@@ -1962,17 +2257,27 @@ class SistemaGestao(QMainWindow):
         btns_fin = QHBoxLayout()
         b_ne = QPushButton("+ NE");
         b_ne.clicked.connect(self.dialogo_nova_ne)
+        
         b_pg = QPushButton("Pagar");
+        b_pg.setStyleSheet("background-color: #27ae60; color: white; font-weight: bold;") # Verde
         b_pg.clicked.connect(self.abrir_pagamento)
+        
+        # --- NOVO BOTÃO ANULAR ---
+        b_anular = QPushButton("Anular");
+        b_anular.setStyleSheet("background-color: #c0392b; color: white; font-weight: bold;") # Vermelho
+        b_anular.clicked.connect(self.abrir_anulacao)
+        # -------------------------
+
         btns_fin.addWidget(b_ne);
         btns_fin.addWidget(b_pg);
+        btns_fin.addWidget(b_anular); # Adiciona ao layout
         btns_fin.addStretch()
         l_fin.addLayout(btns_fin)
 
         self.tab_empenhos = TabelaExcel()
         self.tab_empenhos.setColumnCount(7)
         self.tab_empenhos.setHorizontalHeaderLabels(
-            ["NE", "Fonte", "Serviço", "Valor Original", "Pago", "Saldo", "Média do Serviço"])
+            ["NE", "Fonte", "Serviço", "Valor Original", "Pago", "Saldo", "Média/mês (serviço)"])
         self.tab_empenhos.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.tab_empenhos.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.tab_empenhos.itemClicked.connect(self.selecionar_ne)
@@ -1980,26 +2285,23 @@ class SistemaGestao(QMainWindow):
         self.tab_empenhos.customContextMenuRequested.connect(self.menu_empenho)
         l_fin.addWidget(self.tab_empenhos)
 
-        # --- CABEÇALHO DO HISTÓRICO COM BOTÃO MAXIMIZAR ---
+        # --- MUDANÇA AQUI: self.lbl_hist para poder alterar depois ---
         layout_hist_header = QHBoxLayout()
-        lbl_hist = QLabel("Histórico Financeiro:")
-        lbl_hist.setFont(QFont("Arial", 11, QFont.Weight.Bold))
+        self.lbl_hist = QLabel("Histórico Financeiro:") # <--- Tornou-se self
+        self.lbl_hist.setFont(QFont("Arial", 11, QFont.Weight.Bold))
         
         btn_max_hist = QPushButton("Maximizar Histórico")
         btn_max_hist.setFixedWidth(120)
         btn_max_hist.setStyleSheet("font-size: 11px; padding: 5px;")
         btn_max_hist.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_max_hist.clicked.connect(self.abrir_historico_maximizado) # Conecta ao novo método
+        btn_max_hist.clicked.connect(self.abrir_historico_maximizado)
         
-        layout_hist_header.addWidget(lbl_hist)
+        layout_hist_header.addWidget(self.lbl_hist)
         layout_hist_header.addStretch()
         layout_hist_header.addWidget(btn_max_hist)
-        
         l_fin.addLayout(layout_hist_header)
-        # --------------------------------------------------
 
         self.tab_mov = TabelaExcel()
-        
         self.tab_mov.setColumnCount(4)
         self.tab_mov.setHorizontalHeaderLabels(["Competência", "Tipo", "Valor", "Saldo"])
         self.tab_mov.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
@@ -2010,7 +2312,7 @@ class SistemaGestao(QMainWindow):
 
         self.abas.addTab(tab_fin, "Financeiro")
 
-        # Aba Serviços (Dentro de init_ui)
+        # ABA 3: SERVIÇOS
         tab_serv = QWidget();
         l_serv = QVBoxLayout(tab_serv)
         b_nserv = QPushButton("+ Serviço")
@@ -2024,18 +2326,16 @@ class SistemaGestao(QMainWindow):
             "Descrição", "Valor Mensal", "Orçamento\n(neste ciclo)", "Empenhado", "Não Empenhado",
             "Total Pago", "Saldo de Empenhos", "Saldo Serviço"
         ])
-
         self.tab_subcontratos.cellDoubleClicked.connect(self.abrir_historico_servico)
         self.tab_subcontratos.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.tab_subcontratos.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.tab_subcontratos.customContextMenuRequested.connect(self.menu_subcontrato)
         l_serv.addWidget(self.tab_subcontratos)
-
         self.abas.addTab(tab_serv, "Serviços")
 
+        # ABA 4: ADITIVOS
         tab_adit = QWidget();
         l_adit = QVBoxLayout(tab_adit)
-
         b_nadit = QPushButton("+ Aditivo")
         b_nadit.setFixedWidth(150)
         b_nadit.clicked.connect(self.abrir_novo_aditivo)
@@ -2049,8 +2349,11 @@ class SistemaGestao(QMainWindow):
         self.tab_aditivos.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.tab_aditivos.customContextMenuRequested.connect(self.menu_aditivo)
         l_adit.addWidget(self.tab_aditivos)
-
         self.abas.addTab(tab_adit, "Aditivos")
+
+        # ABA 5: DETALHE GLOBAL
+        self.painel_global = PainelDetalheGlobal()
+        self.abas.addTab(self.painel_global, "Detalhe Contrato/Ciclo")
 
         self.stack.addWidget(self.page_pesquisa)
         self.stack.addWidget(self.page_detalhes)
@@ -2236,14 +2539,14 @@ class SistemaGestao(QMainWindow):
 
 
     def excluir_contrato_externo(self, c):
-        if QMessageBox.question(self, "Excluir", f"Excluir {c.numero}?") == QMessageBox.StandardButton.Yes:
+        if DarkMessageBox.question(self, "Excluir", f"Excluir {c.numero}?") == QMessageBox.StandardButton.Yes:
             self.db_contratos.remove(c);
             self.filtrar_contratos();
             self.salvar_dados()
 
     def dialogo_nova_ne(self):
         if not self.contrato_selecionado: return
-        if not self.contrato_selecionado.lista_servicos: QMessageBox.warning(self, "Aviso",
+        if not self.contrato_selecionado.lista_servicos: DarkMessageBox.warning(self, "Aviso",
                                                                              "Cadastre um Serviço antes."); return
         dial = DialogoNovoEmpenho(self.contrato_selecionado, parent=self)
 
@@ -2266,11 +2569,11 @@ class SistemaGestao(QMainWindow):
                 self.registrar_log("Nova NE", f"NE {num} (R$ {fmt_br(val)}) adicionada ao contrato {self.contrato_selecionado.numero}")
                 self.atualizar_painel_detalhes(); self.salvar_dados()
             else:
-                QMessageBox.critical(self, "Bloqueio", msg)
+                DarkMessageBox.critical(self, "Bloqueio", msg)
 
     def abrir_pagamento(self):
         if not self.ne_selecionada:
-            QMessageBox.warning(self, "Aviso", "Selecione uma Nota de Empenho primeiro.")
+            DarkMessageBox.warning(self, "Aviso", "Selecione uma Nota de Empenho primeiro.")
             return
         
         # Passa as datas do contrato para gerar a lista de meses
@@ -2283,7 +2586,7 @@ class SistemaGestao(QMainWindow):
             ok, msg = self.ne_selecionada.realizar_pagamento(val, comps_str, obs)
             
             if not ok: 
-                QMessageBox.warning(self, "Erro", msg)
+                DarkMessageBox.warning(self, "Erro", msg)
             else:
                 # --- AQUI: ADICIONANDO O LOG QUE FALTAVA ---
                 self.registrar_log("Pagamento", f"Pagamento R$ {fmt_br(val)} na NE {self.ne_selecionada.numero}. Comp: {comps_str}")
@@ -2295,12 +2598,36 @@ class SistemaGestao(QMainWindow):
 
     def abrir_historico_maximizado(self):
         if not self.ne_selecionada:
-            QMessageBox.warning(self, "Aviso", "Selecione uma Nota de Empenho na tabela acima primeiro.")
+            DarkMessageBox.warning(self, "Aviso", "Selecione uma Nota de Empenho na tabela acima primeiro.")
             return
             
         dial = DialogoHistoricoMaximizado(self.ne_selecionada, parent=self)
         dial.exec()
 
+    def abrir_anulacao(self):
+        if not self.ne_selecionada:
+            DarkMessageBox.warning(self, "Aviso", "Selecione uma Nota de Empenho primeiro.")
+            return
+        
+        # Usa o novo diálogo simplificado (sem competência)
+        dial = DialogoAnulacao(parent=self)
+        
+        if dial.exec():
+            val, obs = dial.get_dados()
+            
+            if val <= 0:
+                DarkMessageBox.warning(self, "Erro", "O valor deve ser maior que zero.")
+                return
+
+            # Chama o método de anulação (sem passar competência)
+            ok, msg = self.ne_selecionada.realizar_anulacao(val, obs)
+            
+            if ok:
+                self.registrar_log("Anulação", f"Anulou R$ {fmt_br(val)} na NE {self.ne_selecionada.numero}. Motivo: {obs}")
+                
+            self.atualizar_painel_detalhes()
+            self.atualizar_movimentos()
+            self.salvar_dados()
 
     def abrir_novo_servico(self):
         if not self.contrato_selecionado: return
@@ -2359,14 +2686,14 @@ class SistemaGestao(QMainWindow):
 
             self.registrar_log("Novo Aditivo", f"Aditivo de {tipo} (R$ {fmt_br(valor)}) no contrato {self.contrato_selecionado.numero}")
 
-            QMessageBox.information(self, "Aditivo", msg)
+            DarkMessageBox.info(self, "Aditivo", msg)
             self.atualizar_painel_detalhes()
             self.salvar_dados()
 
     # --- EXPORTAÇÃO E IMPORTAÇÃO ---
 
     def exportar_contrato_completo(self):
-        if not self.contrato_selecionado: QMessageBox.warning(self, "Aviso", "Selecione um contrato."); return
+        if not self.contrato_selecionado: DarkMessageBox.warning(self, "Aviso", "Selecione um contrato."); return
         fname, _ = QFileDialog.getSaveFileName(self, "Exportar Contrato", f"Contrato_{self.contrato_selecionado.numero}.csv", "CSV Files (*.csv)")
         if not fname: return
         
@@ -2408,11 +2735,11 @@ class SistemaGestao(QMainWindow):
                 for ne in c.lista_notas_empenho:
                     for mov in ne.historico: writer.writerow([ne.numero, mov.competencia, mov.tipo, fmt_br(mov.valor)])
 
-            QMessageBox.information(self, "Sucesso", "Exportado com sucesso!")
-        except Exception as e: QMessageBox.critical(self, "Erro", str(e))
+            DarkMessageBox.info(self, "Sucesso", "Exportado com sucesso!")
+        except Exception as e: DarkMessageBox.critical(self, "Erro", str(e))
     
     def exportar_ne_atual(self):
-        if not self.ne_selecionada: QMessageBox.warning(self, "Aviso", "Selecione uma NE."); return
+        if not self.ne_selecionada: DarkMessageBox.warning(self, "Aviso", "Selecione uma NE."); return
         fname, _ = QFileDialog.getSaveFileName(self, "Exportar NE", f"NE_{self.ne_selecionada.numero}.csv",
                                                "CSV Files (*.csv)")
         if not fname: return
@@ -2425,14 +2752,14 @@ class SistemaGestao(QMainWindow):
                 writer.writerow(["Comp", "Tipo", "Valor"])
                 for m in ne.historico:
                     writer.writerow([m.competencia, m.tipo, fmt_br(m.valor)])
-            QMessageBox.information(self, "Sucesso", "Exportado!")
+            DarkMessageBox.info(self, "Sucesso", "Exportado!")
         except Exception as e:
-            QMessageBox.critical(self, "Erro", str(e))
+            DarkMessageBox.critical(self, "Erro", str(e))
 
 
     def importar_contratos(self):
         instrucao = "CSV (ponto e vírgula):\nNum;Prest;Obj;Valor;VigIni;VigFim;CompIni;CompFim;Lic;Disp"
-        QMessageBox.information(self, "Instruções", instrucao)
+        DarkMessageBox.info(self, "Instruções", instrucao)
         fname, _ = QFileDialog.getOpenFileName(self, "CSV Contratos", "", "CSV (*.csv)")
         if not fname: return
         try:
@@ -2446,14 +2773,14 @@ class SistemaGestao(QMainWindow):
                                  row[9]))
             self.filtrar_contratos();
             self.salvar_dados();
-            QMessageBox.information(self, "Sucesso", "Importado!")
+            DarkMessageBox.info(self, "Sucesso", "Importado!")
         except Exception as e:
-            QMessageBox.critical(self, "Erro", str(e))
+            DarkMessageBox.critical(self, "Erro", str(e))
 
     def importar_empenhos(self):
-        if not self.contrato_selecionado: QMessageBox.warning(self, "Aviso", "Abra um contrato."); return
+        if not self.contrato_selecionado: DarkMessageBox.warning(self, "Aviso", "Abra um contrato."); return
         instrucao = "CSV:\nNE;Valor;Desc;NomeServico;Fonte;Data"
-        QMessageBox.information(self, "Instruções", instrucao)
+        DarkMessageBox.info(self, "Instruções", instrucao)
         fname, _ = QFileDialog.getOpenFileName(self, "CSV Empenhos", "", "CSV (*.csv)")
         if not fname: return
         try:
@@ -2470,13 +2797,13 @@ class SistemaGestao(QMainWindow):
                     self.contrato_selecionado.adicionar_nota_empenho(ne)
             self.atualizar_painel_detalhes();
             self.salvar_dados();
-            QMessageBox.information(self, "Sucesso", "Importado!")
+            DarkMessageBox.info(self, "Sucesso", "Importado!")
         except Exception as e:
-            QMessageBox.critical(self, "Erro", str(e))
+            DarkMessageBox.critical(self, "Erro", str(e))
 
     def importar_servicos(self):
         if not self.contrato_selecionado:
-            QMessageBox.warning(self, "Aviso", "Selecione (abra) um contrato primeiro na tela de pesquisa.")
+            DarkMessageBox.warning(self, "Aviso", "Selecione (abra) um contrato primeiro na tela de pesquisa.")
             return
 
         lista_ciclos = [c.nome for c in self.contrato_selecionado.ciclos]
@@ -2499,7 +2826,7 @@ class SistemaGestao(QMainWindow):
             "ESTRUTURA DO CSV (Separador: ponto e vírgula ';')\n"
             "Colunas: Descrição; Valor Total; [Valor Mensal (Opcional)]"
         )
-        QMessageBox.information(self, "Instruções", instrucao)
+        DarkMessageBox.info(self, "Instruções", instrucao)
 
         fname, _ = QFileDialog.getOpenFileName(self, "Selecionar CSV Serviços", "", "Arquivos CSV (*.csv)")
         if not fname: return
@@ -2533,15 +2860,15 @@ class SistemaGestao(QMainWindow):
 
             self.atualizar_painel_detalhes()
             self.salvar_dados()
-            QMessageBox.information(self, "Concluído", f"{sucesso} serviços importados para o ciclo '{nome_ciclo}'!")
+            DarkMessageBox.info(self, "Concluído", f"{sucesso} serviços importados para o ciclo '{nome_ciclo}'!")
 
         except Exception as e:
-            QMessageBox.critical(self, "Erro", f"Erro na importação: {str(e)}")
+            DarkMessageBox.critical(self, "Erro", f"Erro na importação: {str(e)}")
 
 
     def importar_pagamentos(self):
         if not self.contrato_selecionado:
-            QMessageBox.warning(self, "Aviso", "Selecione (abra) um contrato primeiro.")
+            DarkMessageBox.warning(self, "Aviso", "Selecione (abra) um contrato primeiro.")
             return
 
         instrucao = (
@@ -2552,7 +2879,7 @@ class SistemaGestao(QMainWindow):
             "2. Valor do Pagamento (ex: 500,00)\n"
             "3. Competência (MM/AAAA)\n"
         )
-        QMessageBox.information(self, "Instruções", instrucao)
+        DarkMessageBox.info(self, "Instruções", instrucao)
 
         fname, _ = QFileDialog.getOpenFileName(self, "Selecionar CSV Pagamentos", "", "Arquivos CSV (*.csv)")
         if not fname: return
@@ -2598,40 +2925,45 @@ class SistemaGestao(QMainWindow):
                 resumo += f"\nErros: {len(erros)}\n\n" + "\n".join(erros[:5])
                 if len(erros) > 5: resumo += "\n..."
 
-            QMessageBox.information(self, "Relatório", resumo)
+            DarkMessageBox.info(self, "Relatório", resumo)
 
         except Exception as e:
-            QMessageBox.critical(self, "Erro", f"Erro na importação: {str(e)}")
+            DarkMessageBox.critical(self, "Erro", f"Erro na importação: {str(e)}")
 
     # --- MENUS CONTEXTO E AUXILIARES ---
 
     def selecionar_ne(self, item):
         self.ne_selecionada = self.tab_empenhos.item(item.row(), 0).data(Qt.ItemDataRole.UserRole)
 
-        # Atualizar o Painel de Detalhes Superior
         if self.ne_selecionada and self.contrato_selecionado:
+            # (Código de labels de ciclo/emissão/aditivo mantém igual...)
             c = self.contrato_selecionado
             ne = self.ne_selecionada
-
-            # Buscar nome do Ciclo
+            
             nome_ciclo = "?"
             for ciclo in c.ciclos:
-                if ciclo.id_ciclo == ne.ciclo_id:
-                    nome_ciclo = ciclo.nome
-                    break
-
-            # Buscar info Aditivo Vinculado
+                if ciclo.id_ciclo == ne.ciclo_id: nome_ciclo = ciclo.nome; break
+            
             info_aditivo = "Não vinculado"
             if ne.aditivo_vinculado_id:
                 for a in c.lista_aditivos:
-                    if a.id_aditivo == ne.aditivo_vinculado_id:
-                        info_aditivo = f"{a.descricao} (ID {a.id_aditivo})"
-                        break
+                    if a.id_aditivo == ne.aditivo_vinculado_id: info_aditivo = f"{a.descricao} (ID {a.id_aditivo})"; break
 
             self.lbl_ne_ciclo.setText(f"Ciclo: {nome_ciclo}")
             self.lbl_ne_emissao.setText(f"Emissão: {ne.data_emissao}")
             self.lbl_ne_aditivo.setText(f"Aditivo: {info_aditivo}")
             self.lbl_ne_desc.setText(f"Descrição: {ne.descricao}")
+
+            # --- CORREÇÃO DO TÍTULO VERDE ---
+            if hasattr(self, 'lbl_hist'):
+                # Usa a nova property .saldo_disponivel
+                saldo = ne.saldo_disponivel
+                
+                info_nota = (f"NE {ne.numero} | {ne.descricao} | "
+                             f"Valor: {fmt_br(ne.valor_inicial)} | "
+                             f"<span style='color: #27ae60; font-weight: bold;'>Saldo: {fmt_br(saldo)}</span>")
+                
+                self.lbl_hist.setText(f"Histórico Financeiro: {info_nota}")
 
         self.atualizar_movimentos()
 
@@ -2661,7 +2993,7 @@ class SistemaGestao(QMainWindow):
             self.salvar_dados()
 
     def excluir_ne(self):
-        if self.ne_selecionada and QMessageBox.question(self, "Confirma", "Excluir?") == QMessageBox.StandardButton.Yes:
+        if self.ne_selecionada and DarkMessageBox.question(self, "Confirma", "Excluir?") == QMessageBox.StandardButton.Yes:
             self.contrato_selecionado.lista_notas_empenho.remove(self.ne_selecionada);
             self.ne_selecionada = None;
             self.atualizar_painel_detalhes();
@@ -2708,8 +3040,8 @@ class SistemaGestao(QMainWindow):
                     writer.writerow([])
                     writer.writerow(["Total Empenhado (Neste Ciclo)", fmt_br(total_gasto)])
                     writer.writerow(["Saldo", fmt_br(val_ciclo - total_gasto)])
-                QMessageBox.information(self, "Sucesso", "Serviço exportado!")
-            except Exception as e: QMessageBox.critical(self, "Erro", str(e))
+                DarkMessageBox.info(self, "Sucesso", "Serviço exportado!")
+            except Exception as e: DarkMessageBox.critical(self, "Erro", str(e))
 
     def editar_servico(self, row):
         # Pega índice real oculto na tabela (segurança contra filtros)
@@ -2753,19 +3085,24 @@ class SistemaGestao(QMainWindow):
         sub = self.contrato_selecionado.lista_servicos[real_index]
         ciclo_view_id = self.combo_ciclo_visualizacao.currentData() or 0
 
-        nome_ciclo = "Ciclo Desconhecido"
-        for c in self.contrato_selecionado.ciclos:
-            if c.id_ciclo == ciclo_view_id:
-                nome_ciclo = c.nome
-                break
+        # Pega as datas corretas do ciclo para desenhar as colunas
+        ciclo = next((c for c in self.contrato_selecionado.ciclos if c.id_ciclo == ciclo_view_id), None)
+        if ciclo:
+            dt_ini = ciclo.inicio if hasattr(ciclo, 'inicio') and ciclo.inicio else self.contrato_selecionado.comp_inicio
+            dt_fim = ciclo.fim if hasattr(ciclo, 'fim') and ciclo.fim else self.contrato_selecionado.comp_fim
+        else:
+            # Fallback seguro
+            dt_ini = self.contrato_selecionado.comp_inicio
+            dt_fim = self.contrato_selecionado.comp_fim
 
-        valor_orcamento = sub.get_valor_ciclo(ciclo_view_id)
-
+        # Filtra apenas as NEs deste serviço e deste ciclo
         lista_nes = [ne for ne in self.contrato_selecionado.lista_notas_empenho
                      if ne.subcontrato_idx == real_index and ne.ciclo_id == ciclo_view_id]
 
-        dial = DialogoDetalheServico(sub, nome_ciclo, valor_orcamento, lista_nes, parent=self)
+        # Chama a nova versão da janela (Maximizada e com ícones)
+        dial = DialogoDetalheServico(sub, lista_nes, dt_ini, dt_fim, parent=self)
         dial.exec()
+
 
     def excluir_servico(self, row):
         # 1. Identificar o serviço e o ciclo atual
@@ -2779,7 +3116,7 @@ class SistemaGestao(QMainWindow):
                                  for ne in self.contrato_selecionado.lista_notas_empenho)
 
         if tem_ne_neste_ciclo:
-            QMessageBox.warning(self, "Bloqueado",
+            DarkMessageBox.warning(self, "Bloqueado",
                                 "Este serviço possui Notas de Empenho neste ciclo.\n"
                                 "Não é possível removê-lo enquanto houver movimentação financeira.")
             return
@@ -2794,7 +3131,12 @@ class SistemaGestao(QMainWindow):
                    "O que deseja fazer?")
 
             btns = QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel
-            box = QMessageBox(QMessageBox.Icon.Question, "Excluir Serviço", msg, btns, self)
+            # MUDANÇA AQUI: Instancia DarkMessageBox em vez de QMessageBox
+            box = DarkMessageBox(parent=self) 
+            box.setIcon(QMessageBox.Icon.Question)
+            box.setWindowTitle("Excluir Serviço")
+            box.setText(msg)
+            box.setStandardButtons(btns)
             box.setButtonText(QMessageBox.StandardButton.Yes, "Remover DESTE Ciclo (Manter Histórico)")
             box.setButtonText(QMessageBox.StandardButton.No, "Apagar de TODOS (Exclusão Total)")
             box.setButtonText(QMessageBox.StandardButton.Cancel, "Cancelar")
@@ -2821,13 +3163,13 @@ class SistemaGestao(QMainWindow):
         # Antes, verifica se tem NEs em QUALQUER lugar (já que vamos apagar tudo)
         for ne in self.contrato_selecionado.lista_notas_empenho:
             if ne.subcontrato_idx == row:
-                QMessageBox.warning(self, "Bloqueado",
+                DarkMessageBox.warning(self, "Bloqueado",
                                     "Para exclusão TOTAL, não pode haver nenhuma NE em nenhum ciclo.\n"
                                     "Encontrei movimentação em outros períodos.")
                 return
 
         # Confirmação final
-        if QMessageBox.question(self, "Confirmar", "Tem a certeza que deseja apagar permanentemente?",
+        if DarkMessageBox.question(self, "Confirmar", "Tem a certeza que deseja apagar permanentemente?",
                                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No) == QMessageBox.StandardButton.Yes:
 
             # Reindexação (Atualiza índices das NEs e Aditivos de outros serviços)
@@ -2925,7 +3267,7 @@ class SistemaGestao(QMainWindow):
             tem_ne = any(
                 ne.ciclo_id == adt.ciclo_pertencente_id for ne in self.contrato_selecionado.lista_notas_empenho)
             if tem_ne:
-                QMessageBox.warning(self, "Bloqueado", "Ciclo com NEs. Exclua as NEs antes.")
+                DarkMessageBox.warning(self, "Bloqueado", "Ciclo com NEs. Exclua as NEs antes.")
                 return
             for c in self.contrato_selecionado.ciclos:
                 if c.id_ciclo == adt.ciclo_pertencente_id:
@@ -2956,35 +3298,52 @@ class SistemaGestao(QMainWindow):
         item = self.tab_mov.itemAt(pos)
         if item:
             row = item.row()
-            if self.ne_selecionada.historico[row].tipo == "Pagamento":
+            tipo = self.ne_selecionada.historico[row].tipo
+            
+            # Agora permite editar Pagamento OU Anulação
+            if tipo in ["Pagamento", "Anulação"]:
                 menu = QMenu(self)
                 menu.addAction("Editar", lambda: self.editar_pagamento(row))
                 menu.addAction("Excluir", lambda: self.excluir_pagamento(row))
                 menu.exec(self.tab_mov.mapToGlobal(pos))
 
     def editar_pagamento(self, row):
-        mov = self.ne_selecionada.historico[row];
-        dial = DialogoPagamento(self.contrato_selecionado.comp_inicio, self.contrato_selecionado.comp_fim,
-                                pg_editar=mov, parent=self)
-        if dial.exec():
-            c, v, obs = dial.get_dados() # Recebe obs também
-            ok, m = self.ne_selecionada.editar_movimentacao(row, v, c, obs)
-            if ok:
-                # Log de edição
-                self.registrar_log("Editar Pagamento", f"Editou pgto na NE {self.ne_selecionada.numero}. Novo valor: {fmt_br(v)}")
-                self.atualizar_painel_detalhes(); self.atualizar_movimentos(); self.salvar_dados()
-            else:
-                QMessageBox.warning(self, "Erro", m)
-
+        mov = self.ne_selecionada.historico[row]
+        
+        # Lógica diferente dependendo do tipo
+        if mov.tipo == "Anulação":
+            # Abre diálogo de Anulação (menor, sem data)
+            dial = DialogoAnulacao(editar_valor=mov.valor, editar_obs=mov.observacao, parent=self)
+            if dial.exec():
+                v, obs = dial.get_dados()
+                # Anulação não tem competência, passamos "-"
+                ok, m = self.ne_selecionada.editar_movimentacao(row, v, "-", obs)
+                if ok:
+                    self.registrar_log("Editar Anulação", f"Editou anulação na NE {self.ne_selecionada.numero}.")
+                    self.atualizar_painel_detalhes(); self.atualizar_movimentos(); self.salvar_dados()
+                else:
+                    DarkMessageBox.warning(self, "Erro", m)
+        
+        else:
+            # Abre diálogo de Pagamento (com data)
+            dial = DialogoPagamento(self.contrato_selecionado.comp_inicio, self.contrato_selecionado.comp_fim,
+                                    pg_editar=mov, parent=self)
+            if dial.exec():
+                c, v, obs = dial.get_dados()
+                ok, m = self.ne_selecionada.editar_movimentacao(row, v, c, obs)
+                if ok:
+                    self.registrar_log("Editar Pagamento", f"Editou pgto na NE {self.ne_selecionada.numero}.")
+                    self.atualizar_painel_detalhes(); self.atualizar_movimentos(); self.salvar_dados()
+                else:
+                    DarkMessageBox.warning(self, "Erro", m)
 
     def excluir_pagamento(self, row):
-        # Recupera dados antes de apagar para o log
         mov = self.ne_selecionada.historico[row]
+        tipo = mov.tipo
         valor_apagado = mov.valor
         
         if self.ne_selecionada.excluir_movimentacao(row): 
-            # Log de exclusão
-            self.registrar_log("Excluir Pagamento", f"Excluiu pgto de R$ {fmt_br(valor_apagado)} da NE {self.ne_selecionada.numero}")
+            self.registrar_log(f"Excluir {tipo}", f"Excluiu {tipo} de R$ {fmt_br(abs(valor_apagado))} da NE {self.ne_selecionada.numero}")
             
             self.atualizar_painel_detalhes(); 
             self.atualizar_movimentos(); 
@@ -2994,36 +3353,51 @@ class SistemaGestao(QMainWindow):
         if not self.ne_selecionada: return
         self.tab_mov.setRowCount(0)
         
-        # Aumentamos para 5 colunas para caber a Obs
         self.tab_mov.setColumnCount(5) 
         self.tab_mov.setHorizontalHeaderLabels(["Competência", "Tipo", "Valor", "Saldo", "Obs."])
-        self.tab_mov.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch) # Obs estica
+        self.tab_mov.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
 
         saldo_corrente = self.ne_selecionada.valor_inicial
         fonte_negrito = QFont(); fonte_negrito.setBold(True)
+        fonte_pequena = QFont(); fonte_pequena.setPointSize(8); fonte_pequena.setBold(True)
 
         for row, m in enumerate(self.ne_selecionada.historico):
             self.tab_mov.insertRow(row)
 
+            # --- LÓGICA DO SALDO VISUAL ---
             if m.tipo == "Pagamento":
-                saldo_corrente -= m.valor
+                saldo_corrente -= m.valor # Paga, diminui saldo
+            elif m.tipo == "Anulação":
+                saldo_corrente -= abs(m.valor) # Anula, também diminui saldo (corta a nota)
 
-            # Itens
             item_comp = QTableWidgetItem(m.competencia)
             item_tipo = QTableWidgetItem(m.tipo)
             item_valor = QTableWidgetItem(fmt_br(m.valor))
             item_saldo = QTableWidgetItem(fmt_br(saldo_corrente))
-            item_obs = QTableWidgetItem(m.observacao) # <--- Obs aqui
 
-            # Alinhamento
+            if m.tipo == "Anulação":
+                item_tipo.setForeground(QColor("#c0392b"))
+                item_valor.setForeground(QColor("#c0392b"))
+            elif m.tipo == "Pagamento":
+                item_valor.setForeground(QColor("black"))
+            
+            txt_obs = m.observacao
+            if m.tipo == "Emissão Original":
+                nome_serv = "?"
+                if 0 <= self.ne_selecionada.subcontrato_idx < len(self.contrato_selecionado.lista_servicos):
+                    nome_serv = self.contrato_selecionado.lista_servicos[self.ne_selecionada.subcontrato_idx].descricao
+                txt_obs = f"Serv: {nome_serv} | Fonte: {self.ne_selecionada.fonte_recurso} | {self.ne_selecionada.descricao}"
+
+            item_obs = QTableWidgetItem(txt_obs)
+
             for i in [item_comp, item_tipo, item_valor, item_saldo]:
                 i.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             
             item_saldo.setForeground(QColor("#27ae60"))
 
             if m.tipo == "Emissão Original":
-                for i in [item_comp, item_tipo, item_valor, item_saldo, item_obs]:
-                    i.setFont(fonte_negrito)
+                for i in [item_comp, item_tipo, item_valor, item_saldo]: i.setFont(fonte_negrito)
+                item_obs.setFont(fonte_pequena)
 
             self.tab_mov.setItem(row, 0, item_comp)
             self.tab_mov.setItem(row, 1, item_tipo)
@@ -3053,10 +3427,9 @@ class SistemaGestao(QMainWindow):
                     if len(parts) == 3: comp_final_geral = f"{parts[1]}/{parts[2]}"
                 except:
                     pass
-
         self.lbl_d_comp.setText(f"{c.comp_inicio} a {comp_final_geral}")
 
-        # --- PREENCHIMENTO DA TABELA RESUMO (ABA DADOS) ---
+        # --- TABELA RESUMO (ABA DADOS) ---
         self.tab_ciclos_resumo.setRowCount(0)
 
         def extrair_comp(data_str):
@@ -3067,7 +3440,6 @@ class SistemaGestao(QMainWindow):
             except:
                 return "?"
 
-        # Helpers
         def item_centro(txt):
             i = QTableWidgetItem(str(txt));
             i.setTextAlignment(Qt.AlignmentFlag.AlignCenter);
@@ -3075,7 +3447,6 @@ class SistemaGestao(QMainWindow):
 
         for ciclo in c.ciclos:
             if "(CANCELADO)" in ciclo.nome: continue
-
             periodo_str = ""
             if ciclo.id_ciclo == 0:
                 periodo_str = f"[{c.comp_inicio} a {c.comp_fim}]"
@@ -3086,43 +3457,44 @@ class SistemaGestao(QMainWindow):
                     inicio = extrair_comp(adt_gerador.data_inicio_vigencia)
                     fim = extrair_comp(adt_gerador.data_nova)
                     periodo_str = f"[{inicio} a {fim}]"
-                else:
-                    periodo_str = ""
 
-            # Cálculos Financeiros
             teto = ciclo.get_teto_total()
+            
+            # --- CÁLCULO CORRIGIDO PARA O RESUMO ---
+            total_empenhado_ciclo = sum(ne.valor_inicial for ne in c.lista_notas_empenho if ne.ciclo_id == ciclo.id_ciclo)
+            
+            total_pago_ciclo = 0.0
+            total_anulado_ciclo = 0.0
+            
+            for ne in c.lista_notas_empenho:
+                if ne.ciclo_id == ciclo.id_ciclo:
+                    for mov in ne.historico:
+                        if mov.tipo == "Pagamento":
+                            total_pago_ciclo += mov.valor
+                        elif mov.tipo == "Anulação":
+                            total_anulado_ciclo += abs(mov.valor) # Soma como positivo para abater depois
 
-            # Soma Empenhos e Pagamentos deste ciclo
-            total_empenhado_ciclo = sum(
-                ne.valor_inicial for ne in c.lista_notas_empenho if ne.ciclo_id == ciclo.id_ciclo)
-            total_pago_ciclo = sum(ne.valor_pago for ne in c.lista_notas_empenho if ne.ciclo_id == ciclo.id_ciclo)
-
-            valor_nao_empenhado = teto - total_empenhado_ciclo
+            # Valor Não Empenhado = Teto do Ciclo - (Empenhos - Anulações de Saldo)
+            # Se a anulação reduz o empenho, ela libera saldo no ciclo.
+            valor_nao_empenhado = teto - (total_empenhado_ciclo - total_anulado_ciclo)
+            
+            # Saldo de Pagamentos = O que tenho de contrato - O que paguei
             saldo_pagamentos = teto - total_pago_ciclo
 
-            # Preenche a tabela
             row = self.tab_ciclos_resumo.rowCount()
             self.tab_ciclos_resumo.insertRow(row)
-
-            # Col 0: Nome do Ciclo + Período
-            nome_display = f"{ciclo.nome}  {periodo_str}"
-            self.tab_ciclos_resumo.setItem(row, 0, item_centro(nome_display))
-
-            # Col 1: Teto Total
+            self.tab_ciclos_resumo.setItem(row, 0, item_centro(f"{ciclo.nome}  {periodo_str}"))
             self.tab_ciclos_resumo.setItem(row, 1, item_centro(fmt_br(teto)))
-
-            # Col 2: Saldo de Pagamentos (Disponível para pagar no contrato total)
+            
             item_sp = item_centro(fmt_br(saldo_pagamentos))
-            item_sp.setForeground(QColor("#2980b9"))  # Azul para Saldo
+            item_sp.setForeground(QColor("#2980b9"))
             self.tab_ciclos_resumo.setItem(row, 2, item_sp)
 
-            # Col 3: Valor Não Empenhado (Disponível para empenhar)
             item_vne = item_centro(fmt_br(valor_nao_empenhado))
-            item_vne.setForeground(QColor("#27ae60"))  # Verde para disponível
+            item_vne.setForeground(QColor("#27ae60"))
             self.tab_ciclos_resumo.setItem(row, 3, item_vne)
 
-        # --- ATUALIZAÇÃO DO SELETOR (COMBOBOX) ---
-        # Tenta pegar o que está na combo. Se for None (abriu agora), pega do contrato salvo.
+        # --- SELETOR (COMBOBOX) ---
         id_selecionado = self.combo_ciclo_visualizacao.currentData()
         if id_selecionado is None and c.ultimo_ciclo_id is not None:
             id_selecionado = c.ultimo_ciclo_id
@@ -3134,100 +3506,134 @@ class SistemaGestao(QMainWindow):
             self.combo_ciclo_visualizacao.addItem(ciclo.nome, ciclo.id_ciclo)
 
         idx = self.combo_ciclo_visualizacao.findData(id_selecionado)
-        if idx >= 0:
-            self.combo_ciclo_visualizacao.setCurrentIndex(idx)
+        if idx >= 0: self.combo_ciclo_visualizacao.setCurrentIndex(idx)
         elif self.combo_ciclo_visualizacao.count() > 0:
             self.combo_ciclo_visualizacao.setCurrentIndex(self.combo_ciclo_visualizacao.count() - 1)
         self.combo_ciclo_visualizacao.blockSignals(False)
 
         ciclo_view_id = self.combo_ciclo_visualizacao.currentData() or 0
 
-        # --- (O RESTANTE DO CÓDIGO PERMANECE IGUAL) ---
-        # Copie o resto da função original (cálculo de médias, tabelas de empenho, serviços, etc.) a partir daqui.
-
+        # --- CÁLCULO DE MÉDIAS ---
         medias_por_servico = {}
         for idx_serv, sub in enumerate(c.lista_servicos):
-            nes_do_servico = [n for n in c.lista_notas_empenho if
-                              n.subcontrato_idx == idx_serv and n.ciclo_id == ciclo_view_id]
-            total_pago = sum(n.valor_pago for n in nes_do_servico)
+            nes_do_servico = [n for n in c.lista_notas_empenho if n.subcontrato_idx == idx_serv and n.ciclo_id == ciclo_view_id]
+            
+            total_pago_bruto = 0.0
             competencias_pagas = set()
+            
             for n in nes_do_servico:
                 for mov in n.historico:
-                    if mov.tipo == "Pagamento" and mov.competencia and mov.competencia != "-":
-                        competencias_pagas.add(mov.competencia)
-            medias_por_servico[idx_serv] = total_pago / len(competencias_pagas) if competencias_pagas else 0.0
+                    if mov.tipo == "Pagamento":
+                        total_pago_bruto += mov.valor
+                        if mov.competencia and mov.competencia != "-":
+                            partes = [p.strip() for p in mov.competencia.split(',') if p.strip()]
+                            for p in partes:
+                                competencias_pagas.add(p)
+            
+            medias_por_servico[idx_serv] = total_pago_bruto / len(competencias_pagas) if competencias_pagas else 0.0
 
+        # --- TABELA EMPENHOS ---
         self.tab_empenhos.setRowCount(0);
         self.tab_mov.setRowCount(0)
-        self.lbl_ne_ciclo.setText("Ciclo: -");
-        self.lbl_ne_emissao.setText("Emissão: -");
-        self.lbl_ne_aditivo.setText("Aditivo: -");
-        self.lbl_ne_desc.setText("Selecione uma NE...")
+        self.lbl_ne_ciclo.setText("Ciclo: -"); self.lbl_ne_emissao.setText("Emissão: -");
+        self.lbl_ne_aditivo.setText("Aditivo: -"); self.lbl_ne_desc.setText("Selecione uma NE...")
+        
+        if hasattr(self, 'lbl_hist'): self.lbl_hist.setText("Histórico Financeiro:")
 
         for row, ne in enumerate(c.lista_notas_empenho):
             if ne.ciclo_id != ciclo_view_id: continue
             new_row = self.tab_empenhos.rowCount();
             self.tab_empenhos.insertRow(new_row)
-            n_serv = c.lista_servicos[ne.subcontrato_idx].descricao if 0 <= ne.subcontrato_idx < len(
-                c.lista_servicos) else "?"
+            n_serv = c.lista_servicos[ne.subcontrato_idx].descricao if 0 <= ne.subcontrato_idx < len(c.lista_servicos) else "?"
+            
+            # Recálculo local para garantir integridade visual
+            val_pago_ne = sum(m.valor for m in ne.historico if m.tipo == "Pagamento")
+            val_anulado_ne = sum(abs(m.valor) for m in ne.historico if m.tipo == "Anulação")
+            saldo_ne = ne.valor_inicial - val_anulado_ne - val_pago_ne
+
             self.tab_empenhos.setItem(new_row, 0, item_centro(ne.numero))
             self.tab_empenhos.setItem(new_row, 1, item_centro(ne.fonte_recurso))
             self.tab_empenhos.setItem(new_row, 2, item_centro(n_serv))
             self.tab_empenhos.setItem(new_row, 3, item_centro(fmt_br(ne.valor_inicial)))
-            self.tab_empenhos.setItem(new_row, 4, item_centro(fmt_br(ne.valor_pago)))
-            s = ne.valor_inicial - ne.valor_pago
-            i_s = QTableWidgetItem(fmt_br(s));
-            i_s.setTextAlignment(Qt.AlignmentFlag.AlignCenter);
-            i_s.setForeground(QColor("#27ae60"))
+            self.tab_empenhos.setItem(new_row, 4, item_centro(fmt_br(val_pago_ne))) # Mostra apenas Pagamento Positivo
+            
+            i_s = QTableWidgetItem(fmt_br(saldo_ne))
+            i_s.setTextAlignment(Qt.AlignmentFlag.AlignCenter); i_s.setForeground(QColor("#27ae60"))
             self.tab_empenhos.setItem(new_row, 5, i_s)
+            
             media_servico = medias_por_servico.get(ne.subcontrato_idx, 0.0)
             self.tab_empenhos.setItem(new_row, 6, item_centro(fmt_br(media_servico)))
             self.tab_empenhos.item(new_row, 0).setData(Qt.ItemDataRole.UserRole, ne)
 
+        # --- TABELA SERVIÇOS ---
         self.tab_subcontratos.setRowCount(0)
+        font_bold = QFont(); font_bold.setBold(True)
+
         for idx_real, sub in enumerate(c.lista_servicos):
-            tem_ne_neste_ciclo = any(
-                ne.subcontrato_idx == idx_real and ne.ciclo_id == ciclo_view_id for ne in c.lista_notas_empenho)
+            tem_ne_neste_ciclo = any(ne.subcontrato_idx == idx_real and ne.ciclo_id == ciclo_view_id for ne in c.lista_notas_empenho)
             if ciclo_view_id not in sub.valores_por_ciclo and not tem_ne_neste_ciclo: continue
 
-            valor_ciclo = sub.get_valor_ciclo(ciclo_view_id);
-            val_mensal = sub.valor_mensal
-            gasto_empenhado = 0.0;
+            valor_ciclo = sub.get_valor_ciclo(ciclo_view_id); val_mensal = sub.valor_mensal
+            
+            # Variáveis acumuladoras do serviço
+            gasto_empenhado = 0.0
             gasto_pago = 0.0
+            total_anulado_serv = 0.0
+            
             for ne in c.lista_notas_empenho:
                 if ne.subcontrato_idx == idx_real and ne.ciclo_id == ciclo_view_id:
-                    gasto_empenhado += ne.valor_inicial;
-                    gasto_pago += ne.valor_pago
+                    gasto_empenhado += ne.valor_inicial
+                    # Soma histórico da NE
+                    for mov in ne.historico:
+                        if mov.tipo == "Pagamento":
+                            gasto_pago += mov.valor
+                        elif mov.tipo == "Anulação":
+                            total_anulado_serv += abs(mov.valor)
 
-            saldo_a_empenhar = valor_ciclo - gasto_empenhado
-            saldo_das_nes = gasto_empenhado - gasto_pago
+            # LÓGICA DE SALDO DO SERVIÇO:
+            # 1. Saldo a Empenhar = Orçamento - (O que empenhei - O que cancelei do empenho)
+            #    Se anulei, o empenho "líquido" diminuiu, logo volta saldo pro serviço.
+            saldo_a_empenhar = valor_ciclo - (gasto_empenhado - total_anulado_serv)
+
+            # 2. Saldo das NEs = (Empenhos - Anulações) - Pagos
+            #    Dinheiro que está preso nas notas aguardando pagamento
+            saldo_das_nes = (gasto_empenhado - total_anulado_serv) - gasto_pago
+            
+            # 3. Saldo do Serviço (Caixa) = Orçamento - Pagos
             saldo_real_caixa = valor_ciclo - gasto_pago
 
             new_row_idx = self.tab_subcontratos.rowCount();
             self.tab_subcontratos.insertRow(new_row_idx)
-            item_desc = item_centro(sub.descricao);
-            item_desc.setData(Qt.ItemDataRole.UserRole, idx_real)
+            
+            item_desc = item_centro(sub.descricao); item_desc.setData(Qt.ItemDataRole.UserRole, idx_real)
             self.tab_subcontratos.setItem(new_row_idx, 0, item_desc)
             self.tab_subcontratos.setItem(new_row_idx, 1, item_centro(fmt_br(val_mensal)))
             self.tab_subcontratos.setItem(new_row_idx, 2, item_centro(fmt_br(valor_ciclo)))
+            
+            # Coluna "Empenhado" mostra o valor BRUTO das notas criadas
             self.tab_subcontratos.setItem(new_row_idx, 3, item_centro(fmt_br(gasto_empenhado)))
-            i_s1 = QTableWidgetItem(fmt_br(saldo_a_empenhar));
-            i_s1.setTextAlignment(Qt.AlignmentFlag.AlignCenter);
-            i_s1.setForeground(QColor("#27ae60" if saldo_a_empenhar >= 0 else "red"))
+            
+            # Coluna "Não Empenhado" (Livre para novas notas)
+            i_s1 = QTableWidgetItem(fmt_br(saldo_a_empenhar))
+            i_s1.setTextAlignment(Qt.AlignmentFlag.AlignCenter); i_s1.setForeground(QColor("#912F2C")) 
             self.tab_subcontratos.setItem(new_row_idx, 4, i_s1)
-            i_pg = QTableWidgetItem(fmt_br(gasto_pago));
-            i_pg.setTextAlignment(Qt.AlignmentFlag.AlignCenter);
-            i_pg.setForeground(QColor("#1f618d"))
+            
+            # Coluna "Total Pago" (Apenas pagamentos positivos)
+            i_pg = QTableWidgetItem(fmt_br(gasto_pago))
+            i_pg.setTextAlignment(Qt.AlignmentFlag.AlignCenter); i_pg.setForeground(QColor("#154360")); i_pg.setFont(font_bold)
             self.tab_subcontratos.setItem(new_row_idx, 5, i_pg)
-            i_s2 = QTableWidgetItem(fmt_br(saldo_das_nes));
-            i_s2.setTextAlignment(Qt.AlignmentFlag.AlignCenter);
-            i_s2.setForeground(QColor("#2980b9"))
+            
+            # Coluna "Saldo de Empenhos" (Dinheiro sobrando nas notas)
+            i_s2 = QTableWidgetItem(fmt_br(saldo_das_nes))
+            i_s2.setTextAlignment(Qt.AlignmentFlag.AlignCenter); i_s2.setForeground(QColor("#3dae27"))
             self.tab_subcontratos.setItem(new_row_idx, 6, i_s2)
-            i_s3 = QTableWidgetItem(fmt_br(saldo_real_caixa));
-            i_s3.setTextAlignment(Qt.AlignmentFlag.AlignCenter);
-            i_s3.setForeground(QColor("#8e44ad"))
+            
+            # Coluna "Saldo Serviço" (O que resta do contrato todo)
+            i_s3 = QTableWidgetItem(fmt_br(saldo_real_caixa))
+            i_s3.setTextAlignment(Qt.AlignmentFlag.AlignCenter); i_s3.setForeground(QColor("#0b632f")); i_s3.setFont(font_bold)
             self.tab_subcontratos.setItem(new_row_idx, 7, i_s3)
 
+        # --- TABELA ADITIVOS ---
         self.tab_aditivos.setRowCount(0)
         for row, adt in enumerate(c.lista_aditivos):
             self.tab_aditivos.insertRow(row)
@@ -3240,6 +3646,9 @@ class SistemaGestao(QMainWindow):
             val_txt = fmt_br(adt.valor) if (adt.tipo == "Valor" or adt.renovacao_valor) else "-"
             self.tab_aditivos.setItem(row, 4, item_centro(val_txt))
             self.tab_aditivos.setItem(row, 5, item_centro(adt.descricao))
+
+        # --- ATUALIZA O NOVO PAINEL ---
+        self.painel_global.carregar_dados(c, ciclo_view_id)
 
     def abrir_manual(self):
         dial = DialogoAjuda(parent=self)
