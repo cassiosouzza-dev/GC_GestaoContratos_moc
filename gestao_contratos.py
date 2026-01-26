@@ -1,16 +1,57 @@
+import sys
+import os
+import json
+import csv
+import ctypes
+from datetime import datetime
 
+# Seus módulos
 import manual_texto
 import webbrowser
 import sinc
 import google.generativeai as genai
-CHAVE_API_GEMINI = "AIzaSyDnCiICf2GXebAYzXxW044-8BSm7r2g3QI"
-import sys
-import csv
-import json
-import os
-import ctypes
+
+# --- CARREGAMENTO SEGURO DA CHAVE API (SEM CHAVE NO CÓDIGO) ---
+def obter_chave_api():
+    """
+    Tenta ler a chave do arquivo 'chave_api.txt'.
+    Se não achar, retorna None.
+    """
+    # Descobre a pasta onde o programa está (seja .py ou .exe)
+    # AGORA VAI FUNCIONAR POIS 'sys' JÁ FOI IMPORTADO ACIMA
+    if getattr(sys, 'frozen', False):
+        caminho_base = os.path.dirname(sys.executable)
+    else:
+        caminho_base = os.path.dirname(os.path.abspath(__file__))
+
+    arquivo_chave = os.path.join(caminho_base, "chave_api.txt")
+
+    # Tenta ler o arquivo de texto
+    if os.path.exists(arquivo_chave):
+        try:
+            with open(arquivo_chave, "r", encoding="utf-8") as f:
+                chave = f.read().strip()
+                # Verifica se a chave parece válida (tem tamanho mínimo)
+                if len(chave) > 10:
+                    return chave
+        except:
+            pass
+
+    return None  # <--- IMPORTANTE: Retorna VAZIO se não achar o arquivo
+
+
+# Carrega a chave (ou fica None se não tiver arquivo)
+CHAVE_API_GEMINI = obter_chave_api()
+
+# Só configura o Gemini se a chave tiver sido carregada com sucesso
+if CHAVE_API_GEMINI:
+    try:
+        genai.configure(api_key=CHAVE_API_GEMINI)
+    except:
+        print("Erro ao configurar API com a chave fornecida.")
+# ----------------------------------------
+
 from ctypes import wintypes
-from datetime import datetime
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QLabel, QLineEdit, QPushButton,
                              QTableWidget, QTableWidgetItem, QMessageBox,
@@ -2425,6 +2466,100 @@ class DialogoNotificacoes(BaseDialog):
     def ao_terminar_analise(self, texto):
         self.txt_ia.setMarkdown(texto)
 
+
+class DialogoResolucaoConflitos(BaseDialog):
+    def __init__(self, lista_itens, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Central de Sincronização e Importação Detalhada")
+        self.resize(1150, 600)
+
+        layout = QVBoxLayout(self)
+
+        header = QLabel("📂 Gerenciador de Importação")
+        header.setStyleSheet("color: #2980b9; font-weight: bold; font-size: 18px;")
+        layout.addWidget(header)
+
+        layout.addWidget(QLabel("Selecione os itens da nuvem que deseja integrar ao seu computador:"))
+
+        self.tabela = QTableWidget()
+        colunas = ["Status", "Contrato / Prestador", "Versão Local", "Versão Nuvem", "Último Editor",
+                   "Diferenças Detectadas", "Importar?"]
+        self.tabela.setColumnCount(len(colunas))
+        self.tabela.setHorizontalHeaderLabels(colunas)
+        self.tabela.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+
+        # Ajuste de largura para colunas específicas
+        self.tabela.setColumnWidth(0, 120)  # Status
+        self.tabela.setColumnWidth(5, 300)  # Diferenças Detectadas
+        self.tabela.setColumnWidth(6, 80)  # Importar?
+
+        layout.addWidget(self.tabela)
+
+        self.itens = lista_itens
+        self.tabela.setRowCount(len(lista_itens))
+
+        for i, item in enumerate(lista_itens):
+            # 1. Status Visual
+            status_text = "✨ NOVO/RESTAURAR" if item['novo'] else "🔄 ATUALIZAÇÃO"
+            self.tabela.setItem(i, 0, QTableWidgetItem(status_text))
+
+            # 2. Identificação
+            self.tabela.setItem(i, 1, QTableWidgetItem(f"{item['numero']} - {item['prestador']}"))
+
+            # 3. Versão Local vs 4. Versão Nuvem
+            self.tabela.setItem(i, 2, QTableWidgetItem(item['data_local'] if not item['novo'] else "Inexistente"))
+            it_nuvem = QTableWidgetItem(item['data_nuvem'])
+            it_nuvem.setForeground(QColor("#27ae60"))  # Destaque em verde para a nuvem
+            it_nuvem.setFont(QFont("Arial", 10, QFont.Weight.Bold))
+            self.tabela.setItem(i, 3, it_nuvem)
+
+            # 5. Autor (Editor)
+            self.tabela.setItem(i, 4, QTableWidgetItem(item['autor']))
+
+            # 6. Detalhamento das Diferenças (fundamental para o log local detalhado)
+            self.tabela.setItem(i, 5, QTableWidgetItem(item['resumo_mudanca']))
+
+            # 7. Checkbox Centralizado e Visível
+            chk_widget = QWidget()
+            chk_layout = QHBoxLayout(chk_widget)
+            chk_layout.setContentsMargins(0, 0, 0, 0)
+            chk_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+            chk = QCheckBox()
+            chk.setChecked(False)  # Inicia desmarcado para decisão ativa do usuário
+
+            # CSS para garantir que a caixa de seleção seja visível independente do tema
+            chk.setStyleSheet("""
+                QCheckBox::indicator {
+                    width: 20px;
+                    height: 20px;
+                    border: 2px solid #2980b9;
+                    border-radius: 4px;
+                    background-color: white;
+                }
+                QCheckBox::indicator:checked {
+                    background-color: #27ae60;
+                    border-color: #27ae60;
+                }
+                QCheckBox::indicator:unchecked {
+                    background-color: #ffffff;
+                }
+            """)
+
+            chk_layout.addWidget(chk)
+            self.tabela.setCellWidget(i, 6, chk_widget)
+            item['checkbox'] = chk
+
+        # Botões de confirmação
+        btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        btns.accepted.connect(self.accept)
+        btns.rejected.connect(self.reject)
+        layout.addWidget(btns)
+
+    def get_selecionados(self):
+        """Retorna apenas os itens que o usuário marcou para importar"""
+        return [item for item in self.itens if item['checkbox'].isChecked()]
+
 # --- 3. SISTEMA PRINCIPAL ---
 
 class SistemaGestao(QMainWindow):
@@ -2872,18 +3007,18 @@ class SistemaGestao(QMainWindow):
 
     def sincronizar_nuvem(self):
         try:
-            # Janela de espera para conexão inicial (pode demorar)
+            # Janela de espera para conexão inicial
             dial_con = BaseDialog(self)
             dial_con.setWindowTitle("Conectando...")
             dial_con.resize(300, 80)
             l_con = QVBoxLayout(dial_con);
-            l_con.addWidget(QLabel("Conectando ao Google Drive..."))
-            dial_con.show()
+            l_con.addWidget(QLabel("Autenticando no Google Drive..."))
+            dial_con.show();
             QApplication.processEvents()
 
             driver = sinc.DriveConector()
             driver.conectar()
-            dial_con.close()  # Fecha aviso de conexão
+            dial_con.close()
 
         except Exception as e:
             if 'dial_con' in locals(): dial_con.close()
@@ -2891,154 +3026,61 @@ class SistemaGestao(QMainWindow):
             return
 
         nome_nuvem = "dados_gestao_contratos_db.json"
-
         arquivo_remoto = None
         try:
             arquivo_remoto = driver.buscar_id_arquivo(nome_nuvem)
         except:
             pass
 
-        msg_status = "Arquivo encontrado no Drive!" if arquivo_remoto else "Arquivo NÃO encontrado (Será criado)."
+        msg_status = "Arquivo encontrado!" if arquivo_remoto else "Não existe arquivo na nuvem."
 
+        # --- MENU DE OPÇÕES (AGORA COM 4 BOTÕES) ---
         mbox = DarkMessageBox(self)
-        mbox.setWindowTitle("Sincronização Nuvem")
-        mbox.setText(
-            f"Status da Nuvem: {msg_status}\n\nBase Atual: {os.path.basename(self.arquivo_db)}\n\nEscolha a operação:")
+        mbox.setWindowTitle("Sincronização Nuvem (Enterprise)")
+        mbox.setText(f"Status Nuvem: {msg_status}\n\nO que você deseja fazer?")
 
-        btn_enviar = mbox.addButton("Enviar (Sobrescrever Nuvem)", QMessageBox.ButtonRole.ActionRole)
-        btn_mesclar = mbox.addButton("Sincronizar (Mesclar)", QMessageBox.ButtonRole.ActionRole)
-        btn_baixar_sep = mbox.addButton("Baixar Base Separada\n(Salvar Como...)", QMessageBox.ButtonRole.ActionRole)
-        btn_cancel = mbox.addButton("Cancelar", QMessageBox.ButtonRole.RejectRole)
+        # 1. Sync Inteligente
+        btn_sync = mbox.addButton("⬇️⬆️ Sincronizar Tudo\n(Mesclar Equipe)", QMessageBox.ButtonRole.ActionRole)
+
+        # 2. Upload Seguro
+        btn_subir_safe = mbox.addButton("⬆️ Apenas Subir\nMinhas Alterações\n(Não baixa nada)",
+                                        QMessageBox.ButtonRole.ActionRole)
+
+        # 3. Baixar Separado (O QUE FALTOU)
+        btn_baixar_sep = mbox.addButton("⬇️ Baixar Cópia da Nuvem\n(Salvar Como...)", QMessageBox.ButtonRole.ActionRole)
+
+        # 4. Reset
+        btn_reset = mbox.addButton("⚠️ Sobrescrever Nuvem\n(Reset)", QMessageBox.ButtonRole.ActionRole)
+
+        mbox.addButton("Cancelar", QMessageBox.ButtonRole.RejectRole)
 
         mbox.exec()
 
-        if mbox.clickedButton() == btn_cancel: return
+        # Se não tem arquivo na nuvem, força criação (exceto cancelar)
+        if not arquivo_remoto and mbox.clickedButton() != mbox.button(QMessageBox.StandardButton.Cancel):
+            self._executar_upload_reset(driver, nome_nuvem, None)
+            return
 
-        # ==========================================
-        # 1. ENVIAR (SOBRESCREVER)
-        # ==========================================
-        if mbox.clickedButton() == btn_enviar:
-            if DarkMessageBox.question(self, "Confirmar",
-                                       "Sobrescrever a nuvem com sua base atual? (Dados da nuvem serão perdidos)") == QMessageBox.StandardButton.Yes:
-                try:
-                    # Janela de Progresso
-                    d_prog = BaseDialog(self);
-                    d_prog.setWindowTitle("Enviando...");
-                    d_prog.resize(300, 50)
-                    l_p = QVBoxLayout(d_prog);
-                    l_p.addWidget(QLabel("Enviando dados..."));
-                    d_prog.show();
-                    QApplication.processEvents()
+        # --- AÇÕES ---
 
-                    dados = {
-                        "contratos": [c.to_dict() for c in self.db_contratos],
-                        "logs": [l.to_dict() for l in self.db_logs],
-                        "prestadores": [p.to_dict() for p in self.db_prestadores]
-                    }
-                    fid = arquivo_remoto['id'] if arquivo_remoto else None
-                    driver.subir_json(nome_nuvem, dados, file_id_existente=fid)
+        if mbox.clickedButton() == btn_sync:
+            self._executar_sincronizacao_inteligente(driver, arquivo_remoto['id'], nome_nuvem)
 
-                    d_prog.close()
-                    DarkMessageBox.info(self, "Sucesso", "Envio Concluído!")
-                except Exception as e:
-                    if 'd_prog' in locals(): d_prog.close()
-                    DarkMessageBox.critical(self, "Erro", str(e))
+        elif mbox.clickedButton() == btn_subir_safe:
+            self._executar_upload_uniao_sem_baixar(driver, arquivo_remoto['id'], nome_nuvem)
 
-        # ==========================================
-        # 2. MESCLAR (SINCRONIZAR INTELIGENTE)
-        # ==========================================
-        elif mbox.clickedButton() == btn_mesclar:
-            if not arquivo_remoto:
-                DarkMessageBox.warning(self, "Aviso",
-                                       "Não há arquivo na nuvem para mesclar. Use a opção 'Enviar' primeiro.")
-                return
+        elif mbox.clickedButton() == btn_reset:
+            if DarkMessageBox.question(self, "Cuidado!",
+                                       "Isso vai APAGAR tudo o que seus colegas fizeram na nuvem e colocar apenas o que está no seu PC.\n\nTem certeza absoluta?") == QMessageBox.StandardButton.Yes:
+                self._executar_upload_reset(driver, nome_nuvem, arquivo_remoto['id'])
 
-            # Janela de Progresso
-            d_prog = BaseDialog(self);
-            d_prog.setWindowTitle("Sincronizando...");
-            d_prog.resize(300, 80)
-            l_p = QVBoxLayout(d_prog);
-            l_p.addWidget(QLabel("1. Baixando Nuvem...\n2. Unindo Dados...\n3. Atualizando Nuvem..."));
-            d_prog.show();
-            QApplication.processEvents()
-
-            try:
-                # A. Baixa dados da Nuvem
-                dados_nuvem = driver.baixar_json(arquivo_remoto['id'])
-                contratos_nuvem = dados_nuvem.get("contratos", [])
-                prest_nuvem = dados_nuvem.get("prestadores", [])
-                logs_nuvem = dados_nuvem.get("logs", [])
-
-                # B. Lógica de União (Merge)
-                # Dicionários para evitar duplicidade (Chave = Numero Contrato / CNPJ)
-
-                # --- 1. Contratos ---
-                # Começa com os da nuvem
-                mapa_contratos = {c['numero']: c for c in contratos_nuvem}
-                # Sobrepõe com os locais (Local tem prioridade na edição recente)
-                for c_local in self.db_contratos:
-                    mapa_contratos[c_local.numero] = c_local.to_dict()
-                lista_contratos_final = list(mapa_contratos.values())
-
-                # --- 2. Prestadores ---
-                mapa_prest = {p['cnpj']: p for p in prest_nuvem}
-                for p_local in self.db_prestadores:
-                    mapa_prest[p_local.cnpj] = p_local.to_dict()
-                lista_prest_final = list(mapa_prest.values())
-
-                # --- 3. Logs (Histórico) ---
-                # Apenas soma tudo (Logs não se apagam)
-                logs_finais = logs_nuvem + [l.to_dict() for l in self.db_logs]
-
-                # Remove duplicatas exatas de logs (se houver) convertendo para string
-                logs_unicos = []
-                vistos = set()
-                for l in logs_finais:
-                    s = str(l)
-                    if s not in vistos:
-                        logs_unicos.append(l)
-                        vistos.add(s)
-
-                # C. Monta o pacote final
-                dados_combinados = {
-                    "contratos": lista_contratos_final,
-                    "logs": logs_unicos,
-                    "prestadores": lista_prest_final
-                }
-
-                # D. Sobe de volta para a Nuvem (Atualiza o remoto)
-                driver.subir_json(nome_nuvem, dados_combinados, file_id_existente=arquivo_remoto['id'])
-
-                # E. Atualiza o Local (Salva no disco e recarrega memória)
-                with open(self.arquivo_db, 'w', encoding='utf-8-sig') as f:
-                    json.dump(dados_combinados, f, indent=4, ensure_ascii=False)
-
-                self.carregar_dados()  # Atualiza a tela
-
-                d_prog.close()
-                # --- AQUI ESTÁ A MENSAGEM QUE FALTAVA ---
-                DarkMessageBox.info(self, "Sincronização Concluída",
-                                    "Processo finalizado!\n\nSeus dados foram unidos com a nuvem com sucesso.")
-
-            except Exception as e:
-                d_prog.close()
-                DarkMessageBox.critical(self, "Erro na Sincronização", f"Falha ao mesclar: {str(e)}")
-
-
-        # ==========================================
-        # 3. BAIXAR SEPARADO
-        # ==========================================
+        # --- LÓGICA DO BOTÃO RESTAURADO ---
         elif mbox.clickedButton() == btn_baixar_sep:
-            if not arquivo_remoto:
-                DarkMessageBox.warning(self, "Aviso", "Nada na nuvem para baixar.")
-                return
-
-            fpath, _ = QFileDialog.getSaveFileName(self, "Salvar Base da Nuvem Como...", "base_nuvem_copia.json",
+            fpath, _ = QFileDialog.getSaveFileName(self, "Salvar Cópia da Nuvem", "base_nuvem_copia.json",
                                                    "JSON (*.json)")
             if not fpath: return
 
             try:
-                # Janela de Progresso
                 d_prog = BaseDialog(self);
                 d_prog.setWindowTitle("Baixando...");
                 d_prog.resize(300, 50)
@@ -3054,20 +3096,217 @@ class SistemaGestao(QMainWindow):
 
                 d_prog.close()
 
-                if DarkMessageBox.question(self, "Base Baixada",
-                                           f"Arquivo salvo em:\n{fpath}\n\nDeseja carregar esta base no sistema agora?",
+                # Pergunta se quer abrir imediatamente
+                if DarkMessageBox.question(self, "Download Concluído",
+                                           f"Arquivo salvo em:\n{fpath}\n\nDeseja trocar para esta base agora para visualizar?",
                                            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No) == QMessageBox.StandardButton.Yes:
+
+                    self.salvar_dados()  # Salva o atual antes de sair
                     self.arquivo_db = fpath
                     self.db_contratos = []
                     self.db_logs = []
-                    self.carregar_dados()
+                    self.carregar_dados()  # Carrega a base baixada
+                    DarkMessageBox.info(self, "Base Trocada", "Você está visualizando a cópia da nuvem agora.")
                 else:
-                    DarkMessageBox.info(self, "Sucesso",
-                                        "Arquivo salvo. Você pode abri-lo depois pelo menu Arquivo > Trocar Base.")
+                    DarkMessageBox.info(self, "Sucesso", "Arquivo salvo no seu computador.")
 
             except Exception as e:
                 if 'd_prog' in locals(): d_prog.close()
-                DarkMessageBox.critical(self, "Erro", f"Falha ao baixar: {str(e)}")
+                DarkMessageBox.critical(self, "Erro", str(e))
+
+    # --- FUNÇÃO 1: UPLOAD "RESET" (LIMPA A NUVEM) ---
+    def _executar_upload_reset(self, driver, nome_arq, file_id):
+        try:
+            d_prog = BaseDialog(self);
+            d_prog.setWindowTitle("Enviando...");
+            d_prog.resize(300, 50)
+            l_p = QVBoxLayout(d_prog);
+            l_p.addWidget(QLabel("Enviando dados..."));
+            d_prog.show();
+            QApplication.processEvents()
+
+            dados = {
+                "contratos": [c.to_dict() for c in self.db_contratos],
+                "logs": [l.to_dict() for l in self.db_logs],
+                "prestadores": [p.to_dict() for p in self.db_prestadores]
+            }
+            driver.subir_json(nome_arq, dados, file_id_existente=file_id)
+            d_prog.close()
+            DarkMessageBox.info(self, "Sucesso", "Nuvem sobrescrita com seus dados locais.")
+        except Exception as e:
+            d_prog.close();
+            DarkMessageBox.critical(self, "Erro", str(e))
+
+    # --- FUNÇÃO 2: NOVO! SUBIR E UNIR (SEM BAIXAR) ---
+    def _executar_upload_uniao_sem_baixar(self, driver, file_id, nome_nuvem):
+        d_prog = BaseDialog(self);
+        d_prog.setWindowTitle("Processando...");
+        d_prog.resize(300, 80)
+        l_p = QVBoxLayout(d_prog);
+        l_p.addWidget(QLabel(
+            "1. Lendo Nuvem (para proteger dados alheios)...\n2. Mesclando seus dados...\n3. Enviando atualizações..."))
+        d_prog.show();
+        QApplication.processEvents()
+
+        try:
+            # 1. Baixa o que tem lá (Só na memória RAM, não salva no disco)
+            dados_nuvem = driver.baixar_json(file_id)
+
+            # Converte as listas da nuvem em Dicionários para fácil manipulação
+            # Chave = Numero Contrato
+            mapa_nuvem_contratos = {c['numero']: c for c in dados_nuvem.get("contratos", [])}
+            mapa_nuvem_prestadores = {p['cnpj']: p for p in dados_nuvem.get("prestadores", [])}
+
+            # 2. Aplica os dados LOCAIS "em cima" dos dados da NUVEM
+            # (Seus dados ganham prioridade, mas o que você não tem é preservado)
+
+            # --- Contratos ---
+            count_novos = 0
+            count_updates = 0
+
+            for c_local in self.db_contratos:
+                num = c_local.numero
+                if num not in mapa_nuvem_contratos:
+                    count_novos += 1
+                else:
+                    count_updates += 1
+                # Aqui está a mágica: Atualiza o dicionário da nuvem com o seu objeto
+                # Se não existia, cria. Se existia, substitui pelo seu.
+                mapa_nuvem_contratos[num] = c_local.to_dict()
+
+            # --- Prestadores ---
+            for p_local in self.db_prestadores:
+                mapa_nuvem_prestadores[p_local.cnpj] = p_local.to_dict()
+
+            # --- Logs (Sempre Soma) ---
+            logs_nuvem = dados_nuvem.get("logs", [])
+            logs_locais = [l.to_dict() for l in self.db_logs]
+
+            # Cria conjunto de assinaturas para não duplicar logs iguais
+            sigs = {str(l.get('data')) + l.get('nome') for l in logs_nuvem}
+            for l_loc in logs_locais:
+                sig = str(l_loc.get('data')) + l_loc.get('nome')
+                if sig not in sigs:
+                    logs_nuvem.append(l_loc)
+
+            # 3. Prepara o pacote final para subir
+            dados_finais = {
+                "contratos": list(mapa_nuvem_contratos.values()),
+                "logs": logs_nuvem,
+                "prestadores": list(mapa_nuvem_prestadores.values())
+            }
+
+            # 4. Sobe para a nuvem
+            driver.subir_json(nome_nuvem, dados_finais, file_id_existente=file_id)
+
+            d_prog.close()
+            DarkMessageBox.info(self, "Upload Inteligente Concluído",
+                                f"Seus dados foram enviados com sucesso!\n\n"
+                                f"- {count_novos} contratos novos adicionados à nuvem.\n"
+                                f"- {count_updates} contratos atualizados na nuvem.\n\n"
+                                "Nota: Nenhuma alteração foi feita no seu computador.")
+
+        except Exception as e:
+            d_prog.close()
+            DarkMessageBox.critical(self, "Erro no Upload", str(e))
+
+    def _executar_upload(self, driver, nome_arq, file_id):
+        # Helper para não repetir código
+        try:
+            d_prog = BaseDialog(self);
+            d_prog.setWindowTitle("Enviando...");
+            d_prog.resize(300, 50)
+            l_p = QVBoxLayout(d_prog);
+            l_p.addWidget(QLabel("Enviando dados..."));
+            d_prog.show();
+            QApplication.processEvents()
+
+            dados = {
+                "contratos": [c.to_dict() for c in self.db_contratos],
+                "logs": [l.to_dict() for l in self.db_logs],
+                "prestadores": [p.to_dict() for p in self.db_prestadores]
+            }
+            driver.subir_json(nome_arq, dados, file_id_existente=file_id)
+            d_prog.close()
+            DarkMessageBox.info(self, "Sucesso", "Dados enviados para a nuvem!")
+        except Exception as e:
+            d_prog.close()
+            DarkMessageBox.critical(self, "Erro", str(e))
+
+    def _executar_sincronizacao_inteligente(self, driver, fid, nome):
+        try:
+            d_nuvem = driver.baixar_json(fid)
+            c_nuvem_list = d_nuvem.get("contratos", [])
+            logs_nuvem = d_nuvem.get("logs", [])
+
+            itens_para_decisao = []
+            mapa_local = {c.numero: c for c in self.db_contratos}
+
+            for cn in c_nuvem_list:
+                num = cn['numero']
+                # Localiza o autor no log remoto
+                autor = "Desconhecido"
+                resumo_remoto = "Alteração não detalhada na nuvem"
+                for l in reversed(logs_nuvem):
+                    if num in str(l.get('detalhe', '')):
+                        autor = l.get('nome', 'Desconhecido')
+                        resumo_remoto = l.get('detalhe', '')
+                        break
+
+                dt_nuvem = cn.get('ultima_modificacao', '')
+
+                if num not in mapa_local:
+                    # Contrato novo ou excluído localmente
+                    itens_para_decisao.append({
+                        'numero': num, 'prestador': cn['prestador'], 'novo': True,
+                        'data_local': '---', 'data_nuvem': dt_nuvem,
+                        'autor': autor, 'resumo_mudanca': f"Novo contrato: {cn['descricao'][:30]}...",
+                        'obj': cn
+                    })
+                else:
+                    # Existe nos dois, verifica se a nuvem é mais recente
+                    dt_local = mapa_local[num].ultima_modificacao
+                    if dt_nuvem > dt_local:
+                        itens_para_decisao.append({
+                            'numero': num, 'prestador': cn['prestador'], 'novo': False,
+                            'data_local': dt_local, 'data_nuvem': dt_nuvem,
+                            'autor': autor, 'resumo_mudanca': resumo_remoto,
+                            'obj': cn
+                        })
+
+            if not itens_para_decisao:
+                DarkMessageBox.info(self, "Sincronização", "Nenhuma novidade encontrada na nuvem.")
+                return
+
+            dial = DialogoResolucaoConflitos(itens_para_decisao, parent=self)
+            if not dial.exec(): return
+
+            selecionados = dial.get_selecionados()
+
+            for item in selecionados:
+                num = item['numero']
+                # Remove versão local para substituir
+                self.db_contratos = [c for c in self.db_contratos if c.numero != num]
+
+                # Adiciona versão da nuvem
+                novo_c = Contrato.from_dict(item['obj'])
+                self.db_contratos.append(novo_c)
+
+                # REGISTRA NO LOG LOCAL COM DETALHES
+                tipo_acao = "IMPORTAÇÃO" if item['novo'] else "ATUALIZAÇÃO"
+                detalhe_log = f"[{tipo_acao}] Contrato {num}. Mudança original feita na nuvem por {item['autor']}: {item['resumo_mudanca']}"
+                self.registrar_log("Sincronização Nuvem", detalhe_log)
+
+            self.salvar_dados()
+            self.carregar_dados()
+
+            # Sincroniza a nuvem com o que você acabou de consolidar
+            self._executar_upload_reset(driver, nome, fid)
+            DarkMessageBox.info(self, "Sucesso",
+                                f"{len(selecionados)} alterações foram detalhadas no seu log de auditoria.")
+
+        except Exception as e:
+            DarkMessageBox.critical(self, "Erro", f"Falha ao sincronizar: {e}")
 
     def alternar_tema(self):
         # 1. LIMPEZA: Remove as cores personalizadas para destravar os temas padrão
@@ -3236,7 +3475,6 @@ class SistemaGestao(QMainWindow):
 
         self.setWindowTitle("Gestão de Contratos")
         self.setGeometry(50, 50, 1300, 850)
-        mb = self.menuBar()
 
         mb = self.menuBar()
 
@@ -3333,6 +3571,12 @@ class SistemaGestao(QMainWindow):
 
         # --- 7. MENU AJUDA ---
         m_ajuda = mb.addMenu("Ajuda")
+        # --- ADICIONE ESTE BLOCO AQUI ---
+        acao_config_ia = QAction("🔧 Configurar Conexões (IA / Nuvem)", self)
+        acao_config_ia.triggered.connect(self.abrir_tutorial_ia)
+        m_ajuda.addAction(acao_config_ia)
+        m_ajuda.addSeparator()
+        # --------------------------------
         m_ajuda.addAction("Tutorial Interativo (Passo a Passo)", self.iniciar_tutorial_interativo)
         m_ajuda.addSeparator()
         m_ajuda.addAction("Manual Técnico (MTO)", self.abrir_manual)
@@ -5229,6 +5473,33 @@ class SistemaGestao(QMainWindow):
     def abrir_manual(self):
         dial = DialogoAjuda(parent=self)
         dial.exec()
+
+    def abrir_tutorial_ia(self):
+        msg = QMessageBox(self)
+        msg.setWindowTitle("Configuração de Conectividade")
+        msg.setIcon(QMessageBox.Icon.Information)
+        msg.setText("<h3>Arquivos Necessários na Pasta do Sistema</h3>")
+
+        msg.setInformativeText(
+            "<b>1. Para a IA (Gemini):</b>\n"
+            "Crie um arquivo 'chave_api.txt' e cole sua chave dentro.\n\n"
+            "<b>2. Para o Google Drive (Nuvem):</b>\n"
+            "Cole o arquivo baixado do Google Cloud e renomeie para 'credentials.json'.\n"
+            "Depois vá no menu Ferramentas > Sincronizar."
+        )
+
+        # Botões
+        btn_site = msg.addButton("🌐 Site da IA (Gerar Chave)", QMessageBox.ButtonRole.ActionRole)
+        btn_pasta = msg.addButton("📂 Abrir Pasta do Sistema", QMessageBox.ButtonRole.ActionRole)
+        msg.addButton("Entendi", QMessageBox.ButtonRole.AcceptRole)
+
+        msg.exec()
+
+        if msg.clickedButton() == btn_site:
+            webbrowser.open("https://aistudio.google.com/app/apikey")
+        elif msg.clickedButton() == btn_pasta:
+            os.startfile(os.getcwd())
+
     def abrir_chat_ia(self):
         # Atualiza a IA com os dados mais recentes antes de abrir
         self.ia.dados = self.db_contratos 

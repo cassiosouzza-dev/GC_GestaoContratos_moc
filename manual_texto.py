@@ -3,183 +3,169 @@
 
 HTML_MANUAL = """
 <style>
-    body { font-family: 'Segoe UI', Arial, sans-serif; line-height: 1.6; color: #333; margin: 20px; }
-    h1 { color: #2c3e50; text-align: center; border-bottom: 3px solid #2c3e50; padding-bottom: 10px; margin-bottom: 30px; }
+    body { font-family: 'Segoe UI', 'Roboto', Helvetica, Arial, sans-serif; line-height: 1.6; color: #333; margin: 20px; background-color: #fdfdfd; }
+    h1 { color: #2c3e50; text-align: center; border-bottom: 3px solid #2c3e50; padding-bottom: 15px; margin-bottom: 30px; font-size: 28px; }
 
     /* Hierarquia Visual */
     h2 { 
-        background: linear-gradient(to right, #34495e, #2c3e50); 
+        background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%); 
         color: white; 
-        padding: 10px 15px; 
-        margin-top: 40px; 
-        border-radius: 4px; 
+        padding: 12px 20px; 
+        margin-top: 50px; 
+        border-radius: 6px; 
         font-size: 18px; 
         text-transform: uppercase; 
         letter-spacing: 1px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
     }
     h3 { 
-        color: #16a085; 
-        border-left: 5px solid #16a085; 
-        padding-left: 10px; 
-        margin-top: 30px; 
+        color: #2980b9; 
+        border-left: 5px solid #2980b9; 
+        padding-left: 15px; 
+        margin-top: 35px; 
         font-size: 16px; 
-        background-color: #f9f9f9;
-        padding-top: 5px;
-        padding-bottom: 5px;
+        background-color: #ecf0f1;
+        padding-top: 8px;
+        padding-bottom: 8px;
+        border-radius: 0 4px 4px 0;
     }
+    h4 { color: #555; margin-top: 20px; font-size: 14px; text-decoration: underline; }
 
     /* Caixas Especiais */
-    .box-info { background-color: #e8f6f3; border: 1px solid #a2d9ce; border-left: 5px solid #1abc9c; padding: 15px; margin: 15px 0; font-size: 13px; border-radius: 3px; }
-    .box-ai { background-color: #f4ecf7; border: 1px solid #d2b4de; border-left: 5px solid #8e44ad; padding: 15px; margin: 15px 0; font-size: 13px; border-radius: 3px; }
-    .box-security { background-color: #fff8e1; border: 1px solid #ffe082; border-left: 5px solid #ffb300; padding: 15px; margin: 15px 0; font-size: 13px; border-radius: 3px; }
+    .box-info { background-color: #e1f5fe; border: 1px solid #81d4fa; border-left: 5px solid #03a9f4; padding: 15px; margin: 15px 0; font-size: 13px; border-radius: 4px; }
+    .box-ai { background-color: #f3e5f5; border: 1px solid #e1bee7; border-left: 5px solid #9c27b0; padding: 15px; margin: 15px 0; font-size: 13px; border-radius: 4px; }
+    .box-security { background-color: #fff3e0; border: 1px solid #ffe0b2; border-left: 5px solid #ff9800; padding: 15px; margin: 15px 0; font-size: 13px; border-radius: 4px; }
+    .box-cloud { background-color: #e8f5e9; border: 1px solid #c8e6c9; border-left: 5px solid #4caf50; padding: 15px; margin: 15px 0; font-size: 13px; border-radius: 4px; }
 
     /* Tabelas e Atalhos */
-    table { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-    th { background-color: #ecf0f1; border: 1px solid #bdc3c7; padding: 10px; text-align: left; font-weight: bold; color: #2c3e50; }
-    td { border: 1px solid #bdc3c7; padding: 8px; }
-    tr:nth-child(even) { background-color: #fbfbfb; }
-    kbd { background-color: #eee; border-radius: 3px; border: 1px solid #b4b4b4; padding: 2px 4px; font-weight: 700; font-size: 0.85em; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+    th { background-color: #34495e; border: 1px solid #34495e; padding: 12px; text-align: left; font-weight: bold; color: white; }
+    td { border: 1px solid #bdc3c7; padding: 10px; }
+    tr:nth-child(even) { background-color: #f9f9f9; }
+    kbd { background-color: #f7f7f7; border-radius: 3px; border: 1px solid #ccc; padding: 2px 6px; font-family: monospace; font-weight: 700; color: #333; box-shadow: 0 2px 0 rgba(0,0,0,0.2); }
+
+    /* Listas */
+    ul { margin-left: 20px; }
+    li { margin-bottom: 8px; }
 </style>
 
 <h1>MANUAL TÉCNICO DE OPERAÇÃO (MTO)</h1>
-<p style='text-align: center; color: #7f8c8d; font-size: 12px;'>GC Gestor Enterprise | Documentação Oficial</p>
+<p style='text-align: center; color: #7f8c8d; font-size: 12px;'>GC Gestor Enterprise v9.0 | Documentação Oficial</p>
 
 <div class="box-info">
-    <b>Conceito Central: Ciclos Financeiros Estanques</b><br>
-    O GC Gestor não trata o contrato como uma linha contínua, mas como "gavetas" separadas (Ciclos). O saldo do Ano 1 não se mistura automaticamente com o Ano 2. Isso garante conformidade com o princípio da anualidade orçamentária pública.
+    <b>💡 Conceito Central: Ciclos Financeiros</b><br>
+    O GC Gestor não trata o contrato como uma linha contínua infinita, mas como "gavetas" separadas chamadas <b>Ciclos Financeiros</b>. 
+    <br>Isso garante que o saldo do Ano 1 não se misture indevidamente com o Ano 2, respeitando o princípio da anualidade orçamentária do setor público.
 </div>
 
-<h2>1. A TELA INICIAL (DASHBOARD)</h2>
+<h2>1. TRABALHO EM EQUIPE E NUVEM (GOOGLE DRIVE)</h2>
+<p>O sistema possui um motor de sincronização "Enterprise" que permite que várias pessoas trabalhem em computadores diferentes. Acesse pelo menu <b>Ferramentas > Sincronizar com Google Drive</b>.</p>
 
-<h3>1.1 Barra Superior: O Centro de Inteligência</h3>
-<ul>
-    <li><b>Botão [💬 IA] (Consultor Global):</b> 
-        <br>Chat geral com acesso a <i>todos</i> os contratos. Use para perguntas transversais (ex: "Qual o total gasto com a empresa X em todos os contratos?").
-    </li>
-
-    <li><b>Botão [🔔 Notificações] (Auditor de Prazos):</b> 
-        <br>Monitora vencimentos e saldos em tempo real. Ícone vermelho indica alertas críticos.
-        <br><b>Recurso de IA:</b> Na central de alertas, o botão <b>[🤖 Recomendação IA]</b> gera um plano de ação executivo para resolver as pendências listadas.
-    </li>
-</ul>
-
-<h3>1.2 Painel de Pesquisa Expandido</h3>
-<p>Visão panorâmica de todos os contratos cadastrados.</p>
-<ul>
-    <li><b>Busca Inteligente:</b> Filtra por qualquer campo (Número, Prestador, CNPJ, Objeto).</li>
-    <li><b>Ordenação:</b> Clique no cabeçalho das colunas para organizar A-Z ou Z-A.</li>
-    <li><b>Ação:</b> Clique duplo abre o contrato. Clique direito abre opções rápidas.</li>
-</ul>
-
-<hr>
-
-<h2>2. DETALHAMENTO DA BARRA DE MENUS</h2>
-
-<h3>2.1 Menu ARQUIVO</h3>
-<ul>
-    <li><b>Novo Contrato:</b> Inicia o assistente de cadastro.</li>
-    <li><b>Trocar Base de Dados:</b> Alterna entre arquivos <code>.json</code> diferentes (ex: separar contratos da Saúde e da Educação).</li>
-    <li><b>Fazer Backup de Segurança (.bak):</b> Cria uma cópia permanente com data/hora. Use antes de fechamentos.</li>
-    <li><b>Salvar Tudo (<kbd>Ctrl</kbd>+<kbd>S</kbd>):</b> Gravação forçada em disco.</li>
-</ul>
-
-<h3>2.2 Menu EDITAR (Segurança de Dados)</h3>
-<div class="box-security">
-    <b>Comando: Desfazer Última Exclusão/Importação (Ctrl+Alt+Z)</b><br>
-    O sistema cria automaticamente um "Ponto de Restauração" oculto antes de ações de alto risco:
+<div class="box-cloud">
+    <h3>Entendendo as 4 Opções de Sincronização</h3>
+    
+    <p><b>1. ⬇️⬆️ Sincronizar Tudo (Recomendado)</b></p>
     <ul>
-        <li>Exclusão de Contratos, NEs, Serviços ou Aditivos.</li>
-        <li>Importação de dados em lote (CSV).</li>
+        <li>Baixa novidades dos colegas e envia as suas. Resolve conflitos se houver.</li>
     </ul>
-    Se algo for apagado indevidamente, vá em <b>Editar > Desfazer Última Exclusão/Importação</b> para voltar no tempo.
-    <br><i>Nota: A criação manual de registros simples não gera ponto de restauração individual para manter a performance.</i>
+
+    <p><b>2. ⬆️ Apenas Subir Minhas Alterações</b></p>
+    <ul>
+        <li>Envia seu trabalho para a nuvem sem alterar nada na sua tela. Não apaga dados dos outros.</li>
+    </ul>
+
+    <p><b>3. ⬇️ Baixar Cópia da Nuvem (Salvar Como...)</b></p>
+    <ul>
+        <li><b>O que faz:</b> Baixa o arquivo da nuvem e salva numa pasta do seu computador.</li>
+        <li><b>Para que serve:</b> Ideal para auditoria. Você pode baixar para ver o que tem na nuvem sem misturar com seus dados atuais. O sistema perguntará se você quer abrir esse arquivo imediatamente.</li>
+    </ul>
+
+    <p><b>4. ⚠️ Sobrescrever Nuvem (Reset)</b></p>
+    <ul>
+        <li>Apaga a nuvem e impõe a versão do seu computador. Use com cautela.</li>
+    </ul>
 </div>
 
-<h3>2.3 Menu EXIBIR</h3>
+<hr>
+
+<h2>2. OPERAÇÃO DIÁRIA E FINANCEIRO</h2>
+
+<h3>2.1 Cadastro com Validação</h3>
+<p>Ao criar um contrato, selecione o prestador na lista. O sistema puxará automaticamente:</p>
 <ul>
-    <li><b>Painel de Pesquisa:</b> Retorna à tela inicial.</li>
-    <li><b>Alternar Tema:</b> Modos Claro/Escuro.</li>
-    <li><b>Personalizar:</b> Ajuste de cores e tamanho da fonte (Acessibilidade).</li>
+    <li>Razão Social e Nome Fantasia</li>
+    <li>CNPJ (Formatado)</li>
+    <li>CNES e Código CP</li>
+</ul>
+<p><i>Dica: Mantenha o cadastro de prestadores (Menu Cadastros) sempre atualizado.</i></p>
+
+<h3>2.2 Execução Financeira (Empenhos e Pagamentos)</h3>
+<p>Na aba <b>Financeiro</b> do contrato:</p>
+<ul>
+    <li><b>Emitir NE:</b> O sistema bloqueia se o valor for maior que o saldo do Serviço no ciclo atual.</li>
+    <li><b>Realizar Pagamento:</b> Selecione a NE na tabela e clique em "Pagar". O sistema permite selecionar múltiplas competências (meses).</li>
+    <li><b>Anular:</b> Estorna o valor para o saldo da NE.</li>
 </ul>
 
-<h3>2.4 Menu CADASTROS</h3>
+<h3>2.3 Visão Detalhada (Tree View)</h3>
+<p>Dê <b>duplo clique</b> em qualquer serviço na aba "Serviços" para abrir a auditoria profunda. Você verá:</p>
 <ul>
-    <li><b>Gerenciar Prestadores:</b> Base única de empresas. Edite um CNPJ aqui e ele atualiza em todos os contratos vinculados.</li>
-    <li><b>Auditoria (Logs):</b> Rastreabilidade completa das ações dos usuários.</li>
-</ul>
-
-<h3>2.5 Menu RELATÓRIOS</h3>
-<ul>
-    <li><b>Geral e Por Serviço:</b> Visões macro e micro da execução financeira.</li>
-    <li><b>Evolução Mensal:</b> Gráfico em tabela (Matriz) para análise de sazonalidade.</li>
-    <li><b>Caderno de NEs:</b> Extrato bancário detalhado de cada empenho.</li>
-</ul>
-
-<h3>2.6 Menu FERRAMENTAS</h3>
-<ul>
-    <li><b>Verificar Integridade:</b> Diagnóstico do banco de dados.</li>
-    <li><b>Assistente de Importação:</b> Carga em lote via CSV (Gera ponto de restauração automático).</li>
-    <li><b>Sincronizar Nuvem:</b> Enviar (Sobrescrever) ou Mesclar (Colaborativo).</li>
+    <li>Gráfico em tabela da evolução mensal.</li>
+    <li>Árvore hierárquica expandível: <b>Serviço > Nota de Empenho > Pagamentos/Anulações</b>.</li>
+    <li>Botão para copiar esses dados direto para o Excel.</li>
 </ul>
 
 <hr>
 
-<h2>3. GESTÃO OPERACIONAL (TELA DE DETALHES)</h2>
+<h2>3. INTELIGÊNCIA ARTIFICIAL (IA)</h2>
 
-<h3>3.1 Aba 1: DADOS</h3>
-<p>Resumo estático da licitação e tabela sumária dos tetos financeiros de cada ciclo.</p>
+<div class="box-ai">
+    <b>O Assistente Virtual (Gemini 1.5 Flash)</b><br>
+    O sistema "lê" seus dados e pode responder perguntas complexas.
+</div>
 
-<h3>3.2 Aba 2: FINANCEIRO (Execução)</h3>
+<h3>Funcionalidades da IA:</h3>
 <ul>
-    <li><b>Barra de Busca:</b> Filtre NEs por número, valor ou descrição.</li>
-    <li><b>Botões [+ NE] / [Pagar] / [Anular]:</b> Operações financeiras básicas.</li>
-    <div class="box-ai">
-        <b>[Analisar Risco]:</b> Aciona a IA para ler o Ciclo Atual e calcular riscos de execução (déficit ou sobra excessiva).
-    </div>
-    <li><b>Maximizar Histórico:</b> Visualização focada do extrato da NE.</li>
-</ul>
-
-<h3>3.3 Aba 3: SERVIÇOS (Orçamento)</h3>
-<p>Monitoramento dos tetos por item de despesa.</p>
-
-<h4>3.3.1 Detalhamento Avançado (Janela Filha)</h4>
-<p>Dê <b>duplo clique</b> em um serviço para abrir:</p>
-<ul>
-    <li><b>Evolução Mensal:</b> Matriz de pagamentos.</li>
-    <li><b>Árvore de NEs:</b> Visualização hierárquica (NE -> Pagamentos).</li>
-    <div class="box-ai">
-        <b>[🤖 Analisar Este Serviço]:</b> A IA audita especificamente o histórico deste item em busca de anomalias (ex: pagamentos duplicados).
-    </div>
-</ul>
-
-<h3>3.4 Aba 4: ADITIVOS</h3>
-<ul>
-    <li><b>Aditivo de Valor:</b> Ajusta o teto do ciclo atual.</li>
-    <li><b>Aditivo de Prazo (Renovação):</b> Encerra o ciclo atual e cria um novo (zera saldos).</li>
+    <li><b>Botão [💬 IA] (Tela Inicial):</b> Chat livre. Pergunte "Qual contrato vence este mês?" ou "Resuma a situação da empresa X".</li>
+    <li><b>Botão [Analisar Risco] (Financeiro):</b> A IA audita o contrato aberto e aponta tendências de déficit ou superávit.</li>
+    <li><b>Análise de Alertas:</b> Na tela de notificações (Sininho 🔔), a IA pode gerar um plano de ação para resolver pendências críticas.</li>
 </ul>
 
 <hr>
 
-<h2 style='background-color: #c0392b; color: white; padding: 5px;'>4. REGRAS DE BLOQUEIO E SEGURANÇA</h2>
+<h2>4. SEGURANÇA E BACKUP</h2>
 
-<table border="1" cellpadding="5" cellspacing="0">
-    <tr style="background-color: #f2f2f2;">
-        <th>Ação</th>
-        <th>Comportamento do Sistema</th>
-    </tr>
-    <tr>
-        <td><b>Emitir NE</b></td>
-        <td>Bloqueia se <code>Valor > Saldo Livre do Serviço</code> no ciclo.</td>
-    </tr>
-    <tr>
-        <td><b>Pagar</b></td>
-        <td>Bloqueia se <code>Valor > Saldo da NE</code>.</td>
-    </tr>
-    <tr>
-        <td><b>Excluir</b></td>
-        <td>Gera Ponto de Restauração automático antes de apagar registros críticos.</td>
-    </tr>
-</table>
+<h3>4.1 O Sistema "Undo" (Desfazer)</h3>
+<div class="box-security">
+    Se você excluir um contrato, empenho ou serviço por engano, não entre em pânico.
+    <br>O sistema cria um <b>Ponto de Restauração</b> automático antes de qualquer exclusão crítica.
+    <br><br>
+    👉 Pressione <kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>Z</kbd> ou vá no menu <b>Editar > Desfazer</b> para voltar no tempo.
+</div>
 
-<p style='text-align: right; font-size: 10px; color: #555; margin-top: 50px;'>Documentação gerada internamente pelo sistema GC Gestor.</p>
+<h3>4.2 Backup Manual</h3>
+<p>Além da nuvem, você pode gerar um arquivo local <code>.bak</code> pelo menu <b>Arquivo > Fazer Backup de Segurança</b>.</p>
+
+<hr>
+
+<h2>5. GUIA DE CONFIGURAÇÃO (PRIMEIRO USO)</h2>
+
+<h3>Passo 1: Ativar a IA (Google Gemini)</h3>
+<ol>
+    <li>Acesse: <b>aistudio.google.com/app/apikey</b></li>
+    <li>Faça login com seu Gmail e clique em <b>"Create API Key"</b>.</li>
+    <li>Copie o código gerado (começa com "AIza...").</li>
+    <li>No sistema, crie um arquivo de texto chamado <b>chave_api.txt</b> na mesma pasta do executável.</li>
+    <li>Cole o código dentro e salve.</li>
+</ol>
+
+<h3>Passo 2: Ativar a Nuvem (Google Drive)</h3>
+<ol>
+    <li>Solicite ao administrador o arquivo de credenciais da API do Google Drive.</li>
+    <li>Renomeie esse arquivo obrigatoriamente para: <b>credentials.json</b></li>
+    <li>Coloque-o na pasta do sistema (junto com o executável).</li>
+    <li>Na primeira vez que clicar em Sincronizar, uma janela do navegador abrirá pedindo permissão.</li>
+</ol>
+
+<p style='text-align: right; font-size: 10px; color: #999; margin-top: 50px;'>GC Gestor Enterprise - Desenvolvido por Cássio de Souza Lopes.</p>
 """

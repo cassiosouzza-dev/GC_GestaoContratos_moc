@@ -1,6 +1,178 @@
 ﻿{
     "contratos": [
         {
+            "numero": "P100/2026 (teste)",
+            "prestador": "HOSPITAL UM (teste)",
+            "descricao": "Contratualização Hospitalar",
+            "valor_inicial": 1000000.0,
+            "vigencia_inicio": "23/01/2026",
+            "vigencia_fim": "23/01/2027",
+            "comp_inicio": "01/2026",
+            "comp_fim": "12/2026",
+            "licitacao": "01/2026",
+            "dispensa": "10/2026",
+            "ultimo_ciclo_id": 3,
+            "ultima_modificacao": "2026-01-24T19:11:24.529124",
+            "ciclos": [
+                {
+                    "id_ciclo": 0,
+                    "nome": "Contrato Inicial",
+                    "valor_base": 1000000.0
+                },
+                {
+                    "id_ciclo": 1,
+                    "nome": "1º TA Prazo/Valor (CANCELADO)",
+                    "valor_base": 0.0
+                },
+                {
+                    "id_ciclo": 2,
+                    "nome": "1º TA Prazo/Valor",
+                    "valor_base": 100000000.0
+                },
+                {
+                    "id_ciclo": 3,
+                    "nome": "2º TA Prazo/Valor",
+                    "valor_base": 100000000.0
+                }
+            ],
+            "lista_notas_empenho": [
+                {
+                    "numero": "0002",
+                    "valor_inicial": 1000.0,
+                    "descricao": "-",
+                    "subcontrato_idx": 0,
+                    "fonte_recurso": "1600 federal",
+                    "data_emissao": "23/01/2026",
+                    "ciclo_id": 3,
+                    "aditivo_vinculado_id": null,
+                    "historico": [
+                        {
+                            "tipo": "Emissão Original",
+                            "valor": 1000.0,
+                            "competencia": "-",
+                            "observacao": ""
+                        },
+                        {
+                            "tipo": "Pagamento",
+                            "valor": 450.0,
+                            "competencia": "01/2026",
+                            "observacao": ""
+                        },
+                        {
+                            "tipo": "Pagamento",
+                            "valor": 0.0,
+                            "competencia": "01/2026",
+                            "observacao": ""
+                        },
+                        {
+                            "tipo": "Pagamento",
+                            "valor": 0.0,
+                            "competencia": "05/2026",
+                            "observacao": ""
+                        },
+                        {
+                            "tipo": "Pagamento",
+                            "valor": 550.0,
+                            "competencia": "01/2026, 02/2026, 03/2026, 04/2026",
+                            "observacao": "1º quadrim."
+                        }
+                    ],
+                    "valor_pago": 1000.0
+                },
+                {
+                    "numero": "003",
+                    "valor_inicial": 12000.0,
+                    "descricao": "teste",
+                    "subcontrato_idx": 1,
+                    "fonte_recurso": "1600 federal",
+                    "data_emissao": "24/01/2026",
+                    "ciclo_id": 3,
+                    "aditivo_vinculado_id": null,
+                    "historico": [
+                        {
+                            "tipo": "Emissão Original",
+                            "valor": 12000.0,
+                            "competencia": "-",
+                            "observacao": ""
+                        },
+                        {
+                            "tipo": "Pagamento",
+                            "valor": 12000.0,
+                            "competencia": "01/2026, 02/2026, 03/2026",
+                            "observacao": ""
+                        }
+                    ],
+                    "valor_pago": 12000.0
+                }
+            ],
+            "lista_aditivos": [
+                {
+                    "id_aditivo": 5,
+                    "tipo": "Prazo",
+                    "valor": 100000000.0,
+                    "data_nova": "31/01/2028",
+                    "descricao": "prorrogação",
+                    "renovacao_valor": true,
+                    "data_inicio_vigencia": "01/01/2027",
+                    "ciclo_pertencente_id": 2,
+                    "servico_idx": -1
+                },
+                {
+                    "id_aditivo": 6,
+                    "tipo": "Prazo",
+                    "valor": 100000000.0,
+                    "data_nova": "23/01/2029",
+                    "descricao": "teste",
+                    "renovacao_valor": true,
+                    "data_inicio_vigencia": "23/01/2028",
+                    "ciclo_pertencente_id": 3,
+                    "servico_idx": -1
+                }
+            ],
+            "lista_servicos": [
+                {
+                    "descricao": "PÓS FIXADO",
+                    "valor_mensal": 10000.0,
+                    "valores_por_ciclo": {
+                        "3": 120000.0
+                    }
+                },
+                {
+                    "descricao": "çl",
+                    "valor_mensal": 1000.0,
+                    "valores_por_ciclo": {
+                        "3": 12000.0
+                    }
+                }
+            ],
+            "_contador_aditivos": 6
+        },
+        {
+            "numero": "1",
+            "prestador": "a",
+            "descricao": "a",
+            "valor_inicial": 1.0,
+            "vigencia_inicio": "24/01/2026",
+            "vigencia_fim": "24/01/2027",
+            "comp_inicio": "01/2026",
+            "comp_fim": "01/2027",
+            "licitacao": "a",
+            "dispensa": "s",
+            "ultimo_ciclo_id": 0,
+            "ultima_modificacao": "2026-01-24T19:11:24.529124",
+            "ciclos": [
+                {
+                    "id_ciclo": 0,
+                    "nome": "Contrato Inicial",
+                    "valor_base": 1.0
+                }
+            ],
+            "lista_notas_empenho": [],
+            "lista_aditivos": [],
+            "lista_servicos": [],
+            "_contador_aditivos": 0
+        },
+        {
             "numero": "999/2025",
             "prestador": "Empresa Tutorial Ltda",
             "descricao": "Contrato de Exemplo para Aprendizado",
@@ -319,6 +491,20 @@
             "cpf": "082.206.416-22",
             "acao": "Pagamento",
             "detalhe": "Pagamento R$ R$ 100,00 na NE 2025NE001. Comp: 02/2026"
+        },
+        {
+            "data": "26/01/2026 16:42:51",
+            "nome": "Teste do Testador",
+            "cpf": "111.111.111-11",
+            "acao": "Criar Contrato",
+            "detalhe": "Novo contrato criado: 111111111/111"
+        },
+        {
+            "data": "26/01/2026 16:57:35",
+            "nome": "Cássio de Souza Lopes",
+            "cpf": "082.206.416-22",
+            "acao": "Sincronização",
+            "detalhe": "Restaurado/Importado contrato 111111111/111. Origem: Teste do Testador (26/01/2026 16:42:51)"
         }
     ],
     "prestadores": [
