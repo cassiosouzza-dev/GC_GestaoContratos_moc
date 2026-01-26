@@ -1,0 +1,340 @@
+﻿{
+    "contratos": [
+        {
+            "numero": "999/2025",
+            "prestador": "Empresa Tutorial Ltda",
+            "descricao": "Contrato de Exemplo para Aprendizado",
+            "valor_inicial": 12000.0,
+            "vigencia_inicio": "26/01/2026",
+            "vigencia_fim": "26/01/2027",
+            "comp_inicio": "01/2026",
+            "comp_fim": "01/2027",
+            "licitacao": "Pregão 01/25",
+            "dispensa": "",
+            "ultimo_ciclo_id": 0,
+            "ultima_modificacao": "2026-01-26T11:40:04.066770",
+            "ciclos": [
+                {
+                    "id_ciclo": 0,
+                    "nome": "Contrato Inicial",
+                    "valor_base": 12000.0
+                }
+            ],
+            "lista_notas_empenho": [
+                {
+                    "numero": "2025NE001",
+                    "valor_inicial": 5000.0,
+                    "descricao": "Empenho estimativo para manutenção",
+                    "subcontrato_idx": 0,
+                    "fonte_recurso": "1.500.000",
+                    "data_emissao": "26/01/2026",
+                    "ciclo_id": 0,
+                    "aditivo_vinculado_id": null,
+                    "historico": [
+                        {
+                            "tipo": "Emissão Original",
+                            "valor": 5000.0,
+                            "competencia": "-",
+                            "observacao": ""
+                        },
+                        {
+                            "tipo": "Pagamento",
+                            "valor": 100.0,
+                            "competencia": "02/2026",
+                            "observacao": "teste"
+                        }
+                    ],
+                    "valor_pago": 100.0
+                }
+            ],
+            "lista_aditivos": [],
+            "lista_servicos": [
+                {
+                    "descricao": "Serviço de Manutenção Preventiva",
+                    "valor_mensal": 1000.0,
+                    "valores_por_ciclo": {
+                        "0": 12000.0
+                    }
+                }
+            ],
+            "_contador_aditivos": 0
+        }
+    ],
+    "logs": [
+        {
+            "data": "24/01/2026 16:10:28",
+            "nome": "Cássio de Souza Lopes",
+            "cpf": "082.206.416-22",
+            "acao": "Criar Contrato",
+            "detalhe": "Novo contrato criado: 1 - a"
+        },
+        {
+            "data": "24/01/2026 16:11:00",
+            "nome": "Cássio de Souza Lopes",
+            "cpf": "082.206.416-22",
+            "acao": "Nova NE",
+            "detalhe": "NE  (R$ R$ 0,00) adicionada ao contrato P100/2026 (teste)"
+        },
+        {
+            "data": "24/01/2026 16:26:49",
+            "nome": "Cássio de Souza Lopes",
+            "cpf": "082.206.416-22",
+            "acao": "Criar Contrato",
+            "detalhe": "Novo contrato criado: 999/2025"
+        },
+        {
+            "data": "24/01/2026 16:27:18",
+            "nome": "Cássio de Souza Lopes",
+            "cpf": "082.206.416-22",
+            "acao": "Nova NE",
+            "detalhe": "NE 2025NE001 (R$ R$ 5.000,00) adicionada ao contrato 999/2025"
+        },
+        {
+            "data": "24/01/2026 18:29:24",
+            "nome": "Cássio de Souza Lopes",
+            "cpf": "082.206.416-22",
+            "acao": "Pagamento",
+            "detalhe": "Pagamento R$ R$ 0,00 na NE 0002. Comp: 05/2026"
+        },
+        {
+            "data": "24/01/2026 18:29:28",
+            "nome": "Cássio de Souza Lopes",
+            "cpf": "082.206.416-22",
+            "acao": "Pagamento",
+            "detalhe": "Pagamento R$ R$ 0,00 na NE 0002. Comp: 02/2026"
+        },
+        {
+            "data": "24/01/2026 18:29:58",
+            "nome": "Cássio de Souza Lopes",
+            "cpf": "082.206.416-22",
+            "acao": "Pagamento",
+            "detalhe": "Pagamento R$ R$ 0,00 na NE 0002. Comp: 01/2026, 02/2026, 03/2026, 04/2026"
+        },
+        {
+            "data": "24/01/2026 19:10:34",
+            "nome": "Cássio de Souza Lopes",
+            "cpf": "082.206.416-22",
+            "acao": "Nova NE",
+            "detalhe": "NE  (R$ R$ 0,00) adicionada ao contrato P100/2026 (teste)"
+        },
+        {
+            "data": "24/01/2026 19:12:23",
+            "nome": "Cássio de Souza Lopes",
+            "cpf": "082.206.416-22",
+            "acao": "Editar Pagamento",
+            "detalhe": "Editou pgto na NE 0002. Novo valor: R$ 0,00"
+        },
+        {
+            "data": "24/01/2026 19:12:51",
+            "nome": "Cássio de Souza Lopes",
+            "cpf": "082.206.416-22",
+            "acao": "Editar Pagamento",
+            "detalhe": "Editou pgto na NE 0002. Novo valor: R$ 0,00"
+        },
+        {
+            "data": "24/01/2026 19:17:18",
+            "nome": "Cássio de Souza Lopes",
+            "cpf": "082.206.416-22",
+            "acao": "Editar Pagamento",
+            "detalhe": "Editou pgto na NE 0002. Novo valor: R$ 550,00"
+        },
+        {
+            "data": "25/01/2026 09:31:21",
+            "nome": "CCccccccccccccccccc",
+            "cpf": "111.111.111-11",
+            "acao": "Excluir Pagamento",
+            "detalhe": "Excluiu pgto de R$ R$ 0,00 da NE 0002"
+        },
+        {
+            "data": "25/01/2026 09:31:34",
+            "nome": "CCccccccccccccccccc",
+            "cpf": "111.111.111-11",
+            "acao": "Excluir Pagamento",
+            "detalhe": "Excluiu pgto de R$ R$ 0,00 da NE 0001"
+        },
+        {
+            "data": "25/01/2026 09:31:35",
+            "nome": "CCccccccccccccccccc",
+            "cpf": "111.111.111-11",
+            "acao": "Excluir Pagamento",
+            "detalhe": "Excluiu pgto de R$ R$ 0,00 da NE 0001"
+        },
+        {
+            "data": "25/01/2026 09:31:37",
+            "nome": "CCccccccccccccccccc",
+            "cpf": "111.111.111-11",
+            "acao": "Excluir Pagamento",
+            "detalhe": "Excluiu pgto de R$ R$ 0,00 da NE 0001"
+        },
+        {
+            "data": "25/01/2026 09:31:38",
+            "nome": "CCccccccccccccccccc",
+            "cpf": "111.111.111-11",
+            "acao": "Excluir Pagamento",
+            "detalhe": "Excluiu pgto de R$ R$ 0,00 da NE 0001"
+        },
+        {
+            "data": "25/01/2026 09:31:39",
+            "nome": "CCccccccccccccccccc",
+            "cpf": "111.111.111-11",
+            "acao": "Excluir Pagamento",
+            "detalhe": "Excluiu pgto de R$ R$ 0,00 da NE 0001"
+        },
+        {
+            "data": "25/01/2026 09:31:40",
+            "nome": "CCccccccccccccccccc",
+            "cpf": "111.111.111-11",
+            "acao": "Excluir Pagamento",
+            "detalhe": "Excluiu pgto de R$ R$ 0,00 da NE 0001"
+        },
+        {
+            "data": "25/01/2026 09:31:41",
+            "nome": "CCccccccccccccccccc",
+            "cpf": "111.111.111-11",
+            "acao": "Excluir Pagamento",
+            "detalhe": "Excluiu pgto de R$ R$ 0,00 da NE 0001"
+        },
+        {
+            "data": "25/01/2026 09:31:42",
+            "nome": "CCccccccccccccccccc",
+            "cpf": "111.111.111-11",
+            "acao": "Excluir Pagamento",
+            "detalhe": "Excluiu pgto de R$ R$ 0,00 da NE 0001"
+        },
+        {
+            "data": "25/01/2026 09:31:43",
+            "nome": "CCccccccccccccccccc",
+            "cpf": "111.111.111-11",
+            "acao": "Excluir Pagamento",
+            "detalhe": "Excluiu pgto de R$ R$ 0,00 da NE 0001"
+        },
+        {
+            "data": "25/01/2026 09:31:44",
+            "nome": "CCccccccccccccccccc",
+            "cpf": "111.111.111-11",
+            "acao": "Excluir Pagamento",
+            "detalhe": "Excluiu pgto de R$ R$ 0,00 da NE 0001"
+        },
+        {
+            "data": "25/01/2026 09:31:45",
+            "nome": "CCccccccccccccccccc",
+            "cpf": "111.111.111-11",
+            "acao": "Excluir Pagamento",
+            "detalhe": "Excluiu pgto de R$ R$ 0,00 da NE 0001"
+        },
+        {
+            "data": "25/01/2026 09:31:47",
+            "nome": "CCccccccccccccccccc",
+            "cpf": "111.111.111-11",
+            "acao": "Excluir Pagamento",
+            "detalhe": "Excluiu pgto de R$ R$ 0,00 da NE 0001"
+        },
+        {
+            "data": "25/01/2026 09:45:23",
+            "nome": "CCccccccccccccccccc",
+            "cpf": "111.111.111-11",
+            "acao": "Pagamento",
+            "detalhe": "Pagamento R$ R$ 1.000,00 na NE 003. Comp: 01/2026, 02/2026, 03/2026"
+        },
+        {
+            "data": "25/01/2026 10:22:31",
+            "nome": "CCccccccccccccccccc",
+            "cpf": "111.111.111-11",
+            "acao": "Editar Pagamento",
+            "detalhe": "Editou pgto na NE 003. Novo valor: R$ 12.000,00"
+        },
+        {
+            "data": "25/01/2026 11:14:39",
+            "nome": "CCccccccccccccccccc",
+            "cpf": "111.111.111-11",
+            "acao": "Anulação",
+            "detalhe": "Anulou R$ R$ 10.000,00 na NE 0001. Motivo: anula o saldo para teste"
+        },
+        {
+            "data": "25/01/2026 12:18:02",
+            "nome": "CCccccccccccccccccc",
+            "cpf": "111.111.111-11",
+            "acao": "Criar Contrato",
+            "detalhe": "Novo contrato criado: 999/2025"
+        },
+        {
+            "data": "25/01/2026 12:18:23",
+            "nome": "CCccccccccccccccccc",
+            "cpf": "111.111.111-11",
+            "acao": "Nova NE",
+            "detalhe": "NE 2025NE001 (R$ R$ 5.000,00) adicionada ao contrato 999/2025"
+        },
+        {
+            "data": "25/01/2026 12:18:29",
+            "nome": "CCccccccccccccccccc",
+            "cpf": "111.111.111-11",
+            "acao": "Pagamento",
+            "detalhe": "Pagamento R$ R$ 0,00 na NE 2025NE001. Comp: 01/2026"
+        },
+        {
+            "data": "26/01/2026 09:22:14",
+            "nome": "Cássio de Souza Lopes",
+            "cpf": "082.206.416-22",
+            "acao": "Criar Contrato",
+            "detalhe": "Novo contrato criado: "
+        },
+        {
+            "data": "26/01/2026 10:54:06",
+            "nome": "Cássio de Souza Lopes",
+            "cpf": "082.206.416-22",
+            "acao": "Editar Contrato",
+            "detalhe": "Alterou dados base do contrato P100/2026 (teste)"
+        },
+        {
+            "data": "26/01/2026 11:35:19",
+            "nome": "Cássio de Souza Lopes",
+            "cpf": "082.206.416-22",
+            "acao": "Criar Contrato",
+            "detalhe": "Novo contrato criado: 999/2025"
+        },
+        {
+            "data": "26/01/2026 11:35:36",
+            "nome": "Cássio de Souza Lopes",
+            "cpf": "082.206.416-22",
+            "acao": "Criar Contrato",
+            "detalhe": "Novo contrato criado: 999/2025"
+        },
+        {
+            "data": "26/01/2026 11:40:04",
+            "nome": "Cássio de Souza Lopes",
+            "cpf": "082.206.416-22",
+            "acao": "Criar Contrato",
+            "detalhe": "Novo contrato criado: 999/2025"
+        },
+        {
+            "data": "26/01/2026 11:40:31",
+            "nome": "Cássio de Souza Lopes",
+            "cpf": "082.206.416-22",
+            "acao": "Nova NE",
+            "detalhe": "NE 2025NE001 (R$ R$ 5.000,00) adicionada ao contrato 999/2025"
+        },
+        {
+            "data": "26/01/2026 11:40:49",
+            "nome": "Cássio de Souza Lopes",
+            "cpf": "082.206.416-22",
+            "acao": "Pagamento",
+            "detalhe": "Pagamento R$ R$ 100,00 na NE 2025NE001. Comp: 02/2026"
+        }
+    ],
+    "prestadores": [
+        {
+            "razao_social": "HOSPITAL UM LTDA --------------",
+            "nome_fantasia": "HOSPITAL UM (teste)",
+            "cnpj": "11.111.111/1111-11",
+            "cnes": "123456",
+            "cod_cp": "123"
+        },
+        {
+            "razao_social": "Empresa Tutorial Ltda",
+            "nome_fantasia": "Empresa Tutorial Ltda",
+            "cnpj": "00.000.000/0001-00",
+            "cnes": "1234567",
+            "cod_cp": "999"
+        }
+    ]
+}
