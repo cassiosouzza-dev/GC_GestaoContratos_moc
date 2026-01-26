@@ -45,7 +45,6 @@
                     "data_emissao": "23/01/2028",
                     "ciclo_id": 3,
                     "aditivo_vinculado_id": null,
-                    "valor_pago": -5000.0,
                     "historico": [
                         {
                             "tipo": "Emissão Original",
@@ -71,7 +70,8 @@
                             "competencia": "01/2026",
                             "observacao": "anula o saldo para teste"
                         }
-                    ]
+                    ],
+                    "valor_pago": 5000.0
                 },
                 {
                     "numero": "0002",
@@ -82,7 +82,6 @@
                     "data_emissao": "23/01/2026",
                     "ciclo_id": 3,
                     "aditivo_vinculado_id": null,
-                    "valor_pago": 1000.0,
                     "historico": [
                         {
                             "tipo": "Emissão Original",
@@ -114,7 +113,8 @@
                             "competencia": "01/2026, 02/2026, 03/2026, 04/2026",
                             "observacao": "1º quadrim."
                         }
-                    ]
+                    ],
+                    "valor_pago": 1000.0
                 },
                 {
                     "numero": "003",
@@ -125,7 +125,6 @@
                     "data_emissao": "24/01/2026",
                     "ciclo_id": 3,
                     "aditivo_vinculado_id": null,
-                    "valor_pago": 12000.0,
                     "historico": [
                         {
                             "tipo": "Emissão Original",
@@ -139,7 +138,8 @@
                             "competencia": "01/2026, 02/2026, 03/2026",
                             "observacao": ""
                         }
-                    ]
+                    ],
+                    "valor_pago": 12000.0
                 },
                 {
                     "numero": "",
@@ -150,7 +150,6 @@
                     "data_emissao": "24/01/2026",
                     "ciclo_id": 3,
                     "aditivo_vinculado_id": null,
-                    "valor_pago": 0.0,
                     "historico": [
                         {
                             "tipo": "Emissão Original",
@@ -158,7 +157,8 @@
                             "competencia": "-",
                             "observacao": ""
                         }
-                    ]
+                    ],
+                    "valor_pago": 0
                 }
             ],
             "lista_aditivos": [
@@ -258,7 +258,6 @@
                     "data_emissao": "24/01/2026",
                     "ciclo_id": 0,
                     "aditivo_vinculado_id": null,
-                    "valor_pago": 1000.0,
                     "historico": [
                         {
                             "tipo": "Emissão Original",
@@ -272,7 +271,8 @@
                             "competencia": "01/2026",
                             "observacao": ""
                         }
-                    ]
+                    ],
+                    "valor_pago": 1000.0
                 }
             ],
             "lista_aditivos": [],
@@ -477,6 +477,28 @@
             "cpf": "111.111.111-11",
             "acao": "Anulação",
             "detalhe": "Anulou R$ R$ 10.000,00 na NE 0001. Motivo: anula o saldo para teste"
+        },
+        {
+            "data": "25/01/2026 12:18:02",
+            "nome": "CCccccccccccccccccc",
+            "cpf": "111.111.111-11",
+            "acao": "Criar Contrato",
+            "detalhe": "Novo contrato criado: 999/2025"
+        },
+        {
+            "data": "25/01/2026 12:18:23",
+            "nome": "CCccccccccccccccccc",
+            "cpf": "111.111.111-11",
+            "acao": "Nova NE",
+            "detalhe": "NE 2025NE001 (R$ R$ 5.000,00) adicionada ao contrato 999/2025"
+        },
+        {
+            "data": "25/01/2026 12:18:29",
+            "nome": "CCccccccccccccccccc",
+            "cpf": "111.111.111-11",
+            "acao": "Pagamento",
+            "detalhe": "Pagamento R$ R$ 0,00 na NE 2025NE001. Comp: 01/2026"
         }
-    ]
+    ],
+    "prestadores": []
 }
