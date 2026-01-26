@@ -17,7 +17,7 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QAbstractItemView, QDateEdit, QTabWidget, QMenu,
                              QCheckBox, QStackedWidget, QFrame, QFileDialog, QInputDialog,
                              QSpinBox, QTextEdit, QListWidgetItem, QColorDialog, QSlider, QGroupBox) 
-from PyQt6.QtCore import Qt, QDate, QEvent, QTimer
+from PyQt6.QtCore import Qt, QDate, QEvent, QTimer, QThread, pyqtSignal
 from PyQt6.QtGui import QAction, QColor, QFont, QPalette, QIcon, QPixmap
 
 
@@ -1030,21 +1030,20 @@ class DialogoSubContrato(BaseDialog):
                 self.combo_ciclo_alvo.currentData())
 
 
-
 class DialogoDetalheServico(BaseDialog):
     def __init__(self, servico, lista_nes_do_servico, data_inicio, data_fim, ciclo_id=0, parent=None):
         super().__init__(parent)
-    
+
         # --- GUARDA AS REFERÊNCIAS PARA A IA USAR DEPOIS ---
         self.servico_ref = servico
         self.lista_nes_ref = lista_nes_do_servico
-        self.ciclo_ref = ciclo_id 
+        self.ciclo_ref = ciclo_id
         # ---------------------------------------------------
 
         self.setWindowTitle(f"Detalhamento: {servico.descricao}")
         self.resize(1200, 700)
-        self.showMaximized() 
-        
+        self.showMaximized()
+
         layout = QVBoxLayout(self)
         self.abas = QTabWidget()
         layout.addWidget(self.abas)
@@ -1052,14 +1051,14 @@ class DialogoDetalheServico(BaseDialog):
         # ABA 1: EVOLUÇÃO MENSAL
         tab_mensal = QWidget()
         l_mensal = QVBoxLayout(tab_mensal)
-        
+
         mapa_pagamentos = {}
         meses = gerar_competencias(data_inicio, data_fim)
         total_meses_count = len(meses)
         valor_total_orcamento = servico.valor_mensal * total_meses_count
-        
+
         for m in meses:
-             mapa_pagamentos[m] = {'pago': 0.0, 'detalhes_texto': [], 'tem_obs': False}
+            mapa_pagamentos[m] = {'pago': 0.0, 'detalhes_texto': [], 'tem_obs': False}
 
         for ne in lista_nes_do_servico:
             for mov in ne.historico:
@@ -1067,7 +1066,7 @@ class DialogoDetalheServico(BaseDialog):
                     comps = [c.strip() for c in mov.competencia.split(',') if c.strip()]
                     qtd = len(comps)
                     if qtd == 0: continue
-                    valor_parcela = mov.valor / qtd 
+                    valor_parcela = mov.valor / qtd
                     obs_str = f" | Obs: {mov.observacao}" if mov.observacao else ""
                     texto_info = f"• NE {ne.numero}: {fmt_br(mov.valor)} (Ref. {qtd} meses){obs_str}"
 
@@ -1082,24 +1081,25 @@ class DialogoDetalheServico(BaseDialog):
         colunas = ["Competência", "Det.", "Valor Mensal", "Valor Pago", "Saldo Mês", "% Mês", "Saldo Global", "% Acum."]
         self.tabela_mensal.setColumnCount(len(colunas))
         self.tabela_mensal.setHorizontalHeaderLabels(colunas)
-        
+
         header = self.tabela_mensal.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed); self.tabela_mensal.setColumnWidth(1, 50)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed);
+        self.tabela_mensal.setColumnWidth(1, 50)
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(6, QHeaderView.ResizeMode.Stretch)
-        
+
         self.tabela_mensal.cellClicked.connect(self.mostrar_detalhes_clique)
 
         self.tabela_mensal.setRowCount(0)
-        
+
         # Variáveis acumuladoras
         total_previsto = 0
         total_pago = 0
         acumulado_pago_ate_agora = 0
-        total_saldo_mensal_acumulado = 0 # <--- ACUMULADOR NOVO
+        total_saldo_mensal_acumulado = 0
 
         def item_centro(texto, cor=None, bg=None):
             it = QTableWidgetItem(str(texto))
@@ -1112,30 +1112,31 @@ class DialogoDetalheServico(BaseDialog):
             dados = mapa_pagamentos[mes]
             valor_mensal = servico.valor_mensal
             valor_pago = dados['pago']
-            
+
             # Cálculo do Mês
             saldo_mes = valor_mensal - valor_pago
             percentual_mes = (valor_pago / valor_mensal * 100) if valor_mensal > 0 else 0
-            
+
             # Acumulando Totais
             total_previsto += valor_mensal
             total_pago += valor_pago
             acumulado_pago_ate_agora += valor_pago
-            total_saldo_mensal_acumulado += saldo_mes # <--- SOMA LINHA A LINHA
-            
+            total_saldo_mensal_acumulado += saldo_mes
+
             # Cálculo Global
             saldo_global = valor_total_orcamento - acumulado_pago_ate_agora
-            perc_acumulada = (acumulado_pago_ate_agora / valor_total_orcamento * 100) if valor_total_orcamento > 0 else 0
+            perc_acumulada = (
+                        acumulado_pago_ate_agora / valor_total_orcamento * 100) if valor_total_orcamento > 0 else 0
 
             row = self.tabela_mensal.rowCount()
             self.tabela_mensal.insertRow(row)
-            
+
             self.tabela_mensal.setItem(row, 0, item_centro(mes, bg=None))
-            
+
             # Ícone de detalhes
             item_link = item_centro("")
             if dados['tem_obs']:
-                item_link.setText("🔗") 
+                item_link.setText("🔗")
                 item_link.setForeground(QColor("blue"))
                 texto_completo = "Detalhes do Pagamento:\n\n" + "\n".join(dados['detalhes_texto'])
                 item_link.setToolTip(texto_completo)
@@ -1146,10 +1147,10 @@ class DialogoDetalheServico(BaseDialog):
             if valor_pago > 0:
                 self.tabela_mensal.setItem(row, 2, item_centro(fmt_br(valor_mensal)))
                 self.tabela_mensal.setItem(row, 3, item_centro(fmt_br(valor_pago), cor="#27ae60"))
-                
+
                 cor_saldo = "red" if saldo_mes < -0.01 else None
                 self.tabela_mensal.setItem(row, 4, item_centro(fmt_br(saldo_mes), cor=cor_saldo))
-                
+
                 bg_perc = "#16A856" if percentual_mes >= 100 else None
                 self.tabela_mensal.setItem(row, 5, item_centro(f"{percentual_mes:.1f}%", bg=bg_perc))
             else:
@@ -1164,23 +1165,28 @@ class DialogoDetalheServico(BaseDialog):
         # --- LINHA DE TOTAL ---
         row = self.tabela_mensal.rowCount()
         self.tabela_mensal.insertRow(row)
-        font_bold = QFont(); font_bold.setBold(True)
-        
-        i_tot = item_centro("TOTAL"); i_tot.setFont(font_bold)
+        font_bold = QFont();
+        font_bold.setBold(True)
+
+        i_tot = item_centro("TOTAL");
+        i_tot.setFont(font_bold)
         self.tabela_mensal.setItem(row, 0, i_tot)
-        
-        i_v_tot = item_centro(fmt_br(total_previsto)); i_v_tot.setFont(font_bold)
+
+        i_v_tot = item_centro(fmt_br(total_previsto));
+        i_v_tot.setFont(font_bold)
         self.tabela_mensal.setItem(row, 2, i_v_tot)
-        
-        i_p_tot = item_centro(fmt_br(total_pago)); i_p_tot.setFont(font_bold)
+
+        i_p_tot = item_centro(fmt_br(total_pago));
+        i_p_tot.setFont(font_bold)
         self.tabela_mensal.setItem(row, 3, i_p_tot)
 
         # --- TOTAL DO SALDO MENSAL (SOMATÓRIO EXATO) ---
-        i_s_tot = item_centro(fmt_br(total_saldo_mensal_acumulado)); i_s_tot.setFont(font_bold)
+        i_s_tot = item_centro(fmt_br(total_saldo_mensal_acumulado));
+        i_s_tot.setFont(font_bold)
         if total_saldo_mensal_acumulado < 0: i_s_tot.setForeground(QColor("red"))
         self.tabela_mensal.setItem(row, 4, i_s_tot)
         # -----------------------------------------------
-        
+
         l_mensal.addWidget(self.tabela_mensal)
         self.abas.addTab(tab_mensal, "Evolução Mensal")
 
@@ -1189,7 +1195,8 @@ class DialogoDetalheServico(BaseDialog):
         l_nes = QVBoxLayout(tab_nes)
         self.tabela_nes = TabelaExcel()
         self.tabela_nes.setColumnCount(6)
-        self.tabela_nes.setHorizontalHeaderLabels(["Número NE", "Emissão", "Descrição", "Valor Original", "Total Pago", "Saldo Atual"])
+        self.tabela_nes.setHorizontalHeaderLabels(
+            ["Número NE", "Emissão", "Descrição", "Valor Original", "Total Pago", "Saldo Atual"])
         self.tabela_nes.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.tabela_nes.setRowCount(0)
         for ne in lista_nes_do_servico:
@@ -1210,46 +1217,81 @@ class DialogoDetalheServico(BaseDialog):
         # BOTÕES
         btns = QHBoxLayout()
 
-        btn_ia = QPushButton("🤖 Analisar Este Serviço")
-        btn_ia.setStyleSheet("background-color: #8e44ad; color: white; font-weight: bold; padding: 8px 15px;")
-        btn_ia.clicked.connect(self.chamar_analise_ia)
+        btn_ia = QPushButton("🤖 Analisar Este Serviço (IA)")
+        btn_ia.setStyleSheet("background-color: #22b1b3; color: white; font-weight: bold; padding: 8px 15px;")
+        btn_ia.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_ia.clicked.connect(self.chamar_analise_ia)  # <--- CONECTA AO MÉTODO NOVO
         btns.addWidget(btn_ia)
 
         btn_copiar = QPushButton("Copiar Tabela Atual")
         btn_copiar.setStyleSheet("background-color: #27ae60; color: white; font-weight: bold; padding: 8px 15px;")
+        btn_copiar.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_copiar.clicked.connect(self.copiar_tabela_ativa)
+
         btn_fechar = QPushButton("Fechar")
         btn_fechar.setStyleSheet("padding: 8px 15px;")
+        btn_fechar.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_fechar.clicked.connect(self.accept)
+
         btns.addWidget(btn_copiar)
         btns.addStretch()
         btns.addWidget(btn_fechar)
         layout.addLayout(btns)
         aplicar_estilo_janela(self)
 
+    # --- MÉTODO CORRIGIDO (NÃO TRAVA MAIS) ---
     def chamar_analise_ia(self):
         try:
             main_window = self.parent()
             if not hasattr(main_window, 'ia'): return
 
-            DarkMessageBox.info(self, "IA Trabalhando", "Analisando o ritmo de execução deste serviço...")
-            
-            parecer = main_window.ia.analisar_servico_especifico(
+            ok, msg = main_window.ia.verificar_status()
+            if not ok:
+                DarkMessageBox.warning(self, "IA Indisponível", msg)
+                return
+
+            # Janela de Progresso que não trava
+            self.dial_progresso = BaseDialog(self)
+            self.dial_progresso.setWindowTitle("Analisando Serviço")
+            self.dial_progresso.resize(300, 100)
+            l = QVBoxLayout(self.dial_progresso)
+            l.addWidget(QLabel("Consultando a IA... O sistema continua responsivo."))
+
+            # Cria a Thread para rodar em segundo plano
+            self.worker = WorkerIA(
+                main_window.ia.analisar_servico_especifico,
                 self.servico_ref,
                 self.lista_nes_ref,
-                self.ciclo_ref 
+                self.ciclo_ref
             )
-            
-            dial = BaseDialog(self)
-            dial.setWindowTitle("Análise do Serviço")
-            dial.resize(600, 400)
-            l = QVBoxLayout(dial)
-            t = QTextEdit(); t.setMarkdown(parecer); t.setReadOnly(True)
-            l.addWidget(t)
-            dial.exec()
-            
+
+            self.worker.sucesso.connect(self.mostrar_resultado_ia)
+            self.worker.erro.connect(lambda e: DarkMessageBox.critical(self, "Erro na IA", e))
+            self.worker.finished.connect(self.dial_progresso.accept)  # Fecha a janela de espera no fim
+
+            self.worker.start()
+            self.dial_progresso.exec()  # Mostra a janela de espera
+
         except Exception as e:
             DarkMessageBox.critical(self, "Erro", str(e))
+
+    def mostrar_resultado_ia(self, parecer):
+        dial = BaseDialog(self)
+        dial.setWindowTitle("Análise do Serviço")
+        dial.resize(600, 400)
+        l = QVBoxLayout(dial)
+        t = QTextEdit()
+        t.setMarkdown(parecer)
+        t.setReadOnly(True)
+        l.addWidget(t)
+
+        btn = QPushButton("Fechar")
+        btn.clicked.connect(dial.accept)
+        l.addWidget(btn)
+
+        dial.exec()
+
+    # -----------------------------------------
 
     def mostrar_detalhes_clique(self, row, col):
         item = self.tabela_mensal.item(row, col)
@@ -1268,6 +1310,7 @@ class DialogoDetalheServico(BaseDialog):
             self.tabela_nes.copiar_selecao()
             self.tabela_nes.clearSelection()
         DarkMessageBox.info(self, "Sucesso", "Tabela da aba atual copiada!")
+
 
 class DialogoCadastroPrestador(BaseDialog):
     def __init__(self, prestador_editar=None, parent=None):
@@ -2147,6 +2190,23 @@ class ConsultorIA:
             return response.text
         except Exception as e: return f"Erro IA: {e}"
 
+class WorkerIA(QThread):
+    """Executa chamadas pesadas da IA em segundo plano para não travar a janela"""
+    sucesso = pyqtSignal(str) # Sinal emitido quando a IA termina
+    erro = pyqtSignal(str)    # Sinal emitido se der erro
+
+    def __init__(self, funcao_alvo, *args):
+        super().__init__()
+        self.funcao = funcao_alvo
+        self.args = args
+
+    def run(self):
+        try:
+            # Executa a função pesada aqui, sem travar o mouse
+            resultado = self.funcao(*self.args)
+            self.sucesso.emit(resultado)
+        except Exception as e:
+            self.erro.emit(str(e))
 
 class DialogoChatIA(BaseDialog):
     def __init__(self, consultor_ia, parent=None):
@@ -2181,24 +2241,38 @@ class DialogoChatIA(BaseDialog):
         h_input.addWidget(self.inp_msg)
         h_input.addWidget(btn_env)
         layout.addLayout(h_input)
-        
+
     def enviar_pergunta(self):
         pgt = self.inp_msg.text().strip()
         if not pgt: return
-        
+
         self.txt_historico.append(f"<b>👤 Você:</b> {pgt}")
         self.inp_msg.clear()
         self.inp_msg.setDisabled(True)
-        self.txt_historico.append("<i>🤖 Pensando...</i>")
-        QApplication.processEvents() # Atualiza tela
-        
-        resp = self.consultor.perguntar_aos_dados(pgt)
-        
-        # Remove o "Pensando..." (gambiarra visual simples: apenas adiciona a resposta)
-        self.txt_historico.append(f"<b>🤖 Assistente:</b>\n{resp}")
+        self.txt_historico.append("<i>🤖 Pensando... (Pode mexer na janela)</i>")
+
+        # --- MUDANÇA: USANDO THREAD ---
+        # Cria o operário para ir buscar a resposta
+        self.worker = WorkerIA(self.consultor.perguntar_aos_dados, pgt)
+
+        # Define o que fazer quando voltar
+        self.worker.sucesso.connect(self.ao_receber_resposta)
+        self.worker.erro.connect(self.ao_dar_erro)
+
+        # Inicia o trabalho
+        self.worker.start()
+
+    def ao_receber_resposta(self, resposta):
+        self.txt_historico.append(f"<b>🤖 Assistente:</b>\n{resposta}")
         self.txt_historico.append("-" * 30)
         self.inp_msg.setDisabled(False)
         self.inp_msg.setFocus()
+        # Remove a referência da thread para liberar memória
+        self.worker = None
+
+    def ao_dar_erro(self, erro_msg):
+        self.txt_historico.append(f"<b style='color:red'>Erro:</b> {erro_msg}")
+        self.inp_msg.setDisabled(False)
 
 class DialogoNotificacoes(BaseDialog):
     def __init__(self, lista_alertas, consultor_ia, parent=None):
@@ -2250,8 +2324,8 @@ class DialogoNotificacoes(BaseDialog):
         self.txt_ia.setPlaceholderText("Clique no botão abaixo para pedir à IA um plano de ação sobre esses alertas...")
         self.txt_ia.setMaximumHeight(150)
         
-        self.btn_ia = QPushButton("🤖 Gerar Plano de Ação (IA)")
-        self.btn_ia.setStyleSheet("background-color: #8e44ad; color: white; font-weight: bold; padding: 10px;")
+        self.btn_ia = QPushButton("🤖 Recomendação IA)")
+        self.btn_ia.setStyleSheet("background-color: #1d809c; color: white; font-weight: bold; padding: 10px;")
         self.btn_ia.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_ia.clicked.connect(self.gerar_analise_ia)
         
@@ -2263,32 +2337,36 @@ class DialogoNotificacoes(BaseDialog):
         btn_fechar = QPushButton("Fechar")
         btn_fechar.clicked.connect(self.accept)
         layout.addWidget(btn_fechar)
-        
+
     def gerar_analise_ia(self):
         if not self.lista_alertas:
             self.txt_ia.setText("Sem alertas para analisar. Tudo tranquilo!")
             return
-            
-        self.txt_ia.setText("⏳ A IA está analisando os prazos e saldos... Aguarde...")
-        QApplication.processEvents()
-        
-        # Monta um resumo para a IA
+
+        self.txt_ia.setText("⏳ A IA está analisando... (O sistema continua responsivo)")
+        self.btn_ia.setDisabled(True)  # Evita clique duplo
+
+        # Monta o prompt aqui mesmo
         texto_alertas = "\n".join([f"- {a['tipo']}: {a['mensagem']}" for a in self.lista_alertas])
-        
         prompt = f"""
         Aja como um Gestor de Contratos Sênior. O sistema detectou os seguintes problemas críticos:
-        
         {texto_alertas}
-        
         Gere um RESUMO EXECUTIVO curto (máx 5 linhas) sugerindo prioridades.
-        O que deve ser feito primeiro? Algum aditivo urgente?
         """
-        
-        try:
-            resp = self.consultor.model.generate_content(prompt)
-            self.txt_ia.setMarkdown(resp.text)
-        except Exception as e:
-            self.txt_ia.setText(f"Erro na IA: {str(e)}")
+
+        # Lança a Thread
+        # Nota: Usamos lambda ou função auxiliar para acessar o método generate_content
+        def consultar_api():
+            return self.consultor.model.generate_content(prompt).text
+
+        self.worker = WorkerIA(consultar_api)
+        self.worker.sucesso.connect(self.ao_terminar_analise)
+        self.worker.erro.connect(lambda e: self.txt_ia.setText(f"Erro: {e}"))
+        self.worker.finished.connect(lambda: self.btn_ia.setDisabled(False))
+        self.worker.start()
+
+    def ao_terminar_analise(self, texto):
+        self.txt_ia.setMarkdown(texto)
 
 # --- 3. SISTEMA PRINCIPAL ---
 
@@ -2639,92 +2717,204 @@ class SistemaGestao(QMainWindow):
             self.setWindowTitle(f"Gestão de Contratos - [Base: {nome_arquivo}]")
             
             DarkMessageBox.info(self, "Base Trocada", f"Agora você está usando a base:\n{nome_arquivo}")
-    
+
     def sincronizar_nuvem(self):
         try:
+            # Janela de espera para conexão inicial (pode demorar)
+            dial_con = BaseDialog(self)
+            dial_con.setWindowTitle("Conectando...")
+            dial_con.resize(300, 80)
+            l_con = QVBoxLayout(dial_con);
+            l_con.addWidget(QLabel("Conectando ao Google Drive..."))
+            dial_con.show()
+            QApplication.processEvents()
+
             driver = sinc.DriveConector()
             driver.conectar()
+            dial_con.close()  # Fecha aviso de conexão
+
         except Exception as e:
+            if 'dial_con' in locals(): dial_con.close()
             DarkMessageBox.critical(self, "Erro de Conexão", f"Erro: {str(e)}")
             return
 
         nome_nuvem = "dados_gestao_contratos_db.json"
-        
+
         arquivo_remoto = None
         try:
             arquivo_remoto = driver.buscar_id_arquivo(nome_nuvem)
-        except: pass
+        except:
+            pass
 
         msg_status = "Arquivo encontrado no Drive!" if arquivo_remoto else "Arquivo NÃO encontrado (Será criado)."
-        
+
         mbox = DarkMessageBox(self)
         mbox.setWindowTitle("Sincronização Nuvem")
-        mbox.setText(f"Status da Nuvem: {msg_status}\n\nBase Atual: {os.path.basename(self.arquivo_db)}\n\nEscolha a operação:")
-        
+        mbox.setText(
+            f"Status da Nuvem: {msg_status}\n\nBase Atual: {os.path.basename(self.arquivo_db)}\n\nEscolha a operação:")
+
         btn_enviar = mbox.addButton("Enviar (Sobrescrever Nuvem)", QMessageBox.ButtonRole.ActionRole)
         btn_mesclar = mbox.addButton("Sincronizar (Mesclar)", QMessageBox.ButtonRole.ActionRole)
-        
-        # --- MUDANÇA: BOTÃO NOVO ---
         btn_baixar_sep = mbox.addButton("Baixar Base Separada\n(Salvar Como...)", QMessageBox.ButtonRole.ActionRole)
-        # ---------------------------
-        
         btn_cancel = mbox.addButton("Cancelar", QMessageBox.ButtonRole.RejectRole)
-        
+
         mbox.exec()
-        
+
         if mbox.clickedButton() == btn_cancel: return
 
-        # 1. ENVIAR
+        # ==========================================
+        # 1. ENVIAR (SOBRESCREVER)
+        # ==========================================
         if mbox.clickedButton() == btn_enviar:
-            if DarkMessageBox.question(self, "Confirmar", "Sobrescrever a nuvem com sua base atual?") == QMessageBox.StandardButton.Yes:
+            if DarkMessageBox.question(self, "Confirmar",
+                                       "Sobrescrever a nuvem com sua base atual? (Dados da nuvem serão perdidos)") == QMessageBox.StandardButton.Yes:
                 try:
-                    dados = {"contratos": [c.to_dict() for c in self.db_contratos], "logs": [l.to_dict() for l in self.db_logs]}
+                    # Janela de Progresso
+                    d_prog = BaseDialog(self);
+                    d_prog.setWindowTitle("Enviando...");
+                    d_prog.resize(300, 50)
+                    l_p = QVBoxLayout(d_prog);
+                    l_p.addWidget(QLabel("Enviando dados..."));
+                    d_prog.show();
+                    QApplication.processEvents()
+
+                    dados = {
+                        "contratos": [c.to_dict() for c in self.db_contratos],
+                        "logs": [l.to_dict() for l in self.db_logs],
+                        "prestadores": [p.to_dict() for p in self.db_prestadores]
+                    }
                     fid = arquivo_remoto['id'] if arquivo_remoto else None
                     driver.subir_json(nome_nuvem, dados, file_id_existente=fid)
-                    DarkMessageBox.info(self, "Sucesso", "Enviado!")
-                except Exception as e: DarkMessageBox.critical(self, "Erro", str(e))
 
-        # 2. MESCLAR
+                    d_prog.close()
+                    DarkMessageBox.info(self, "Sucesso", "Envio Concluído!")
+                except Exception as e:
+                    if 'd_prog' in locals(): d_prog.close()
+                    DarkMessageBox.critical(self, "Erro", str(e))
+
+        # ==========================================
+        # 2. MESCLAR (SINCRONIZAR INTELIGENTE)
+        # ==========================================
         elif mbox.clickedButton() == btn_mesclar:
-            if not arquivo_remoto: return
-            try:
-                # (Lógica de mesclagem mantida igual ao anterior - omitida para brevidade, mantenha a sua)
-                # ... copie a lógica do bloco 'elif mbox.clickedButton() == btn_baixar:' da resposta anterior
-                # ... mas lembre de manter o nome btn_mesclar
-                pass # Substitua pelo código de mesclagem
-            except: pass
+            if not arquivo_remoto:
+                DarkMessageBox.warning(self, "Aviso",
+                                       "Não há arquivo na nuvem para mesclar. Use a opção 'Enviar' primeiro.")
+                return
 
-        # 3. BAIXAR SEPARADO (NOVO)
+            # Janela de Progresso
+            d_prog = BaseDialog(self);
+            d_prog.setWindowTitle("Sincronizando...");
+            d_prog.resize(300, 80)
+            l_p = QVBoxLayout(d_prog);
+            l_p.addWidget(QLabel("1. Baixando Nuvem...\n2. Unindo Dados...\n3. Atualizando Nuvem..."));
+            d_prog.show();
+            QApplication.processEvents()
+
+            try:
+                # A. Baixa dados da Nuvem
+                dados_nuvem = driver.baixar_json(arquivo_remoto['id'])
+                contratos_nuvem = dados_nuvem.get("contratos", [])
+                prest_nuvem = dados_nuvem.get("prestadores", [])
+                logs_nuvem = dados_nuvem.get("logs", [])
+
+                # B. Lógica de União (Merge)
+                # Dicionários para evitar duplicidade (Chave = Numero Contrato / CNPJ)
+
+                # --- 1. Contratos ---
+                # Começa com os da nuvem
+                mapa_contratos = {c['numero']: c for c in contratos_nuvem}
+                # Sobrepõe com os locais (Local tem prioridade na edição recente)
+                for c_local in self.db_contratos:
+                    mapa_contratos[c_local.numero] = c_local.to_dict()
+                lista_contratos_final = list(mapa_contratos.values())
+
+                # --- 2. Prestadores ---
+                mapa_prest = {p['cnpj']: p for p in prest_nuvem}
+                for p_local in self.db_prestadores:
+                    mapa_prest[p_local.cnpj] = p_local.to_dict()
+                lista_prest_final = list(mapa_prest.values())
+
+                # --- 3. Logs (Histórico) ---
+                # Apenas soma tudo (Logs não se apagam)
+                logs_finais = logs_nuvem + [l.to_dict() for l in self.db_logs]
+
+                # Remove duplicatas exatas de logs (se houver) convertendo para string
+                logs_unicos = []
+                vistos = set()
+                for l in logs_finais:
+                    s = str(l)
+                    if s not in vistos:
+                        logs_unicos.append(l)
+                        vistos.add(s)
+
+                # C. Monta o pacote final
+                dados_combinados = {
+                    "contratos": lista_contratos_final,
+                    "logs": logs_unicos,
+                    "prestadores": lista_prest_final
+                }
+
+                # D. Sobe de volta para a Nuvem (Atualiza o remoto)
+                driver.subir_json(nome_nuvem, dados_combinados, file_id_existente=arquivo_remoto['id'])
+
+                # E. Atualiza o Local (Salva no disco e recarrega memória)
+                with open(self.arquivo_db, 'w', encoding='utf-8-sig') as f:
+                    json.dump(dados_combinados, f, indent=4, ensure_ascii=False)
+
+                self.carregar_dados()  # Atualiza a tela
+
+                d_prog.close()
+                # --- AQUI ESTÁ A MENSAGEM QUE FALTAVA ---
+                DarkMessageBox.info(self, "Sincronização Concluída",
+                                    "Processo finalizado!\n\nSeus dados foram unidos com a nuvem com sucesso.")
+
+            except Exception as e:
+                d_prog.close()
+                DarkMessageBox.critical(self, "Erro na Sincronização", f"Falha ao mesclar: {str(e)}")
+
+
+        # ==========================================
+        # 3. BAIXAR SEPARADO
+        # ==========================================
         elif mbox.clickedButton() == btn_baixar_sep:
             if not arquivo_remoto:
                 DarkMessageBox.warning(self, "Aviso", "Nada na nuvem para baixar.")
                 return
 
-            # Pergunta onde salvar
-            fpath, _ = QFileDialog.getSaveFileName(self, "Salvar Base da Nuvem Como...", "base_nuvem_copia.json", "JSON (*.json)")
+            fpath, _ = QFileDialog.getSaveFileName(self, "Salvar Base da Nuvem Como...", "base_nuvem_copia.json",
+                                                   "JSON (*.json)")
             if not fpath: return
 
             try:
+                # Janela de Progresso
+                d_prog = BaseDialog(self);
+                d_prog.setWindowTitle("Baixando...");
+                d_prog.resize(300, 50)
+                l_p = QVBoxLayout(d_prog);
+                l_p.addWidget(QLabel("Baixando arquivo..."));
+                d_prog.show();
+                QApplication.processEvents()
+
                 dados_nuvem = driver.baixar_json(arquivo_remoto['id'])
-                
-                # Salva no arquivo escolhido
+
                 with open(fpath, 'w', encoding='utf-8-sig') as f:
                     json.dump(dados_nuvem, f, indent=4, ensure_ascii=False)
-                
-                # Pergunta se quer usar essa base agora
-                if DarkMessageBox.question(self, "Base Baixada", 
-                                        f"Arquivo salvo em:\n{fpath}\n\nDeseja carregar esta base no sistema agora?",
-                                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No) == QMessageBox.StandardButton.Yes:
-                    
+
+                d_prog.close()
+
+                if DarkMessageBox.question(self, "Base Baixada",
+                                           f"Arquivo salvo em:\n{fpath}\n\nDeseja carregar esta base no sistema agora?",
+                                           QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No) == QMessageBox.StandardButton.Yes:
                     self.arquivo_db = fpath
                     self.db_contratos = []
                     self.db_logs = []
-                    self.carregar_dados() # Recarrega do novo arquivo
-                    
+                    self.carregar_dados()
                 else:
-                    DarkMessageBox.info(self, "Sucesso", "Arquivo salvo. Você pode abri-lo depois pelo menu Arquivo > Trocar Base.")
+                    DarkMessageBox.info(self, "Sucesso",
+                                        "Arquivo salvo. Você pode abri-lo depois pelo menu Arquivo > Trocar Base.")
 
             except Exception as e:
+                if 'd_prog' in locals(): d_prog.close()
                 DarkMessageBox.critical(self, "Erro", f"Falha ao baixar: {str(e)}")
 
     def alternar_tema(self):
@@ -2945,7 +3135,7 @@ class SistemaGestao(QMainWindow):
         m_ajuda.addSeparator()
         m_ajuda.addAction("Manual do Sistema", self.abrir_manual)
 
-        m_ajuda.addAction("Sobre", lambda: DarkMessageBox.info(self, "Sobre", "GC Gestor de Contratos - Versão 1.0\nDesenvolvido em Python/PyQt6\n\nAutor: Cássio de Souza Lopes\nServidor da Secretaria Municipal de Saúde de Montes Claros(MG) desde out/2017\nMestre em Desenvolvimento Social (Unimontes)\nBacharel em Economia (Unimontes\nGraduando em Análise e Desenvolvimento de Sistemas (UNINTER)\n\nGitHub: github.com/cassioslopes\nemail: cassio.souzza@gmail.ocm"))
+        m_ajuda.addAction("Sobre", lambda: DarkMessageBox.info(self, "Sobre", "GC Gestor de Contratos - Versão 1.0\nDesenvolvido em Python/PyQt6\n\nAutor: Cássio de Souza Lopes\nServidor da Secretaria Municipal de Saúde de Montes Claros(MG) desde out/2017\nMestre em Desenvolvimento Social (Unimontes)\nBacharel em Economia (Unimontes\nGraduando em Análise e Desenvolvimento de Sistemas (UNINTER)\n\nGitHub: github.com/cassioslopes\nemail: cassio.souzza@gmail.com"))
 
         self.stack = QStackedWidget()
         self.setCentralWidget(self.stack)
@@ -2997,7 +3187,7 @@ class SistemaGestao(QMainWindow):
         self.lbl_logo = QLabel("Pesquisa de Contratos / Notas de Empenho / Prestadores")
         self.lbl_logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.lbl_logo.setFont(QFont("Arial", 24, QFont.Weight.Bold))
-        self.lbl_logo.setStyleSheet("color: #2c3e50; margin-bottom: 20px; margin-top: 10px")
+        self.lbl_logo.setStyleSheet("color: #010428; margin-bottom: 20px; margin-top: 10px")
 
         # Barra de Pesquisa
         self.inp_search = QLineEdit()
@@ -3142,7 +3332,7 @@ class SistemaGestao(QMainWindow):
 
         # --- NOVO BOTÃO ANÁLISE ---
         b_analise = QPushButton("Analisar Risco (IA)");
-        b_analise.setStyleSheet("background-color: #052c32; color: white; font-weight: bold;")
+        b_analise.setStyleSheet("background-color: #22b1b3; color: white; font-weight: bold;")
         b_analise.clicked.connect(self.abrir_analise_ia)
         
         btns_fin.addWidget(b_ne);
@@ -3412,14 +3602,15 @@ class SistemaGestao(QMainWindow):
             
             menu.exec(self.tabela_resultados.mapToGlobal(pos))
 
-
     def abrir_novo_contrato(self):
-        dial = DialogoCriarContrato(parent=self)
-        
+        # CORREÇÃO: Passamos self.db_prestadores como primeiro argumento
+        dial = DialogoCriarContrato(self.db_prestadores, parent=self)
+
         # --- LÓGICA DO TUTORIAL ---
         if self.em_tutorial:
             dial.inp_numero.setText("999/2025")
-            dial.inp_prestador.setText("Empresa Tutorial Ltda")
+            # Nota: No tutorial, o combobox pode não ter esse prestador,
+            # mas vamos deixar assim por enquanto ou adicionar manualmente se der erro.
             dial.inp_desc.setText("Contrato de Exemplo para Aprendizado")
             dial.inp_valor.set_value(12000.00)
             dial.inp_licitacao.setText("Pregão 01/25")
@@ -3434,9 +3625,10 @@ class SistemaGestao(QMainWindow):
             self.filtrar_contratos()
             self.salvar_dados()
 
-
     def editar_contrato_externo(self, c):
-        dial = DialogoCriarContrato(contrato_editar=c, parent=self)
+        # CORREÇÃO: Passamos self.db_prestadores aqui também
+        dial = DialogoCriarContrato(self.db_prestadores, contrato_editar=c, parent=self)
+
         if dial.exec():
             d = dial.get_dados()
 
@@ -3458,7 +3650,6 @@ class SistemaGestao(QMainWindow):
 
             self.filtrar_contratos()
             self.salvar_dados()
-
 
     def excluir_contrato_externo(self, c):
         if DarkMessageBox.question(self, "Excluir", f"Excluir {c.numero}?") == QMessageBox.StandardButton.Yes:
@@ -4552,7 +4743,7 @@ class SistemaGestao(QMainWindow):
             
             # Coluna "Saldo Serviço" (O que resta do contrato todo)
             i_s3 = QTableWidgetItem(fmt_br(saldo_real_caixa))
-            i_s3.setTextAlignment(Qt.AlignmentFlag.AlignCenter); i_s3.setForeground(QColor("#39379e")); i_s3.setFont(font_bold)
+            i_s3.setTextAlignment(Qt.AlignmentFlag.AlignCenter); i_s3.setForeground(QColor("#087d19")); i_s3.setFont(font_bold)
             self.tab_subcontratos.setItem(new_row_idx, 7, i_s3)
 
         # --- TABELA ADITIVOS ---
@@ -4589,18 +4780,33 @@ class SistemaGestao(QMainWindow):
 
     def abrir_analise_ia(self):
         if not self.contrato_selecionado: return
-        
+
         ok, msg = self.ia.verificar_status()
         if not ok:
             DarkMessageBox.warning(self, "IA Indisponível", msg)
             return
 
-        DarkMessageBox.info(self, "Aguarde", "Enviando dados para auditoria inteligente...\nIsso pode levar alguns segundos.")
-        
+        # Cria uma janela de progresso que não trava
+        self.dial_progresso = BaseDialog(self)
+        self.dial_progresso.setWindowTitle("Auditoria IA em Andamento")
+        self.dial_progresso.resize(300, 100)
+        l = QVBoxLayout(self.dial_progresso)
+        l.addWidget(QLabel("Analisando dados financeiros... Aguarde.\n(Você pode fechar se quiser)"))
+
         ciclo_view = self.combo_ciclo_visualizacao.currentData() or 0
-        parecer = self.ia.analisar_risco_contrato(self.contrato_selecionado, ciclo_view)
-        
-        # Mostra resultado
+
+        # Lança a Thread
+        self.worker_risco = WorkerIA(self.ia.analisar_risco_contrato, self.contrato_selecionado, ciclo_view)
+
+        self.worker_risco.sucesso.connect(self.mostrar_resultado_risco)
+        self.worker_risco.erro.connect(lambda e: DarkMessageBox.critical(self, "Erro", e))
+        # Fecha a janelinha de espera quando terminar
+        self.worker_risco.finished.connect(self.dial_progresso.accept)
+
+        self.worker_risco.start()
+        self.dial_progresso.exec()  # Mostra a janela de espera
+
+    def mostrar_resultado_risco(self, parecer):
         dial = BaseDialog(self)
         dial.setWindowTitle("Parecer da Auditoria IA")
         dial.resize(600, 500)
@@ -4613,6 +4819,7 @@ class SistemaGestao(QMainWindow):
         btn.clicked.connect(dial.accept)
         l.addWidget(btn)
         dial.exec()
+
     def abrir_gestao_prestadores(self):
         dial = DialogoGerenciarPrestadores(self.db_prestadores, parent=self)
         dial.exec() # O salvamento acontece dentro do diálogo ao fechar/alterar
