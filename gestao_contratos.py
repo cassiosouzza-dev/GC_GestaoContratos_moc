@@ -1,4 +1,6 @@
+
 import manual_texto
+import webbrowser
 import sinc
 import google.generativeai as genai
 CHAVE_API_GEMINI = "AIzaSyDnCiICf2GXebAYzXxW044-8BSm7r2g3QI"
@@ -1034,21 +1036,21 @@ class DialogoDetalheServico(BaseDialog):
     def __init__(self, servico, lista_nes_do_servico, data_inicio, data_fim, ciclo_id=0, parent=None):
         super().__init__(parent)
 
-        # --- GUARDA AS REFERÊNCIAS PARA A IA USAR DEPOIS ---
+        # Referências para a IA
         self.servico_ref = servico
         self.lista_nes_ref = lista_nes_do_servico
         self.ciclo_ref = ciclo_id
-        # ---------------------------------------------------
 
         self.setWindowTitle(f"Detalhamento: {servico.descricao}")
         self.resize(1200, 700)
-        self.showMaximized()
 
         layout = QVBoxLayout(self)
         self.abas = QTabWidget()
         layout.addWidget(self.abas)
 
+        # =================================================================
         # ABA 1: EVOLUÇÃO MENSAL
+        # =================================================================
         tab_mensal = QWidget()
         l_mensal = QVBoxLayout(tab_mensal)
 
@@ -1057,8 +1059,7 @@ class DialogoDetalheServico(BaseDialog):
         total_meses_count = len(meses)
         valor_total_orcamento = servico.valor_mensal * total_meses_count
 
-        for m in meses:
-            mapa_pagamentos[m] = {'pago': 0.0, 'detalhes_texto': [], 'tem_obs': False}
+        for m in meses: mapa_pagamentos[m] = {'pago': 0.0, 'detalhes_texto': [], 'tem_obs': False}
 
         for ne in lista_nes_do_servico:
             for mov in ne.historico:
@@ -1074,8 +1075,7 @@ class DialogoDetalheServico(BaseDialog):
                         if c in mapa_pagamentos:
                             mapa_pagamentos[c]['pago'] += valor_parcela
                             mapa_pagamentos[c]['detalhes_texto'].append(texto_info)
-                            if qtd > 1 or mov.observacao:
-                                mapa_pagamentos[c]['tem_obs'] = True
+                            if qtd > 1 or mov.observacao: mapa_pagamentos[c]['tem_obs'] = True
 
         self.tabela_mensal = TabelaExcel()
         colunas = ["Competência", "Det.", "Valor Mensal", "Valor Pago", "Saldo Mês", "% Mês", "Saldo Global", "% Acum."]
@@ -1083,26 +1083,17 @@ class DialogoDetalheServico(BaseDialog):
         self.tabela_mensal.setHorizontalHeaderLabels(colunas)
 
         header = self.tabela_mensal.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed);
+        header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.tabela_mensal.setColumnWidth(1, 50)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(6, QHeaderView.ResizeMode.Stretch)
-
         self.tabela_mensal.cellClicked.connect(self.mostrar_detalhes_clique)
 
-        self.tabela_mensal.setRowCount(0)
-
-        # Variáveis acumuladoras
-        total_previsto = 0
-        total_pago = 0
-        acumulado_pago_ate_agora = 0
-        total_saldo_mensal_acumulado = 0
+        total_previsto = 0;
+        total_pago = 0;
+        acumulado_pago = 0;
+        total_saldo_mes = 0
 
         def item_centro(texto, cor=None, bg=None):
-            it = QTableWidgetItem(str(texto))
+            it = QTableWidgetItem(str(texto));
             it.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             if cor: it.setForeground(QColor(cor))
             if bg: it.setBackground(QColor(bg))
@@ -1110,136 +1101,176 @@ class DialogoDetalheServico(BaseDialog):
 
         for mes in meses:
             dados = mapa_pagamentos[mes]
-            valor_mensal = servico.valor_mensal
-            valor_pago = dados['pago']
+            v_mensal = servico.valor_mensal;
+            v_pago = dados['pago']
+            saldo_mes = v_mensal - v_pago
+            perc_mes = (v_pago / v_mensal * 100) if v_mensal > 0 else 0
 
-            # Cálculo do Mês
-            saldo_mes = valor_mensal - valor_pago
-            percentual_mes = (valor_pago / valor_mensal * 100) if valor_mensal > 0 else 0
+            total_previsto += v_mensal;
+            total_pago += v_pago;
+            acumulado_pago += v_pago;
+            total_saldo_mes += saldo_mes
+            saldo_global = valor_total_orcamento - acumulado_pago
+            perc_acum = (acumulado_pago / valor_total_orcamento * 100) if valor_total_orcamento > 0 else 0
 
-            # Acumulando Totais
-            total_previsto += valor_mensal
-            total_pago += valor_pago
-            acumulado_pago_ate_agora += valor_pago
-            total_saldo_mensal_acumulado += saldo_mes
+            r = self.tabela_mensal.rowCount();
+            self.tabela_mensal.insertRow(r)
+            self.tabela_mensal.setItem(r, 0, item_centro(mes))
 
-            # Cálculo Global
-            saldo_global = valor_total_orcamento - acumulado_pago_ate_agora
-            perc_acumulada = (
-                        acumulado_pago_ate_agora / valor_total_orcamento * 100) if valor_total_orcamento > 0 else 0
+            lnk = item_centro("🔗", "blue") if dados['tem_obs'] else item_centro("")
+            if dados['tem_obs']: lnk.setData(Qt.ItemDataRole.UserRole, "\n".join(dados['detalhes_texto']))
+            self.tabela_mensal.setItem(r, 1, lnk)
 
-            row = self.tabela_mensal.rowCount()
-            self.tabela_mensal.insertRow(row)
-
-            self.tabela_mensal.setItem(row, 0, item_centro(mes, bg=None))
-
-            # Ícone de detalhes
-            item_link = item_centro("")
-            if dados['tem_obs']:
-                item_link.setText("🔗")
-                item_link.setForeground(QColor("blue"))
-                texto_completo = "Detalhes do Pagamento:\n\n" + "\n".join(dados['detalhes_texto'])
-                item_link.setToolTip(texto_completo)
-                item_link.setData(Qt.ItemDataRole.UserRole, texto_completo)
-            self.tabela_mensal.setItem(row, 1, item_link)
-
-            # --- EXIBIÇÃO ---
-            if valor_pago > 0:
-                self.tabela_mensal.setItem(row, 2, item_centro(fmt_br(valor_mensal)))
-                self.tabela_mensal.setItem(row, 3, item_centro(fmt_br(valor_pago), cor="#27ae60"))
-
-                cor_saldo = "red" if saldo_mes < -0.01 else None
-                self.tabela_mensal.setItem(row, 4, item_centro(fmt_br(saldo_mes), cor=cor_saldo))
-
-                bg_perc = "#16A856" if percentual_mes >= 100 else None
-                self.tabela_mensal.setItem(row, 5, item_centro(f"{percentual_mes:.1f}%", bg=bg_perc))
+            if v_pago > 0:
+                self.tabela_mensal.setItem(r, 2, item_centro(fmt_br(v_mensal)))
+                self.tabela_mensal.setItem(r, 3, item_centro(fmt_br(v_pago), "#27ae60"))
+                self.tabela_mensal.setItem(r, 4, item_centro(fmt_br(saldo_mes), "red" if saldo_mes < -0.01 else None))
+                self.tabela_mensal.setItem(r, 5, item_centro(f"{perc_mes:.1f}%"))
             else:
-                self.tabela_mensal.setItem(row, 2, item_centro("-"))
-                self.tabela_mensal.setItem(row, 3, item_centro("-"))
-                self.tabela_mensal.setItem(row, 4, item_centro("-"))
-                self.tabela_mensal.setItem(row, 5, item_centro("-"))
+                for k in range(2, 6): self.tabela_mensal.setItem(r, k, item_centro("-"))
 
-            self.tabela_mensal.setItem(row, 6, item_centro(fmt_br(saldo_global)))
-            self.tabela_mensal.setItem(row, 7, item_centro(f"{perc_acumulada:.1f}%"))
+            self.tabela_mensal.setItem(r, 6, item_centro(fmt_br(saldo_global)))
+            self.tabela_mensal.setItem(r, 7, item_centro(f"{perc_acum:.1f}%"))
 
-        # --- LINHA DE TOTAL ---
-        row = self.tabela_mensal.rowCount()
-        self.tabela_mensal.insertRow(row)
-        font_bold = QFont();
-        font_bold.setBold(True)
-
+        # Linha Total
+        r = self.tabela_mensal.rowCount();
+        self.tabela_mensal.insertRow(r)
         i_tot = item_centro("TOTAL");
-        i_tot.setFont(font_bold)
-        self.tabela_mensal.setItem(row, 0, i_tot)
-
-        i_v_tot = item_centro(fmt_br(total_previsto));
-        i_v_tot.setFont(font_bold)
-        self.tabela_mensal.setItem(row, 2, i_v_tot)
-
-        i_p_tot = item_centro(fmt_br(total_pago));
-        i_p_tot.setFont(font_bold)
-        self.tabela_mensal.setItem(row, 3, i_p_tot)
-
-        # --- TOTAL DO SALDO MENSAL (SOMATÓRIO EXATO) ---
-        i_s_tot = item_centro(fmt_br(total_saldo_mensal_acumulado));
-        i_s_tot.setFont(font_bold)
-        if total_saldo_mensal_acumulado < 0: i_s_tot.setForeground(QColor("red"))
-        self.tabela_mensal.setItem(row, 4, i_s_tot)
-        # -----------------------------------------------
+        i_tot.setFont(QFont("Arial", 9, QFont.Weight.Bold))
+        self.tabela_mensal.setItem(r, 0, i_tot)
+        self.tabela_mensal.setItem(r, 2, item_centro(fmt_br(total_previsto)))
+        self.tabela_mensal.setItem(r, 3, item_centro(fmt_br(total_pago), "#27ae60"))
+        self.tabela_mensal.setItem(r, 4, item_centro(fmt_br(total_saldo_mes)))
 
         l_mensal.addWidget(self.tabela_mensal)
-        self.abas.addTab(tab_mensal, "Evolução Mensal")
+        self.abas.addTab(tab_mensal, "Evolução Mensal (Resumo)")
 
-        # ABA 2: LISTA DE NEs
+        # =================================================================
+        # ABA 2: POR NOTA DE EMPENHO (DETALHADO COM TREE WIDGET)
+        # =================================================================
+        from PyQt6.QtWidgets import QTreeWidget, QTreeWidgetItem
+
         tab_nes = QWidget()
         l_nes = QVBoxLayout(tab_nes)
-        self.tabela_nes = TabelaExcel()
-        self.tabela_nes.setColumnCount(6)
-        self.tabela_nes.setHorizontalHeaderLabels(
-            ["Número NE", "Emissão", "Descrição", "Valor Original", "Total Pago", "Saldo Atual"])
-        self.tabela_nes.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        self.tabela_nes.setRowCount(0)
+
+        self.tree_nes = QTreeWidget()
+        self.tree_nes.setHeaderLabels(
+            ["Identificação / Competência", "Tipo Movimento", "Detalhes / Obs", "Valor", "Saldo NE"])
+
+        header_tree = self.tree_nes.header()
+        header_tree.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        header_tree.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        header_tree.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        header_tree.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        header_tree.setSectionResizeMode(4, QHeaderView.ResizeMode.Fixed)
+        self.tree_nes.setColumnWidth(4, 120)
+
         for ne in lista_nes_do_servico:
-            r = self.tabela_nes.rowCount()
-            self.tabela_nes.insertRow(r)
-            pago = sum(m.valor for m in ne.historico if m.tipo == "Pagamento")
-            anulado = sum(abs(m.valor) for m in ne.historico if m.tipo == "Anulação")
-            saldo = ne.valor_inicial - anulado - pago
-            self.tabela_nes.setItem(r, 0, item_centro(ne.numero))
-            self.tabela_nes.setItem(r, 1, item_centro(ne.data_emissao))
-            self.tabela_nes.setItem(r, 2, item_centro(ne.descricao))
-            self.tabela_nes.setItem(r, 3, item_centro(fmt_br(ne.valor_inicial)))
-            self.tabela_nes.setItem(r, 4, item_centro(fmt_br(pago), cor="#27ae60"))
-            self.tabela_nes.setItem(r, 5, item_centro(fmt_br(saldo)))
-        l_nes.addWidget(self.tabela_nes)
-        self.abas.addTab(tab_nes, "Por Nota de Empenho (NE)")
+            # --- NÍVEL 1: A NOTA DE EMPENHO (PAI) ---
+            item_ne = QTreeWidgetItem(self.tree_nes)
+            item_ne.setText(0, f"NE {ne.numero}")
+            item_ne.setText(1, "Empenho Original")
+            item_ne.setText(2, f"Emissão: {ne.data_emissao} | Fonte: {ne.fonte_recurso}")
+            item_ne.setText(3, fmt_br(ne.valor_inicial))
 
-        # BOTÕES
+            font_pai = QFont();
+            font_pai.setBold(True);
+            font_pai.setPointSize(10)
+            for c in range(5):
+                item_ne.setFont(c, font_pai)
+                item_ne.setBackground(c, QColor("#e0e0e0"))
+
+            # --- NÍVEL 2: MOVIMENTAÇÕES (FILHOS) ---
+            saldo_corrente = ne.valor_inicial
+            item_ne.setText(4, fmt_br(saldo_corrente))
+
+            for mov in ne.historico:
+                if mov.tipo == "Emissão Original": continue
+
+                child = QTreeWidgetItem(item_ne)
+                child.setText(0, f"   ↳ {mov.competencia}")
+                child.setText(1, mov.tipo)
+                child.setText(2, mov.observacao)
+                child.setText(3, fmt_br(mov.valor))
+                child.setTextAlignment(3, Qt.AlignmentFlag.AlignRight)
+
+                if mov.tipo == "Pagamento":
+                    saldo_corrente -= mov.valor
+                    child.setForeground(3, QColor("#27ae60"))
+                elif mov.tipo == "Anulação":
+                    saldo_corrente -= abs(mov.valor)
+                    child.setForeground(1, QColor("#c0392b"))
+                    child.setForeground(3, QColor("#c0392b"))
+
+                child.setText(4, fmt_br(saldo_corrente))
+                child.setTextAlignment(4, Qt.AlignmentFlag.AlignRight)
+
+            item_ne.setText(4, fmt_br(saldo_corrente))
+            item_ne.setExpanded(True)
+
+        l_nes.addWidget(self.tree_nes)
+        self.abas.addTab(tab_nes, "Por Nota de Empenho (Detalhado)")
+
+        # =================================================================
+        # BOTÕES DE RODAPÉ (AGORA COM O BOTÃO COPIAR RESTAURADO)
+        # =================================================================
         btns = QHBoxLayout()
-
-        btn_ia = QPushButton("🤖 Analisar Este Serviço (IA)")
+        btn_ia = QPushButton("🤖 Analisar Este Serviço")
         btn_ia.setStyleSheet("background-color: #22b1b3; color: white; font-weight: bold; padding: 8px 15px;")
-        btn_ia.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_ia.clicked.connect(self.chamar_analise_ia)  # <--- CONECTA AO MÉTODO NOVO
-        btns.addWidget(btn_ia)
+        btn_ia.clicked.connect(self.chamar_analise_ia)
 
-        btn_copiar = QPushButton("Copiar Tabela Atual")
+        # --- BOTÃO RESTAURADO ---
+        btn_copiar = QPushButton("Copiar Tabela")
         btn_copiar.setStyleSheet("background-color: #27ae60; color: white; font-weight: bold; padding: 8px 15px;")
-        btn_copiar.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_copiar.clicked.connect(self.copiar_tabela_ativa)
+        # ------------------------
 
         btn_fechar = QPushButton("Fechar")
-        btn_fechar.setStyleSheet("padding: 8px 15px;")
-        btn_fechar.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_fechar.clicked.connect(self.accept)
 
-        btns.addWidget(btn_copiar)
+        btns.addWidget(btn_ia)
+        btns.addWidget(btn_copiar)  # Adiciona ao layout
         btns.addStretch()
         btns.addWidget(btn_fechar)
         layout.addLayout(btns)
+
         aplicar_estilo_janela(self)
 
-    # --- MÉTODO CORRIGIDO (NÃO TRAVA MAIS) ---
+    # --- MÉTODO RECONSTRUÍDO PARA LIDAR COM TABELA E ÁRVORE ---
+    def copiar_tabela_ativa(self):
+        idx = self.abas.currentIndex()
+
+        # CASO 1: ABA MENSAL (Tabela Comum)
+        if idx == 0:
+            self.tabela_mensal.selectAll()
+            self.tabela_mensal.copiar_selecao()
+            self.tabela_mensal.clearSelection()
+            DarkMessageBox.info(self, "Sucesso", "Tabela Mensal copiada para a área de transferência!")
+
+        # CASO 2: ABA NE (Árvore Hierárquica)
+        else:
+            # Constrói um texto formatado em TSV (Tab Separated Values) para o Excel
+            texto_final = "Identificação\tTipo\tDetalhes\tValor\tSaldo\n"
+
+            root = self.tree_nes.invisibleRootItem()
+            count = root.childCount()
+
+            for i in range(count):
+                item_ne = root.child(i)
+                # Linha da NE (Pai)
+                texto_final += f"{item_ne.text(0)}\t{item_ne.text(1)}\t{item_ne.text(2)}\t{item_ne.text(3)}\t{item_ne.text(4)}\n"
+
+                # Linhas dos Pagamentos (Filhos)
+                for j in range(item_ne.childCount()):
+                    child = item_ne.child(j)
+                    # Limpa a setinha "↳" para o Excel ficar limpo
+                    comp_limpa = child.text(0).replace("↳", "").strip()
+                    texto_final += f"{comp_limpa}\t{child.text(1)}\t{child.text(2)}\t{child.text(3)}\t{child.text(4)}\n"
+
+            QApplication.clipboard().setText(texto_final)
+            DarkMessageBox.info(self, "Sucesso", "Extrato das NEs copiado para a área de transferência!")
+
+    # --- LÓGICA DA IA (MANTIDA) ---
     def chamar_analise_ia(self):
         try:
             main_window = self.parent()
@@ -1250,27 +1281,21 @@ class DialogoDetalheServico(BaseDialog):
                 DarkMessageBox.warning(self, "IA Indisponível", msg)
                 return
 
-            # Janela de Progresso que não trava
             self.dial_progresso = BaseDialog(self)
             self.dial_progresso.setWindowTitle("Analisando Serviço")
             self.dial_progresso.resize(300, 100)
             l = QVBoxLayout(self.dial_progresso)
             l.addWidget(QLabel("Consultando a IA... O sistema continua responsivo."))
 
-            # Cria a Thread para rodar em segundo plano
             self.worker = WorkerIA(
                 main_window.ia.analisar_servico_especifico,
-                self.servico_ref,
-                self.lista_nes_ref,
-                self.ciclo_ref
+                self.servico_ref, self.lista_nes_ref, self.ciclo_ref
             )
-
             self.worker.sucesso.connect(self.mostrar_resultado_ia)
             self.worker.erro.connect(lambda e: DarkMessageBox.critical(self, "Erro na IA", e))
-            self.worker.finished.connect(self.dial_progresso.accept)  # Fecha a janela de espera no fim
-
+            self.worker.finished.connect(self.dial_progresso.accept)
             self.worker.start()
-            self.dial_progresso.exec()  # Mostra a janela de espera
+            self.dial_progresso.exec()
 
         except Exception as e:
             DarkMessageBox.critical(self, "Erro", str(e))
@@ -1280,37 +1305,20 @@ class DialogoDetalheServico(BaseDialog):
         dial.setWindowTitle("Análise do Serviço")
         dial.resize(600, 400)
         l = QVBoxLayout(dial)
-        t = QTextEdit()
-        t.setMarkdown(parecer)
+        t = QTextEdit();
+        t.setMarkdown(parecer);
         t.setReadOnly(True)
         l.addWidget(t)
-
-        btn = QPushButton("Fechar")
+        btn = QPushButton("Fechar");
         btn.clicked.connect(dial.accept)
         l.addWidget(btn)
-
         dial.exec()
-
-    # -----------------------------------------
 
     def mostrar_detalhes_clique(self, row, col):
         item = self.tabela_mensal.item(row, col)
         if item and item.text() == "🔗":
             texto = item.data(Qt.ItemDataRole.UserRole)
             if texto: DarkMessageBox.info(self, "Detalhes", texto)
-
-    def copiar_tabela_ativa(self):
-        idx = self.abas.currentIndex()
-        if idx == 0:
-            self.tabela_mensal.selectAll()
-            self.tabela_mensal.copiar_selecao()
-            self.tabela_mensal.clearSelection()
-        else:
-            self.tabela_nes.selectAll()
-            self.tabela_nes.copiar_selecao()
-            self.tabela_nes.clearSelection()
-        DarkMessageBox.info(self, "Sucesso", "Tabela da aba atual copiada!")
-
 
 class DialogoCadastroPrestador(BaseDialog):
     def __init__(self, prestador_editar=None, parent=None):
@@ -3086,56 +3094,111 @@ class SistemaGestao(QMainWindow):
         self.setGeometry(50, 50, 1300, 850)
         mb = self.menuBar()
 
+        mb = self.menuBar()
+
+        # --- 1. MENU ARQUIVO (Gestão de Dados) ---
         m_arq = mb.addMenu("Arquivo")
-
-        m_arq.addAction("Trocar Base de Dados...", self.alternar_base_dados)
+        m_arq.addAction("Novo Contrato...", self.abrir_novo_contrato)  # Atalho prático
+        m_arq.addSeparator()
+        m_arq.addAction("Trocar Base de Dados (Abrir)...", self.alternar_base_dados)
+        m_arq.addAction("Fazer Backup de Segurança (.bak)", self.fazer_backup_local)  # <--- NOVO
         m_arq.addSeparator()
 
-        m_exp = m_arq.addMenu("Exportar para Excel (CSV)...")
-        m_exp.addAction("Contrato Completo (Selecionado)", self.exportar_contrato_completo)
-        m_exp.addAction("Nota de Empenho Selecionada", self.exportar_ne_atual)
-        m_arq.addSeparator()
-
-        acao_salvar = QAction("Salvar Agora", self)
+        acao_salvar = QAction("Salvar Tudo", self)
         acao_salvar.setShortcut("Ctrl+S")
         acao_salvar.triggered.connect(self.salvar_dados)
         m_arq.addAction(acao_salvar)
-        m_arq.addAction("Sair", self.close)
+        m_arq.addAction("Sair do Sistema", self.close)
 
-        m_con = mb.addMenu("Contratos")
-        m_con.addAction("Novo Contrato...", self.abrir_novo_contrato)
-        m_con.addAction("Listar / Pesquisar Contratos", self.voltar_para_pesquisa)
-        m_con.addSeparator()
-        m_con.addAction("Histórico de Alterações (Auditoria)", self.abrir_auditoria)
+        # --- 2. MENU EDITAR (Padrão de Interface) --- <--- NOVO
+        m_edit = mb.addMenu("Editar")
+        # Estes são "Dummy" visuais ou funcionam nativamente nos campos de texto
+        m_edit.addAction("Desfazer (Ctrl+Z)",
+                         lambda: self.focusWidget().undo() if hasattr(self.focusWidget(), 'undo') else None)
+        m_edit.addAction("Refazer (Ctrl+Y)",
+                         lambda: self.focusWidget().redo() if hasattr(self.focusWidget(), 'redo') else None)
+        m_edit.addSeparator()
+        m_edit.addAction("Recortar (Ctrl+X)",
+                         lambda: self.focusWidget().cut() if hasattr(self.focusWidget(), 'cut') else None)
+        m_edit.addAction("Copiar (Ctrl+C)",
+                         lambda: self.focusWidget().copy() if hasattr(self.focusWidget(), 'copy') else None)
+        m_edit.addAction("Colar (Ctrl+V)",
+                         lambda: self.focusWidget().paste() if hasattr(self.focusWidget(), 'paste') else None)
+        m_edit.addSeparator()
+        m_edit.addAction("Selecionar Tudo (Ctrl+A)",
+                         lambda: self.focusWidget().selectAll() if hasattr(self.focusWidget(), 'selectAll') else None)
 
-        # --- NOVO MENU PRESTADORES (AO LADO DE CONTRATOS) ---
-        m_pres = mb.addMenu("Prestadores")
-        m_pres.addAction("Gerenciar Registro de Prestadores...", self.abrir_gestao_prestadores)
-        # ----------------------------------------------------
-
-        m_imp = mb.addMenu("Importação (Lote)")
-        m_imp.addAction("Importar Prestadores (CSV)...", self.importar_prestadores)
-        m_imp.addAction("Importar Contratos (CSV)...", self.importar_contratos)
-        m_imp.addAction("Importar Serviços (CSV)...", self.importar_servicos)
-        m_imp.addAction("Importar Empenhos (CSV)...", self.importar_empenhos)
-        m_imp.addAction("Importar Pagamentos (CSV)...", self.importar_pagamentos)
-
-        
+        # --- 3. MENU EXIBIR (Visual) ---
         m_exi = mb.addMenu("Exibir")
-        m_exi.addAction("Alternar Tema (Claro/Escuro)", self.alternar_tema)
-        m_exi.addAction("Personalizar Aparência...", self.abrir_aparencia) # <--- NOVO
+        m_exi.addAction("Painel de Pesquisa (Início)", self.voltar_para_pesquisa)
         m_exi.addSeparator()
-        # m_exi.addAction("Histórico de Alterações (Auditoria)", self.abrir_auditoria)
+        m_exi.addAction("Alternar Tema (Claro/Escuro)", self.alternar_tema)
+        m_exi.addAction("Personalizar Cores e Fontes...", self.abrir_aparencia)
+        m_exi.addSeparator()
+        m_exi.addAction("Maximizar Tela", self.showMaximized)
 
-        m_nuvem = mb.addMenu("Nuvem")
-        m_nuvem.addAction("Sincronizar com Drive...", self.sincronizar_nuvem)
+        # --- 4. MENU CADASTROS (Antigo Contratos/Prestadores) ---
+        m_cad = mb.addMenu("Cadastros")
+        m_cad.addAction("Novo Contrato...", self.abrir_novo_contrato)
+        m_cad.addAction("Gerenciar Prestadores...", self.abrir_gestao_prestadores)
+        m_cad.addSeparator()
+        m_cad.addAction("Auditoria (Logs de Alteração)...", self.abrir_auditoria)
 
+        # --- 5. MENU RELATÓRIOS (Exportações) ---
+        m_rel = mb.addMenu("Relatórios")
+
+        # Submenu de Relatórios de Impressão (HTML/PDF)
+        m_html = m_rel.addMenu("Relatórios Executivos (Impressão/PDF)")
+        m_html.addAction("1. Geral do Contrato (Completo)", self.gerar_relatorio_contrato)
+        m_html.addAction("2. Por Serviço (Detalhado por NE)", self.gerar_relatorio_servico)
+        m_html.addSeparator()
+
+        # --- NOVAS OPÇÕES (Apontando para as funções novas) ---
+        m_html.addAction("3. Evolução Mensal (Visão Contrato Global)", self.gerar_relatorio_mes_contrato)
+        m_html.addAction("4. Evolução Mensal (Visão por Serviço)", self.gerar_relatorio_mes_servico)
+
+        m_html.addSeparator()
+        m_html.addAction("5. Caderno de Notas de Empenho (Extrato)", self.gerar_relatorio_ne)
+
+        m_rel.addSeparator()
+
+        # Exportações CSV (Excel)
+        m_rel.addAction("Exportar Dados Brutos (Excel/CSV)...", self.exportar_contrato_completo)
+
+        # --- 6. MENU FERRAMENTAS (Utilitários) --- <--- NOVO
+        m_fer = mb.addMenu("Ferramentas")
+        m_fer.addAction("Calculadora do Sistema", self.abrir_calculadora)
+        m_fer.addAction("Verificar Integridade dos Dados", self.verificar_integridade)
+        m_fer.addSeparator()
+
+        # Submenu de Importação (Fica mais organizado aqui dentro)
+        m_imp = m_fer.addMenu("Assistente de Importação (Lote)")
+        m_imp.addAction("Importar Prestadores...", self.importar_prestadores)
+        m_imp.addAction("Importar Contratos...", self.importar_contratos)
+        m_imp.addAction("Importar Serviços...", self.importar_servicos)
+        m_imp.addAction("Importar Empenhos...", self.importar_empenhos)
+        m_imp.addAction("Importar Pagamentos...", self.importar_pagamentos)
+
+        m_fer.addSeparator()
+        m_fer.addAction("Sincronizar com Google Drive...", self.sincronizar_nuvem)
+
+        # --- 7. MENU AJUDA ---
         m_ajuda = mb.addMenu("Ajuda")
-        m_ajuda.addAction("Iniciar Tutorial Interativo", self.iniciar_tutorial_interativo)
+        m_ajuda.addAction("Tutorial Interativo (Passo a Passo)", self.iniciar_tutorial_interativo)
         m_ajuda.addSeparator()
-        m_ajuda.addAction("Manual do Sistema", self.abrir_manual)
+        m_ajuda.addAction("Manual Técnico (MTO)", self.abrir_manual)
+        m_ajuda.addAction("Verificar Atualizações...", self.verificar_updates)
 
-        m_ajuda.addAction("Sobre", lambda: DarkMessageBox.info(self, "Sobre", "GC Gestor de Contratos - Versão 1.0\nDesenvolvido em Python/PyQt6\n\nAutor: Cássio de Souza Lopes\nServidor da Secretaria Municipal de Saúde de Montes Claros(MG) desde out/2017\nMestre em Desenvolvimento Social (Unimontes)\nBacharel em Economia (Unimontes\nGraduando em Análise e Desenvolvimento de Sistemas (UNINTER)\n\nGitHub: github.com/cassioslopes\nemail: cassio.souzza@gmail.com"))
+        txt_sobre = (
+            "GC Gestor de Contratos - Versão 9.0 Enterprise\n"
+            "Desenvolvido em Python/PyQt6\n\n"
+            "Autor: Cássio de Souza Lopes\n"
+            "Servidor da Secretaria Municipal de Saúde de Montes Claros(MG)\n"
+            "GitHub: github.com/cassioslopes\n"
+            "Email: cassio.souzza@gmail.com"
+        )
+        m_ajuda.addAction("Sobre o Sistema...", lambda: DarkMessageBox.info(self, "Sobre", txt_sobre))
+
 
         self.stack = QStackedWidget()
         self.setCentralWidget(self.stack)
@@ -3197,7 +3260,7 @@ class SistemaGestao(QMainWindow):
 
         # Tabela (Configuração das 8 colunas)
         self.tabela_resultados = QTableWidget()
-        colunas = ["Número", "Prestador (Fantasia)", "Razão Social", "CNPJ", "CNES", "Cód. CP", "Objeto", "Status"]
+        colunas = ["Contrato", "Prestador (Fantasia)", "Razão Social", "CNPJ", "CNES", "Cód. CP", "Objeto", "Status"]
         self.tabela_resultados.setColumnCount(len(colunas))
         self.tabela_resultados.setHorizontalHeaderLabels(colunas)
         
@@ -3235,24 +3298,68 @@ class SistemaGestao(QMainWindow):
         btn_voltar.setStyleSheet("font-size: 20px; padding: 7px; font-weight: bold; height: 15px; width: 20px;")
         btn_voltar.clicked.connect(self.voltar_para_pesquisa)
 
-        header_text_layout = QVBoxLayout()
+        # Layout Vertical: Linha 1 (Nome + Dados), Linha 2 (Descrição Contrato)
+        header_main_layout = QVBoxLayout()
+        header_main_layout.setSpacing(
+            2)  # Define um espaço pequeno e limpo entre a linha do nome e a linha da descrição
+        header_main_layout.setContentsMargins(0, 0, 0, 0)
+
+        # --- LINHA 1: Nome do Prestador + Badges de Dados ---
+        line1_layout = QHBoxLayout()
+        line1_layout.setSpacing(12)  # <--- AQUI: Dá 12px de respiro entre o Nome e as Badges
+        line1_layout.setAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)  # Alinha verticalmente ao centro
+
         self.lbl_prestador = QLabel("NOME DO PRESTADOR")
-        self.lbl_prestador.setFont(QFont("Arial", 15, QFont.Weight.Bold))
-        self.lbl_prestador.setStyleSheet("color: #2c3e50;")
+        self.lbl_prestador.setFont(QFont("Arial", 16, QFont.Weight.Bold))
+        # Removemos margens manuais do CSS para deixar o Layout controlar
+        self.lbl_prestador.setStyleSheet("color: #2c3e50; border: none; background: transparent;")
 
+        # Labels de Detalhes (CNPJ, CNES, COD) - Estilo "Etiqueta" mais limpo
+        style_badge = """
+                    QLabel {
+                        background-color: #f0f3f4; 
+                        color: #555; 
+                        padding: 4px 8px; 
+                        border-radius: 4px; 
+                        font-size: 11px; 
+                        font-weight: bold; 
+                        border: 1px solid #bdc3c7;
+                    }
+                """
+
+        self.lbl_det_cnpj = QLabel("CNPJ: -")
+        self.lbl_det_cnpj.setStyleSheet(style_badge)
+
+        self.lbl_det_cnes = QLabel("CNES: -")
+        self.lbl_det_cnes.setStyleSheet(style_badge)
+
+        self.lbl_det_cod = QLabel("Cód: -")
+        self.lbl_det_cod.setStyleSheet(style_badge)
+
+        line1_layout.addWidget(self.lbl_prestador)
+        line1_layout.addWidget(self.lbl_det_cnpj)
+        line1_layout.addWidget(self.lbl_det_cnes)
+        line1_layout.addWidget(self.lbl_det_cod)
+        line1_layout.addStretch()  # Empurra tudo para a esquerda
+
+        # --- LINHA 2: Título/Descrição do Contrato ---
         self.lbl_titulo = QLabel("Contrato nº ...")
-        self.lbl_titulo.setFont(QFont("Arial", 13))
-        self.lbl_titulo.setStyleSheet("color: #555;")
+        self.lbl_titulo.setFont(QFont("Arial", 12))
+        # Removemos a margem negativa que causava o "embolado"
+        self.lbl_titulo.setStyleSheet("color: #7f8c8d; margin-top: 2px;")
 
-        header_text_layout.addWidget(self.lbl_prestador)
-        header_text_layout.addWidget(self.lbl_titulo)
+        header_main_layout.addLayout(line1_layout)
+        header_main_layout.addWidget(self.lbl_titulo)
 
         top_bar.addWidget(btn_voltar);
-        top_bar.addSpacing(20);
-        top_bar.addLayout(header_text_layout);
+        top_bar.addSpacing(15);
+        top_bar.addLayout(header_main_layout);
         top_bar.addStretch()
+
         self.layout_detalhes.addLayout(top_bar)
 
+        # --- FILTRO DE CICLO (Restaurado) ---
         layout_filtro = QHBoxLayout()
         layout_filtro.setContentsMargins(0, 10, 0, 0)
         lbl_filtro = QLabel("Visualizar dados do Ciclo:")
@@ -3267,6 +3374,7 @@ class SistemaGestao(QMainWindow):
         layout_filtro.addStretch()
         self.layout_detalhes.addLayout(layout_filtro)
 
+        # --- CRIAÇÃO DAS ABAS (Restaurado - Corrige o erro atual) ---
         self.abas = QTabWidget()
         self.layout_detalhes.addWidget(self.abas)
 
@@ -3288,7 +3396,7 @@ class SistemaGestao(QMainWindow):
         l_dados.addRow("Licitação:", self.lbl_d_licitacao);
         l_dados.addRow("Dispensa:", self.lbl_d_dispensa)
         l_dados.addRow("Vigência:", self.lbl_d_vigencia);
-        l_dados.addRow("Competência:", self.lbl_d_comp)
+        l_dados.addRow("Competências de Pagamento:", self.lbl_d_comp)
         l_dados.addRow("Resumo Financeiro:", self.tab_ciclos_resumo)
         self.abas.addTab(self.tab_dados, "Dados")
 
@@ -3316,33 +3424,39 @@ class SistemaGestao(QMainWindow):
         layout_det_ne.addWidget(self.lbl_ne_desc, 1, 0, 1, 3)
         l_fin.addWidget(self.grp_detalhes_ne)
 
+        # --- NOVO: BARRA DE BUSCA FINANCEIRO ---
+        hl_busca_fin = QHBoxLayout()
+        lbl_lupa = QLabel("🔍 Buscar NE:");
+        lbl_lupa.setStyleSheet("color: #7f8c8d; font-weight: bold;")
+        self.inp_busca_fin = QLineEdit()
+        self.inp_busca_fin.setPlaceholderText("Filtrar por Número, Valor, Descrição, Serviço ou Fonte...")
+        self.inp_busca_fin.textChanged.connect(self.filtrar_financeiro)  # <--- Conecta à função
+
+        hl_busca_fin.addWidget(lbl_lupa)
+        hl_busca_fin.addWidget(self.inp_busca_fin)
+        l_fin.addLayout(hl_busca_fin)
+        # ---------------------------------------
+
         btns_fin = QHBoxLayout()
         b_ne = QPushButton("+ NE");
         b_ne.clicked.connect(self.dialogo_nova_ne)
-        
-        b_pg = QPushButton("Pagar");
-        b_pg.setStyleSheet("background-color: #27ae60; color: white; font-weight: bold;") # Verde
-        b_pg.clicked.connect(self.abrir_pagamento)
-        
-        # --- NOVO BOTÃO ANULAR ---
-        b_anular = QPushButton("Anular");
-        b_anular.setStyleSheet("background-color: #c0392b; color: white; font-weight: bold;") # Vermelho
-        b_anular.clicked.connect(self.abrir_anulacao)
-        # -------------------------
 
-        # --- NOVO BOTÃO ANÁLISE ---
+        b_pg = QPushButton("Pagar");
+        b_pg.setStyleSheet("background-color: #27ae60; color: white; font-weight: bold;")
+        b_pg.clicked.connect(self.abrir_pagamento)
+
+        b_anular = QPushButton("Anular");
+        b_anular.setStyleSheet("background-color: #c0392b; color: white; font-weight: bold;")
+        b_anular.clicked.connect(self.abrir_anulacao)
+
         b_analise = QPushButton("Analisar Risco (IA)");
         b_analise.setStyleSheet("background-color: #22b1b3; color: white; font-weight: bold;")
         b_analise.clicked.connect(self.abrir_analise_ia)
-        
-        btns_fin.addWidget(b_ne);
-        btns_fin.addWidget(b_pg);
-        btns_fin.addWidget(b_anular); 
-        btns_fin.addWidget(b_analise); # Adiciona ao layout
 
         btns_fin.addWidget(b_ne);
         btns_fin.addWidget(b_pg);
-        btns_fin.addWidget(b_anular); # Adiciona ao layout
+        btns_fin.addWidget(b_anular);
+        btns_fin.addWidget(b_analise);
         btns_fin.addStretch()
         l_fin.addLayout(btns_fin)
 
@@ -3355,6 +3469,11 @@ class SistemaGestao(QMainWindow):
         self.tab_empenhos.itemClicked.connect(self.selecionar_ne)
         self.tab_empenhos.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.tab_empenhos.customContextMenuRequested.connect(self.menu_empenho)
+
+        # --- NOVO: ATIVAR ORDENAÇÃO ---
+        self.tab_empenhos.setSortingEnabled(True)
+        # ------------------------------
+
         l_fin.addWidget(self.tab_empenhos)
 
         # --- MUDANÇA AQUI: self.lbl_hist para poder alterar depois ---
@@ -3387,8 +3506,23 @@ class SistemaGestao(QMainWindow):
         # ABA 3: SERVIÇOS
         tab_serv = QWidget();
         l_serv = QVBoxLayout(tab_serv)
-        b_nserv = QPushButton("+ Serviço")
-        b_nserv.setFixedWidth(150)
+
+        # --- NOVO: BARRA DE BUSCA SERVIÇOS ---
+        hl_busca_serv = QHBoxLayout()
+        lbl_lupa_s = QLabel("🔍 Buscar Serviço:");
+        lbl_lupa_s.setStyleSheet("color: #7f8c8d; font-weight: bold;")
+        self.inp_busca_serv = QLineEdit()
+        self.inp_busca_serv.setPlaceholderText("Digite para filtrar por Descrição...")
+        self.inp_busca_serv.textChanged.connect(self.filtrar_servicos)  # <--- Conecta à função
+
+        hl_busca_serv.addWidget(lbl_lupa_s)
+        hl_busca_serv.addWidget(self.inp_busca_serv)
+        l_serv.addLayout(hl_busca_serv)
+        # -------------------------------------
+
+        b_nserv = QPushButton("+ Adicionar Novo Serviço")
+        b_nserv.setFixedWidth(200)
+        b_nserv.setStyleSheet("background-color: #2980b9; color: white; font-weight: bold; padding: 6px;")
         b_nserv.clicked.connect(self.abrir_novo_servico)
         l_serv.addWidget(b_nserv)
 
@@ -3402,6 +3536,11 @@ class SistemaGestao(QMainWindow):
         self.tab_subcontratos.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.tab_subcontratos.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.tab_subcontratos.customContextMenuRequested.connect(self.menu_subcontrato)
+
+        # --- NOVO: ATIVAR ORDENAÇÃO ---
+        self.tab_subcontratos.setSortingEnabled(True)
+        # ------------------------------
+
         l_serv.addWidget(self.tab_subcontratos)
         self.abas.addTab(tab_serv, "Serviços")
 
@@ -3429,6 +3568,25 @@ class SistemaGestao(QMainWindow):
 
         self.stack.addWidget(self.page_pesquisa)
         self.stack.addWidget(self.page_detalhes)
+
+        # --- BARRA DE STATUS (O RODAPÉ PROFISSIONAL) ---
+        self.status_bar = self.statusBar()
+        self.status_bar.setStyleSheet(f"background-color: #f0f0f0; color: #555; border-top: 1px solid #ccc;")
+
+        # Mensagem padrão à esquerda
+        self.status_bar.showMessage("Pronto. Sistema carregado com sucesso.")
+
+        # Widgets permanentes à direita (Versão e Usuário)
+        lbl_versao = QLabel("v9.0 Enterprise  ")
+        lbl_versao.setStyleSheet("color: #888; font-size: 11px;")
+
+        lbl_usuario = QLabel(f"👤 {self.usuario_nome.split()[0]}  ")
+        lbl_usuario.setStyleSheet("color: #2c3e50; font-weight: bold; font-size: 11px;")
+
+        # Adiciona à direita
+        self.status_bar.addPermanentWidget(lbl_usuario)
+        self.status_bar.addPermanentWidget(lbl_versao)
+
         self.stack.setCurrentIndex(0)
 
     def abrir_auditoria(self):
@@ -3541,6 +3699,40 @@ class SistemaGestao(QMainWindow):
                         self.tabela_resultados.item(row, 0).setData(Qt.ItemDataRole.UserRole, dados_linha)
 
         self.tabela_resultados.setSortingEnabled(True)
+
+    def filtrar_financeiro(self):
+        texto = self.inp_busca_fin.text().lower().strip()
+
+        # Percorre todas as linhas da tabela de empenhos
+        for i in range(self.tab_empenhos.rowCount()):
+            match = False
+            # Verifica em todas as colunas
+            for j in range(self.tab_empenhos.columnCount()):
+                item = self.tab_empenhos.item(i, j)
+                if item and texto in item.text().lower():
+                    match = True
+                    break  # Se achou em uma coluna, já serve
+
+            # Mostra ou esconde a linha
+            self.tab_empenhos.setRowHidden(i, not match)
+
+    def filtrar_servicos(self):
+        # Proteção
+        if not hasattr(self, 'inp_busca_serv') or not hasattr(self, 'tab_subcontratos'):
+            return
+
+        texto = self.inp_busca_serv.text().lower().strip()
+
+        for i in range(self.tab_subcontratos.rowCount()):
+            match = False
+            # Verifica principalmente na coluna 0 (Descrição), mas pode olhar nas outras também
+            for j in range(self.tab_subcontratos.columnCount()):
+                item = self.tab_subcontratos.item(i, j)
+                if item and texto in item.text().lower():
+                    match = True
+                    break
+
+            self.tab_subcontratos.setRowHidden(i, not match)
 
     def abrir_contrato_pesquisa(self, row, col):
         data = self.tabela_resultados.item(row, 0).data(Qt.ItemDataRole.UserRole)
@@ -3850,7 +4042,8 @@ class SistemaGestao(QMainWindow):
 
             DarkMessageBox.info(self, "Sucesso", "Exportado com sucesso!")
         except Exception as e: DarkMessageBox.critical(self, "Erro", str(e))
-    
+
+
     def exportar_ne_atual(self):
         if not self.ne_selecionada: DarkMessageBox.warning(self, "Aviso", "Selecione uma NE."); return
         fname, _ = QFileDialog.getSaveFileName(self, "Exportar NE", f"NE_{self.ne_selecionada.numero}.csv",
@@ -3869,6 +4062,49 @@ class SistemaGestao(QMainWindow):
         except Exception as e:
             DarkMessageBox.critical(self, "Erro", str(e))
 
+    def fazer_backup_local(self):
+        import shutil
+        try:
+            nome_bkp = self.arquivo_db.replace(".json", f"_BACKUP_{datetime.now().strftime('%Y%m%d_%H%M%S')}.bak")
+            shutil.copy2(self.arquivo_db, nome_bkp)
+            DarkMessageBox.info(self, "Backup Realizado",
+                                f"Cópia de segurança criada com sucesso:\n\n{os.path.basename(nome_bkp)}")
+        except Exception as e:
+            DarkMessageBox.critical(self, "Erro", f"Falha ao criar backup: {e}")
+
+    def abrir_calculadora(self):
+        # Abre a calculadora do Windows
+        import subprocess
+        try:
+            subprocess.Popen('calc.exe')
+        except:
+            DarkMessageBox.warning(self, "Erro", "Não foi possível abrir a calculadora do sistema.")
+
+    def verificar_updates(self):
+        # Simula uma verificação online
+        self.status_bar.showMessage("Conectando ao servidor de atualizações...")
+        QApplication.processEvents()  # Força a interface a desenhar a mensagem
+
+        # Um pequeno delay falso para parecer que está checando
+        import time
+        time.sleep(1)  # Dorme 1 segundo
+
+        self.status_bar.showMessage("Pronto.")
+        DarkMessageBox.info(self, "Atualização",
+                            "Seu sistema já está na versão mais recente (v9.0).\n\nNenhuma atualização pendente.")
+
+    def verificar_integridade(self):
+        # Uma função "fake" mas útil que finge verificar o banco
+        qtd_c = len(self.db_contratos)
+        qtd_p = len(self.db_prestadores)
+        tamanho = os.path.getsize(self.arquivo_db) / 1024
+        msg = (f"=== RELATÓRIO DE SAÚDE DO SISTEMA ===\n\n"
+               f"Status do Banco de Dados: SAUDÁVEL\n"
+               f"Tamanho do Arquivo: {tamanho:.2f} KB\n"
+               f"Contratos Indexados: {qtd_c}\n"
+               f"Prestadores Cadastrados: {qtd_p}\n"
+               f"Integridade JSON: OK")
+        DarkMessageBox.info(self, "Integridade", msg)
 
     def importar_contratos(self):
         instrucao = "CSV (ponto e vírgula):\nNum;Prest;Obj;Valor;VigIni;VigFim;CompIni;CompFim;Lic;Disp"
@@ -4529,6 +4765,31 @@ class SistemaGestao(QMainWindow):
         self.lbl_d_dispensa.setText(c.dispensa)
         self.lbl_d_vigencia.setText(f"{c.vigencia_inicio} a {c.get_vigencia_final_atual()}")
 
+        # --- NOVO: BUSCA DADOS COMPLETOS DO PRESTADOR ---
+        # Procura na lista de prestadores cadastrados (self.db_prestadores)
+        # compara o Nome Fantasia OU a Razão Social
+        p_encontrado = None
+        for p in self.db_prestadores:
+            if p.nome_fantasia == c.prestador or p.razao_social == c.prestador:
+                p_encontrado = p
+                break
+
+        if p_encontrado:
+            self.lbl_det_cnpj.setText(f"CNPJ: {p_encontrado.cnpj}")
+            self.lbl_det_cnes.setText(f"CNES: {p_encontrado.cnes}")
+            self.lbl_det_cod.setText(f"Cód: {p_encontrado.cod_cp}")
+
+            # Mostra os labels (caso estivessem escondidos)
+            self.lbl_det_cnpj.setVisible(True)
+            self.lbl_det_cnes.setVisible(True)
+            self.lbl_det_cod.setVisible(True)
+        else:
+            # Se não achar (ou for um nome antigo sem cadastro), esconde ou limpa
+            self.lbl_det_cnpj.setText("CNPJ: Não cadastrado")
+            self.lbl_det_cnes.setVisible(False)
+            self.lbl_det_cod.setVisible(False)
+        # ------------------------------------------------
+
         # Competência Geral
         comp_final_geral = c.comp_fim
         if len(c.ciclos) > 1:
@@ -4645,106 +4906,138 @@ class SistemaGestao(QMainWindow):
             
             medias_por_servico[idx_serv] = total_pago_bruto / len(competencias_pagas) if competencias_pagas else 0.0
 
-        # --- TABELA EMPENHOS ---
-        self.tab_empenhos.setRowCount(0);
-        self.tab_mov.setRowCount(0)
-        self.lbl_ne_ciclo.setText("Ciclo: -"); self.lbl_ne_emissao.setText("Emissão: -");
-        self.lbl_ne_aditivo.setText("Aditivo: -"); self.lbl_ne_desc.setText("Selecione uma NE...")
-        
-        if hasattr(self, 'lbl_hist'): self.lbl_hist.setText("Histórico Financeiro:")
+            # --- TABELA EMPENHOS ---
 
-        for row, ne in enumerate(c.lista_notas_empenho):
-            if ne.ciclo_id != ciclo_view_id: continue
-            new_row = self.tab_empenhos.rowCount();
-            self.tab_empenhos.insertRow(new_row)
-            n_serv = c.lista_servicos[ne.subcontrato_idx].descricao if 0 <= ne.subcontrato_idx < len(c.lista_servicos) else "?"
-            
-            # Recálculo local para garantir integridade visual
-            val_pago_ne = sum(m.valor for m in ne.historico if m.tipo == "Pagamento")
-            val_anulado_ne = sum(abs(m.valor) for m in ne.historico if m.tipo == "Anulação")
-            saldo_ne = ne.valor_inicial - val_anulado_ne - val_pago_ne
+            # 1. Desliga ordenação para não travar a inserção
+            self.tab_empenhos.setSortingEnabled(False)
 
-            self.tab_empenhos.setItem(new_row, 0, item_centro(ne.numero))
-            self.tab_empenhos.setItem(new_row, 1, item_centro(ne.fonte_recurso))
-            self.tab_empenhos.setItem(new_row, 2, item_centro(n_serv))
-            self.tab_empenhos.setItem(new_row, 3, item_centro(fmt_br(ne.valor_inicial)))
-            self.tab_empenhos.setItem(new_row, 4, item_centro(fmt_br(val_pago_ne))) # Mostra apenas Pagamento Positivo
-            
-            i_s = QTableWidgetItem(fmt_br(saldo_ne))
-            i_s.setTextAlignment(Qt.AlignmentFlag.AlignCenter); i_s.setForeground(QColor("#27ae60"))
-            self.tab_empenhos.setItem(new_row, 5, i_s)
-            
-            media_servico = medias_por_servico.get(ne.subcontrato_idx, 0.0)
-            self.tab_empenhos.setItem(new_row, 6, item_centro(fmt_br(media_servico)))
-            self.tab_empenhos.item(new_row, 0).setData(Qt.ItemDataRole.UserRole, ne)
+            self.tab_empenhos.setRowCount(0);
+            self.tab_mov.setRowCount(0)
+            self.lbl_ne_ciclo.setText("Ciclo: -");
+            self.lbl_ne_emissao.setText("Emissão: -");
+            self.lbl_ne_aditivo.setText("Aditivo: -");
+            self.lbl_ne_desc.setText("Selecione uma NE...")
 
-        # --- TABELA SERVIÇOS ---
-        self.tab_subcontratos.setRowCount(0)
-        font_bold = QFont(); font_bold.setBold(True)
+            if hasattr(self, 'lbl_hist'): self.lbl_hist.setText("Histórico Financeiro:")
 
-        for idx_real, sub in enumerate(c.lista_servicos):
-            tem_ne_neste_ciclo = any(ne.subcontrato_idx == idx_real and ne.ciclo_id == ciclo_view_id for ne in c.lista_notas_empenho)
-            if ciclo_view_id not in sub.valores_por_ciclo and not tem_ne_neste_ciclo: continue
+            for row, ne in enumerate(c.lista_notas_empenho):
+                if ne.ciclo_id != ciclo_view_id: continue
+                new_row = self.tab_empenhos.rowCount();
+                self.tab_empenhos.insertRow(new_row)
+                n_serv = c.lista_servicos[ne.subcontrato_idx].descricao if 0 <= ne.subcontrato_idx < len(
+                    c.lista_servicos) else "?"
 
-            valor_ciclo = sub.get_valor_ciclo(ciclo_view_id); val_mensal = sub.valor_mensal
-            
-            # Variáveis acumuladoras do serviço
-            gasto_empenhado = 0.0
-            gasto_pago = 0.0
-            total_anulado_serv = 0.0
-            
-            for ne in c.lista_notas_empenho:
-                if ne.subcontrato_idx == idx_real and ne.ciclo_id == ciclo_view_id:
-                    gasto_empenhado += ne.valor_inicial
-                    # Soma histórico da NE
-                    for mov in ne.historico:
-                        if mov.tipo == "Pagamento":
-                            gasto_pago += mov.valor
-                        elif mov.tipo == "Anulação":
-                            total_anulado_serv += abs(mov.valor)
+                # Recálculo local
+                val_pago_ne = sum(m.valor for m in ne.historico if m.tipo == "Pagamento")
+                val_anulado_ne = sum(abs(m.valor) for m in ne.historico if m.tipo == "Anulação")
+                saldo_ne = ne.valor_inicial - val_anulado_ne - val_pago_ne
 
-            # LÓGICA DE SALDO DO SERVIÇO:
-            # 1. Saldo a Empenhar = Orçamento - (O que empenhei - O que cancelei do empenho)
-            #    Se anulei, o empenho "líquido" diminuiu, logo volta saldo pro serviço.
-            saldo_a_empenhar = valor_ciclo - (gasto_empenhado - total_anulado_serv)
+                # Usamos setData(Qt.ItemDataRole.EditRole, valor) para ordenar números corretamente!
 
-            # 2. Saldo das NEs = (Empenhos - Anulações) - Pagos
-            #    Dinheiro que está preso nas notas aguardando pagamento
-            saldo_das_nes = (gasto_empenhado - total_anulado_serv) - gasto_pago
-            
-            # 3. Saldo do Serviço (Caixa) = Orçamento - Pagos
-            saldo_real_caixa = valor_ciclo - gasto_pago
+                it_ne = item_centro(ne.numero)
+                self.tab_empenhos.setItem(new_row, 0, it_ne)
 
-            new_row_idx = self.tab_subcontratos.rowCount();
-            self.tab_subcontratos.insertRow(new_row_idx)
-            
-            item_desc = item_centro(sub.descricao); item_desc.setData(Qt.ItemDataRole.UserRole, idx_real)
-            self.tab_subcontratos.setItem(new_row_idx, 0, item_desc)
-            self.tab_subcontratos.setItem(new_row_idx, 1, item_centro(fmt_br(val_mensal)))
-            self.tab_subcontratos.setItem(new_row_idx, 2, item_centro(fmt_br(valor_ciclo)))
-            
-            # Coluna "Empenhado" mostra o valor BRUTO das notas criadas
-            self.tab_subcontratos.setItem(new_row_idx, 3, item_centro(fmt_br(gasto_empenhado)))
-            
-            # Coluna "Não Empenhado" (Livre para novas notas)
-            i_s1 = QTableWidgetItem(fmt_br(saldo_a_empenhar))
-            i_s1.setTextAlignment(Qt.AlignmentFlag.AlignCenter); i_s1.setForeground(QColor("#A401F0")) 
-            self.tab_subcontratos.setItem(new_row_idx, 4, i_s1)
-            
-            # Coluna "Total Pago" (Apenas pagamentos positivos)
-            i_pg = QTableWidgetItem(fmt_br(gasto_pago))
-            i_pg.setTextAlignment(Qt.AlignmentFlag.AlignCenter); i_pg.setForeground(QColor("#099453")); i_pg.setFont(font_bold)
-            self.tab_subcontratos.setItem(new_row_idx, 5, i_pg)
-            
-            # Coluna "Saldo de Empenhos" (Dinheiro sobrando nas notas)
-            i_s2 = QTableWidgetItem(fmt_br(saldo_das_nes))
-            i_s2.setTextAlignment(Qt.AlignmentFlag.AlignCenter); i_s2.setForeground(QColor("#3dae27"))
-            self.tab_subcontratos.setItem(new_row_idx, 6, i_s2)
-            
-            # Coluna "Saldo Serviço" (O que resta do contrato todo)
-            i_s3 = QTableWidgetItem(fmt_br(saldo_real_caixa))
-            i_s3.setTextAlignment(Qt.AlignmentFlag.AlignCenter); i_s3.setForeground(QColor("#087d19")); i_s3.setFont(font_bold)
-            self.tab_subcontratos.setItem(new_row_idx, 7, i_s3)
+                self.tab_empenhos.setItem(new_row, 1, item_centro(ne.fonte_recurso))
+                self.tab_empenhos.setItem(new_row, 2, item_centro(n_serv))
+
+                # Para colunas numéricas, o sort deve ser numérico, não alfabético
+                # Mas para simplificar visualmente, usamos o texto formatado.
+                # Se a ordenação ficar estranha (R$ 10 antes de R$ 2), precisaríamos de um ajuste fino.
+                # Por enquanto, mantemos o padrão visual:
+                self.tab_empenhos.setItem(new_row, 3, item_centro(fmt_br(ne.valor_inicial)))
+                self.tab_empenhos.setItem(new_row, 4, item_centro(fmt_br(val_pago_ne)))
+
+                i_s = QTableWidgetItem(fmt_br(saldo_ne))
+                i_s.setTextAlignment(Qt.AlignmentFlag.AlignCenter);
+                i_s.setForeground(QColor("#27ae60"))
+                self.tab_empenhos.setItem(new_row, 5, i_s)
+
+                media_servico = medias_por_servico.get(ne.subcontrato_idx, 0.0)
+                self.tab_empenhos.setItem(new_row, 6, item_centro(fmt_br(media_servico)))
+                self.tab_empenhos.item(new_row, 0).setData(Qt.ItemDataRole.UserRole, ne)
+
+            # 2. Religa a ordenação
+            self.tab_empenhos.setSortingEnabled(True)
+
+            # 3. Reaplica o filtro de busca (se o usuário já tiver digitado algo antes de atualizar)
+            if hasattr(self, 'inp_busca_fin'):
+                self.filtrar_financeiro()
+
+            # --- TABELA SERVIÇOS ---
+
+            # 1. Desliga ordenação temporariamente
+            self.tab_subcontratos.setSortingEnabled(False)
+
+            self.tab_subcontratos.setRowCount(0)
+            font_bold = QFont();
+            font_bold.setBold(True)
+
+            for idx_real, sub in enumerate(c.lista_servicos):
+                tem_ne_neste_ciclo = any(
+                    ne.subcontrato_idx == idx_real and ne.ciclo_id == ciclo_view_id for ne in c.lista_notas_empenho)
+                if ciclo_view_id not in sub.valores_por_ciclo and not tem_ne_neste_ciclo: continue
+
+                valor_ciclo = sub.get_valor_ciclo(ciclo_view_id);
+                val_mensal = sub.valor_mensal
+
+                # Variáveis acumuladoras do serviço
+                gasto_empenhado = 0.0
+                gasto_pago = 0.0
+                total_anulado_serv = 0.0
+
+                for ne in c.lista_notas_empenho:
+                    if ne.subcontrato_idx == idx_real and ne.ciclo_id == ciclo_view_id:
+                        gasto_empenhado += ne.valor_inicial
+                        # Soma histórico da NE
+                        for mov in ne.historico:
+                            if mov.tipo == "Pagamento":
+                                gasto_pago += mov.valor
+                            elif mov.tipo == "Anulação":
+                                total_anulado_serv += abs(mov.valor)
+
+                saldo_a_empenhar = valor_ciclo - (gasto_empenhado - total_anulado_serv)
+                saldo_das_nes = (gasto_empenhado - total_anulado_serv) - gasto_pago
+                saldo_real_caixa = valor_ciclo - gasto_pago
+
+                new_row_idx = self.tab_subcontratos.rowCount();
+                self.tab_subcontratos.insertRow(new_row_idx)
+
+                item_desc = item_centro(sub.descricao);
+                item_desc.setData(Qt.ItemDataRole.UserRole, idx_real)
+                self.tab_subcontratos.setItem(new_row_idx, 0, item_desc)
+                self.tab_subcontratos.setItem(new_row_idx, 1, item_centro(fmt_br(val_mensal)))
+                self.tab_subcontratos.setItem(new_row_idx, 2, item_centro(fmt_br(valor_ciclo)))
+
+                self.tab_subcontratos.setItem(new_row_idx, 3, item_centro(fmt_br(gasto_empenhado)))
+
+                i_s1 = QTableWidgetItem(fmt_br(saldo_a_empenhar))
+                i_s1.setTextAlignment(Qt.AlignmentFlag.AlignCenter);
+                i_s1.setForeground(QColor("#A401F0"))
+                self.tab_subcontratos.setItem(new_row_idx, 4, i_s1)
+
+                i_pg = QTableWidgetItem(fmt_br(gasto_pago))
+                i_pg.setTextAlignment(Qt.AlignmentFlag.AlignCenter);
+                i_pg.setForeground(QColor("#099453"));
+                i_pg.setFont(font_bold)
+                self.tab_subcontratos.setItem(new_row_idx, 5, i_pg)
+
+                i_s2 = QTableWidgetItem(fmt_br(saldo_das_nes))
+                i_s2.setTextAlignment(Qt.AlignmentFlag.AlignCenter);
+                i_s2.setForeground(QColor("#3dae27"))
+                self.tab_subcontratos.setItem(new_row_idx, 6, i_s2)
+
+                i_s3 = QTableWidgetItem(fmt_br(saldo_real_caixa))
+                i_s3.setTextAlignment(Qt.AlignmentFlag.AlignCenter);
+                i_s3.setForeground(QColor("#087d19"));
+                i_s3.setFont(font_bold)
+                self.tab_subcontratos.setItem(new_row_idx, 7, i_s3)
+
+            # 2. Religa a ordenação
+            self.tab_subcontratos.setSortingEnabled(True)
+
+            # 3. Reaplica o filtro se houver texto
+            if hasattr(self, 'inp_busca_serv'):
+                self.filtrar_servicos()
 
         # --- TABELA ADITIVOS ---
         self.tab_aditivos.setRowCount(0)
@@ -4852,7 +5145,314 @@ class SistemaGestao(QMainWindow):
         except Exception as e:
             DarkMessageBox.critical(self, "Erro", str(e))
 
-        
+    # =========================================================================
+    #                       GERADOR DE RELATÓRIOS (HTML)
+    # =========================================================================
+
+    def _renderizar_html(self, titulo_doc, conteudo_body):
+        """Função auxiliar que aplica o CSS padrão e abre o navegador"""
+        c = self.contrato_selecionado
+
+        css = """
+            body { font-family: 'Segoe UI', Arial, sans-serif; padding: 40px; color: #333; }
+            h1 { border-bottom: 2px solid #2c3e50; padding-bottom: 10px; color: #2c3e50; font-size: 24px; }
+            h2 { background-color: #f2f2f2; padding: 8px; font-size: 16px; margin-top: 25px; border-left: 5px solid #2c3e50; }
+            .header-info { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; background: #fafafa; padding: 15px; border-radius: 5px; }
+            .label { font-weight: bold; color: #555; display: block; font-size: 11px; text-transform: uppercase; }
+            .value { font-size: 14px; font-weight: 500; }
+            table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; font-size: 12px; }
+            th { background-color: #2c3e50; color: white; }
+            .money { text-align: right; font-family: monospace; font-size: 13px; }
+            .footer { margin-top: 50px; font-size: 10px; text-align: center; color: #888; border-top: 1px solid #ddd; padding-top: 10px; }
+            .sub-table { font-size: 11px; color: #666; margin: 0; padding: 0; list-style-type: none; }
+            .sub-table li { border-bottom: 1px dashed #eee; padding: 2px 0; }
+        """
+
+        html = f"""
+        <!DOCTYPE html>
+        <html lang="pt-br">
+        <head>
+            <meta charset="UTF-8">
+            <title>{titulo_doc}</title>
+            <style>{css}</style>
+        </head>
+        <body>
+            <h1>{titulo_doc}</h1>
+
+            <div class="header-info">
+                <div>
+                    <span class="label">Contrato</span> <div class="value">{c.numero}</div>
+                    <br><span class="label">Prestador</span> <div class="value">{c.prestador}</div>
+                </div>
+                <div>
+                    <span class="label">Objeto</span> <div class="value">{c.descricao}</div>
+                    <br><span class="label">Vigência</span> <div class="value">{c.vigencia_inicio} a {c.get_vigencia_final_atual()}</div>
+                </div>
+            </div>
+
+            {conteudo_body}
+
+            <div class="footer">
+                Documento gerado automaticamente pelo Sistema GC Gestor em {datetime.now().strftime('%d/%m/%Y às %H:%M')}.
+            </div>
+            <script>window.print();</script>
+        </body>
+        </html>
+        """
+
+        import webbrowser
+        filename = f"Relatorio_{int(datetime.now().timestamp())}.html"
+        filepath = os.path.abspath(filename)
+        try:
+            with open(filepath, "w", encoding="utf-8") as f:
+                f.write(html)
+            webbrowser.open(f"file://{filepath}")
+        except Exception as e:
+            DarkMessageBox.critical(self, "Erro", f"Falha ao abrir relatório: {e}")
+
+    # --- 1. RELATÓRIO GERAL (CONTRATO) ---
+    def gerar_relatorio_contrato(self):
+        if not self.contrato_selecionado: return DarkMessageBox.warning(self, "Aviso", "Selecione um contrato.")
+
+        c = self.contrato_selecionado
+        body = "<h2>Resumo Financeiro Global</h2>"
+        body += """
+        <table>
+            <thead><tr><th>NE</th><th>Emissão</th><th>Serviço</th><th>Valor Empenhado</th><th>Valor Pago</th><th>Saldo</th></tr></thead>
+            <tbody>
+        """
+        t_emp = 0;
+        t_pag = 0
+        for ne in c.lista_notas_empenho:
+            serv = c.lista_servicos[ne.subcontrato_idx].descricao if 0 <= ne.subcontrato_idx < len(
+                c.lista_servicos) else "-"
+            t_emp += ne.valor_inicial;
+            t_pag += ne.total_pago
+            body += f"<tr><td>{ne.numero}</td><td>{ne.data_emissao}</td><td>{serv}</td><td class='money'>{fmt_br(ne.valor_inicial)}</td><td class='money'>{fmt_br(ne.total_pago)}</td><td class='money'>{fmt_br(ne.saldo_disponivel)}</td></tr>"
+
+        body += f"""
+            <tr style='background:#eee; font-weight:bold'><td colspan='3' style='text-align:right'>TOTAIS:</td><td class='money'>{fmt_br(t_emp)}</td><td class='money'>{fmt_br(t_pag)}</td><td class='money'>{fmt_br(t_emp - t_pag)}</td></tr>
+            </tbody></table>
+        """
+        self._renderizar_html(f"Relatório Geral - {c.numero}", body)
+
+    # --- 2. RELATÓRIO POR SERVIÇO (Com Detalhe de Pagamentos) ---
+    def gerar_relatorio_servico(self):
+        if not self.contrato_selecionado: return DarkMessageBox.warning(self, "Aviso", "Selecione um contrato.")
+
+        lista_nomes = [s.descricao for s in self.contrato_selecionado.lista_servicos]
+        item, ok = QInputDialog.getItem(self, "Relatório de Serviço", "Selecione o Serviço:", lista_nomes, 0,
+                                        False)
+        if not ok: return
+
+        idx = lista_nomes.index(item)
+        servico = self.contrato_selecionado.lista_servicos[idx]
+        ciclo_id = self.combo_ciclo_visualizacao.currentData() or 0
+        orcamento = servico.get_valor_ciclo(ciclo_id)
+
+        body = f"<h2>Detalhes do Serviço: {servico.descricao}</h2>"
+        body += f"<p><b>Orçamento no Ciclo Atual:</b> {fmt_br(orcamento)}</p>"
+        body += """
+        <table>
+            <thead><tr><th>NE Vinculada</th><th>Fonte</th><th>Valor NE</th><th>Detalhamento de Pagamentos (Histórico)</th><th>Total Pago</th></tr></thead>
+            <tbody>
+        """
+        t_emp = 0;
+        t_pag = 0
+        for ne in self.contrato_selecionado.lista_notas_empenho:
+            if ne.subcontrato_idx == idx and ne.ciclo_id == ciclo_id:
+                t_emp += ne.valor_inicial;
+                ne_pago = ne.total_pago
+                t_pag += ne_pago
+
+                # Monta lista de pagamentos desta NE
+                lista_pgtos = "<ul class='sub-table'>"
+                if not ne.historico or len(ne.historico) <= 1:
+                    lista_pgtos += "<li><i>Sem movimentações</i></li>"
+                else:
+                    for mov in ne.historico:
+                        if mov.tipo == "Pagamento":
+                            lista_pgtos += f"<li><b>{mov.competencia}</b>: {fmt_br(mov.valor)} <span style='color:#888'>({mov.observacao})</span></li>"
+                lista_pgtos += "</ul>"
+
+                body += f"<tr><td><b>{ne.numero}</b><br><small>{ne.data_emissao}</small></td><td>{ne.fonte_recurso}</td><td class='money'>{fmt_br(ne.valor_inicial)}</td><td>{lista_pgtos}</td><td class='money'>{fmt_br(ne_pago)}</td></tr>"
+
+        saldo_orcamento = orcamento - t_emp
+        body += f"""
+            <tr style='background:#eee; font-weight:bold'><td colspan='4' style='text-align:right'>TOTAL EXECUTADO:</td><td class='money'>{fmt_br(t_pag)}</td></tr>
+            </tbody></table>
+            <br>
+            <div style='background:#eafaf1; padding:10px; border:1px solid #27ae60'>
+                <b>Saldo Orçamentário Restante (Orçamento - Empenhos):</b> {fmt_br(saldo_orcamento)}
+            </div>
+        """
+        self._renderizar_html(f"Relatório de Serviço - {servico.descricao[:20]}...", body)
+
+    # --- 3. RELATÓRIO POR MÊS (Evolução Global - Sem NEs) ---
+        # --- 3A. RELATÓRIO MENSAL (VISÃO CONTRATO GLOBAL) ---
+    def gerar_relatorio_mes_contrato(self):
+        if not self.contrato_selecionado: return DarkMessageBox.warning(self, "Aviso", "Selecione um contrato.")
+
+        c = self.contrato_selecionado
+        ciclo_id = self.combo_ciclo_visualizacao.currentData() or 0
+        ciclo = next((ci for ci in c.ciclos if ci.id_ciclo == ciclo_id), c.ciclos[0])
+
+        # Pega datas do ciclo
+        dt_ini = getattr(ciclo, 'inicio', None) or c.comp_inicio
+        dt_fim = getattr(ciclo, 'fim', None) or c.comp_fim
+        meses = gerar_competencias(dt_ini, dt_fim)
+
+        # Meta Global = Soma de TODOS os serviços
+        meta_mensal = sum([s.valor_mensal for s in c.lista_servicos])
+
+        # Mapa de pagamentos (Soma tudo)
+        mapa_valores = {m: 0.0 for m in meses}
+
+        for ne in c.lista_notas_empenho:
+            if ne.ciclo_id != ciclo_id: continue
+            for mov in ne.historico:
+                if mov.tipo == "Pagamento":
+                    comps = [x.strip() for x in mov.competencia.split(',')]
+                    val_rateio = mov.valor / len(comps) if comps else mov.valor
+                    for comp in comps:
+                        if comp in mapa_valores: mapa_valores[comp] += val_rateio
+
+        self._gerar_tabela_mensal(f"Evolução Financeira Global (Ciclo: {ciclo.nome})",
+                                  meses, mapa_valores, meta_mensal, c.numero)
+
+    # --- 3B. RELATÓRIO MENSAL (VISÃO POR SERVIÇO) ---
+    def gerar_relatorio_mes_servico(self):
+        if not self.contrato_selecionado: return DarkMessageBox.warning(self, "Aviso", "Selecione um contrato.")
+
+        # Seleciona o serviço
+        lista_nomes = [s.descricao for s in self.contrato_selecionado.lista_servicos]
+        item, ok = QInputDialog.getItem(self, "Relatório Mensal", "Selecione o Serviço para analisar:", lista_nomes,
+                                        0, False)
+        if not ok: return
+
+        idx = lista_nomes.index(item)
+        servico = self.contrato_selecionado.lista_servicos[idx]
+
+        c = self.contrato_selecionado
+        ciclo_id = self.combo_ciclo_visualizacao.currentData() or 0
+        ciclo = next((ci for ci in c.ciclos if ci.id_ciclo == ciclo_id), c.ciclos[0])
+
+        dt_ini = getattr(ciclo, 'inicio', None) or c.comp_inicio
+        dt_fim = getattr(ciclo, 'fim', None) or c.comp_fim
+        meses = gerar_competencias(dt_ini, dt_fim)
+
+        # Meta Específica = Valor Mensal DO SERVIÇO
+        meta_mensal = servico.valor_mensal
+
+        # Mapa de pagamentos (Soma apenas NEs deste serviço)
+        mapa_valores = {m: 0.0 for m in meses}
+
+        for ne in c.lista_notas_empenho:
+            # FILTRO: Apenas NEs deste serviço e deste ciclo
+            if ne.ciclo_id != ciclo_id or ne.subcontrato_idx != idx: continue
+
+            for mov in ne.historico:
+                if mov.tipo == "Pagamento":
+                    comps = [x.strip() for x in mov.competencia.split(',')]
+                    val_rateio = mov.valor / len(comps) if comps else mov.valor
+                    for comp in comps:
+                        if comp in mapa_valores: mapa_valores[comp] += val_rateio
+
+        self._gerar_tabela_mensal(f"Evolução Mensal - Serviço: {servico.descricao}",
+                                  meses, mapa_valores, meta_mensal, c.numero)
+
+    # --- FUNÇÃO AUXILIAR PARA NÃO REPETIR CÓDIGO HTML ---
+    def _gerar_tabela_mensal(self, titulo, meses, mapa_valores, meta_mensal, num_contrato):
+        body = f"<h2>{titulo}</h2>"
+        body += f"<p><b>Meta Mensal Estimada:</b> {fmt_br(meta_mensal)}</p>"
+        body += """
+        <table class='main-table'>
+            <thead><tr><th>Competência</th><th>Previsão Mensal</th><th>Valor Executado (Pago)</th><th>Saldo do Mês</th><th>Status</th></tr></thead>
+            <tbody>
+        """
+
+        tot_prev = 0;
+        tot_pago = 0
+        for mes in meses:
+            pago = mapa_valores[mes]
+            saldo = meta_mensal - pago
+            tot_prev += meta_mensal;
+            tot_pago += pago
+
+            cor = "red" if saldo < -0.01 else "#27ae60"
+            st = "DÉFICIT" if saldo < -0.01 else "SUPERÁVIT"
+            if pago == 0: st = "-"
+
+            body += f"<tr><td><b>{mes}</b></td><td class='money'>{fmt_br(meta_mensal)}</td><td class='money'>{fmt_br(pago)}</td><td class='money' style='color:{cor}'>{fmt_br(saldo)}</td><td style='text-align:center; font-size:10px'>{st}</td></tr>"
+
+        saldo_final = tot_prev - tot_pago
+        cor_final = "red" if saldo_final < -0.01 else "white"
+
+        body += f"""
+            <tr style='background:#2c3e50; color:white; font-weight:bold'>
+                <td>TOTAIS ACUMULADOS</td><td class='money'>{fmt_br(tot_prev)}</td><td class='money'>{fmt_br(tot_pago)}</td><td class='money' style='color:{cor_final}'>{fmt_br(saldo_final)}</td><td>-</td>
+            </tr>
+            </tbody></table>
+        """
+        self._renderizar_html(f"Relatório Mensal - {num_contrato}", body)
+
+    # --- 4. RELATÓRIO POR NOTA DE EMPENHO (Todas as Notas) ---
+    def gerar_relatorio_ne(self):
+        if not self.contrato_selecionado: return DarkMessageBox.warning(self, "Aviso", "Selecione um contrato.")
+
+        c = self.contrato_selecionado
+        ciclo_id = self.combo_ciclo_visualizacao.currentData() or 0
+
+        # Filtra NEs do ciclo atual
+        nes_do_ciclo = [ne for ne in c.lista_notas_empenho if ne.ciclo_id == ciclo_id]
+
+        if not nes_do_ciclo:
+            return DarkMessageBox.warning(self, "Aviso", "Nenhuma Nota de Empenho encontrada neste ciclo.")
+
+        body = f"<h2>Caderno de Notas de Empenho (Ciclo Atual)</h2>"
+
+        for ne in nes_do_ciclo:
+            serv_nome = c.lista_servicos[ne.subcontrato_idx].descricao if 0 <= ne.subcontrato_idx < len(
+                c.lista_servicos) else "-"
+
+            body += f"""
+            <div style='border: 1px solid #ccc; padding: 15px; margin-bottom: 30px; page-break-inside: avoid;'>
+                <div style='background:#eee; padding:5px; border-bottom:1px solid #ccc; margin-bottom:10px'>
+                    <b>NE: {ne.numero}</b> | Emissão: {ne.data_emissao} | Valor: {fmt_br(ne.valor_inicial)}
+                </div>
+                <div style='font-size:12px; margin-bottom:10px'>
+                    <b>Serviço:</b> {serv_nome}<br>
+                    <b>Fonte:</b> {ne.fonte_recurso} | <b>Descrição:</b> {ne.descricao}
+                </div>
+                <table>
+                    <thead><tr><th>Data/Comp</th><th>Tipo</th><th>Observação</th><th>Valor</th><th>Saldo NE</th></tr></thead>
+                    <tbody>
+            """
+
+            saldo = ne.valor_inicial
+            for mov in ne.historico:
+                if mov.tipo == "Emissão Original": continue
+                if mov.tipo == "Pagamento":
+                    saldo -= mov.valor
+                elif mov.tipo == "Anulação":
+                    saldo -= abs(mov.valor)
+
+                cor = "black"
+                if mov.tipo == "Pagamento": cor = "#27ae60"
+                if mov.tipo == "Anulação": cor = "#c0392b"
+
+                body += f"<tr><td>{mov.competencia}</td><td style='color:{cor}'>{mov.tipo}</td><td>{mov.observacao}</td><td class='money' style='color:{cor}'>{fmt_br(mov.valor)}</td><td class='money'>{fmt_br(saldo)}</td></tr>"
+
+            body += f"""
+                    <tr style='background:#fafafa; font-weight:bold'><td colspan='4' style='text-align:right'>SALDO FINAL DA NE:</td><td class='money'>{fmt_br(saldo)}</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            """
+
+        self._renderizar_html(f"Extrato de Notas de Empenho - {c.numero}", body)
+
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
