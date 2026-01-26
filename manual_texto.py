@@ -1,173 +1,183 @@
-# MANUAL TÉCNICO OPERACIONAL - VERSÃO 9.5 (ENTERPRISE)
-# ATUALIZADO: DETALHAMENTO DE RELATÓRIOS, BUSCAS, ÁRVORES HIERÁRQUICAS E FLUXOS
+# MANUAL TÉCNICO OPERACIONAL - GC GESTOR ENTERPRISE
+# DOCUMENTAÇÃO OFICIAL UNIFICADA
 
 HTML_MANUAL = """
 <style>
-    body { font-family: 'Segoe UI', Arial, sans-serif; line-height: 1.6; color: #333; }
-    h1 { color: #2c3e50; text-align: center; border-bottom: 2px solid #2c3e50; padding-bottom: 10px; }
-    h2 { background-color: #34495e; color: white; padding: 8px 15px; margin-top: 30px; border-radius: 4px; font-size: 18px; }
-    h3 { color: #16a085; border-bottom: 1px solid #ccc; padding-bottom: 5px; margin-top: 25px; }
-    h4 { color: #2980b9; margin-top: 15px; margin-bottom: 5px; font-size: 14px; }
-    p { margin-bottom: 15px; text-align: justify; }
-    ul, ol { margin-bottom: 15px; }
-    li { margin-bottom: 5px; }
-    code { background-color: #f8f9fa; padding: 2px 5px; border: 1px solid #ddd; border-radius: 3px; font-family: Consolas, monospace; color: #c7254e; }
-    .box-info { background-color: #e8f6f3; border-left: 5px solid #1abc9c; padding: 10px; margin: 15px 0; font-size: 13px; }
-    .box-alert { background-color: #fdedec; border-left: 5px solid #e74c3c; padding: 10px; margin: 15px 0; font-size: 13px; }
-    table { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 20px; }
-    th { background-color: #ecf0f1; border: 1px solid #bdc3c7; padding: 8px; text-align: left; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; line-height: 1.6; color: #333; margin: 20px; }
+    h1 { color: #2c3e50; text-align: center; border-bottom: 3px solid #2c3e50; padding-bottom: 10px; margin-bottom: 30px; }
+
+    /* Hierarquia Visual */
+    h2 { 
+        background: linear-gradient(to right, #34495e, #2c3e50); 
+        color: white; 
+        padding: 10px 15px; 
+        margin-top: 40px; 
+        border-radius: 4px; 
+        font-size: 18px; 
+        text-transform: uppercase; 
+        letter-spacing: 1px;
+    }
+    h3 { 
+        color: #16a085; 
+        border-left: 5px solid #16a085; 
+        padding-left: 10px; 
+        margin-top: 30px; 
+        font-size: 16px; 
+        background-color: #f9f9f9;
+        padding-top: 5px;
+        padding-bottom: 5px;
+    }
+
+    /* Caixas Especiais */
+    .box-info { background-color: #e8f6f3; border: 1px solid #a2d9ce; border-left: 5px solid #1abc9c; padding: 15px; margin: 15px 0; font-size: 13px; border-radius: 3px; }
+    .box-ai { background-color: #f4ecf7; border: 1px solid #d2b4de; border-left: 5px solid #8e44ad; padding: 15px; margin: 15px 0; font-size: 13px; border-radius: 3px; }
+    .box-security { background-color: #fff8e1; border: 1px solid #ffe082; border-left: 5px solid #ffb300; padding: 15px; margin: 15px 0; font-size: 13px; border-radius: 3px; }
+
+    /* Tabelas e Atalhos */
+    table { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+    th { background-color: #ecf0f1; border: 1px solid #bdc3c7; padding: 10px; text-align: left; font-weight: bold; color: #2c3e50; }
     td { border: 1px solid #bdc3c7; padding: 8px; }
+    tr:nth-child(even) { background-color: #fbfbfb; }
+    kbd { background-color: #eee; border-radius: 3px; border: 1px solid #b4b4b4; padding: 2px 4px; font-weight: 700; font-size: 0.85em; }
 </style>
 
 <h1>MANUAL TÉCNICO DE OPERAÇÃO (MTO)</h1>
-<p style='text-align: center; color: #7f8c8d; font-size: 12px;'>GC Gestor | Versão 9.5 Enterprise | Revisão: Jan/2026</p>
-
-<h2>1. CONCEITOS FUNDAMENTAIS E ARQUITETURA</h2>
-
-<h3>1.1 A Lógica de Ciclos Financeiros</h3>
-<p>Diferente de planilhas comuns que tratam o contrato como uma linha contínua, o GC Gestor opera sob a arquitetura de <b>Ciclos Financeiros Estanques</b>. Isso é crucial para contratos de longa duração (48, 60 meses) ou com múltiplas renovações.</p>
-<ul>
-    <li><b>O que é um Ciclo:</b> Um período orçamentário isolado. Pode ser o "Contrato Inicial (12 meses)" ou um "1º Termo Aditivo de Prazo".</li>
-    <li><b>Isolamento de Saldos:</b> O saldo não utilizado no Ciclo 1 <b>NÃO</b> é transferido automaticamente para o Ciclo 2. Cada ciclo nasce com seu próprio orçamento e teto.</li>
-    <li><b>Navegação:</b> Na tela de detalhes do contrato, o menu suspenso <i>"Visualizar dados do Ciclo"</i> funciona como uma "máquina do tempo". Ao alterar o ciclo ali, todas as tabelas (Financeiro, Serviços, Gráficos) são recarregadas para exibir apenas os dados daquele período específico.</li>
-</ul>
+<p style='text-align: center; color: #7f8c8d; font-size: 12px;'>GC Gestor Enterprise | Documentação Oficial</p>
 
 <div class="box-info">
-    <b>Nota de Auditoria:</b> O sistema mantém o histórico de qual ciclo o usuário estava visualizando por último, para evitar erros de lançamento em períodos errados.
+    <b>Conceito Central: Ciclos Financeiros Estanques</b><br>
+    O GC Gestor não trata o contrato como uma linha contínua, mas como "gavetas" separadas (Ciclos). O saldo do Ano 1 não se mistura automaticamente com o Ano 2. Isso garante conformidade com o princípio da anualidade orçamentária pública.
 </div>
 
-<hr>
+<h2>1. A TELA INICIAL (DASHBOARD)</h2>
 
-<h2>2. INTERFACE E NAVEGAÇÃO AVANÇADA</h2>
-
-<h3>2.1 Barra de Status (Rodapé)</h3>
-<p>Localizada na parte inferior da janela, esta barra fornece feedback constante sobre o estado do sistema:</p>
+<h3>1.1 Barra Superior: O Centro de Inteligência</h3>
 <ul>
-    <li><b>Esquerda:</b> Exibe mensagens de ação (ex: "Salvando dados...", "Conectando à IA...").</li>
-    <li><b>Direita:</b> Identificação do usuário logado (Nome) e Versão do Sistema. Isso é essencial para prints de tela em auditorias.</li>
-</ul>
+    <li><b>Botão [💬 IA] (Consultor Global):</b> 
+        <br>Chat geral com acesso a <i>todos</i> os contratos. Use para perguntas transversais (ex: "Qual o total gasto com a empresa X em todos os contratos?").
+    </li>
 
-<h3>2.2 Filtros e Ordenação Inteligente</h3>
-<p>Todas as tabelas de dados do sistema (Pesquisa Principal, Financeiro, Serviços, Prestadores) possuem recursos avançados de manipulação:</p>
-<ul>
-    <li><b>Ordenação por Coluna:</b> Clicar no cabeçalho de qualquer coluna (ex: "Valor", "Data", "Razão Social") reordena as linhas instantaneamente de forma ascendente ou descendente. O sistema reconhece datas e valores monetários para ordenar corretamente (não alfabeticamente).</li>
-    <li><b>Busca Contextual:</b> 
-        <ul>
-            <li>Na <b>Tela Inicial</b>, a busca varre Número, Prestador, CNPJ e Objeto simultaneamente.</li>
-            <li>Na <b>Aba Financeiro</b>, a nova barra de busca filtra Notas de Empenho por Número, Fonte de Recurso ou Descrição.</li>
-            <li>Na <b>Aba Serviços</b>, é possível filtrar a lista de itens pela descrição do serviço.</li>
-        </ul>
+    <li><b>Botão [🔔 Notificações] (Auditor de Prazos):</b> 
+        <br>Monitora vencimentos e saldos em tempo real. Ícone vermelho indica alertas críticos.
+        <br><b>Recurso de IA:</b> Na central de alertas, o botão <b>[🤖 Recomendação IA]</b> gera um plano de ação executivo para resolver as pendências listadas.
     </li>
 </ul>
 
-<hr>
-
-<h2>3. RELATÓRIOS EXECUTIVOS E PRESTAÇÃO DE CONTAS</h2>
-
-<p>O menu <b>Relatórios</b> foi completamente reestruturado para oferecer visões gerenciais distintas. Todos os relatórios são gerados em HTML renderizado localmente, abrindo automaticamente no navegador padrão com a janela de impressão (PDF/Papel) já acionada.</p>
-
-<h3>3.1 Geral do Contrato (Visão Macro)</h3>
-<p>Gera um documento contendo o cabeçalho completo do contrato (Vigência, Valores, Objeto) seguido de uma lista sumária de todas as Notas de Empenho emitidas, com seus valores originais, totais pagos e saldos disponíveis. Ideal para capa de processo de pagamento.</p>
-
-<h3>3.2 Por Serviço (Detalhamento Analítico)</h3>
-<p>Foca na execução de um item específico (ex: "Serviço de Limpeza"). O diferencial deste relatório é a quebra detalhada:</p>
+<h3>1.2 Painel de Pesquisa Expandido</h3>
+<p>Visão panorâmica de todos os contratos cadastrados.</p>
 <ul>
-    <li>Mostra o orçamento do serviço no ciclo atual.</li>
-    <li>Lista cada Nota de Empenho vinculada a este serviço.</li>
-    <li>Dentro de cada linha de NE, exibe uma <b>sub-tabela</b> com todos os pagamentos realizados (Data e Valor), permitindo rastrear exatamente quando o saldo foi consumido.</li>
-</ul>
-
-<h3>3.3 Evolução Mensal (Duas Modalidades)</h3>
-<p>Esta categoria responde à pergunta: <i>"Quanto gastamos em cada mês?"</i>.</p>
-<ul>
-    <li><b>Visão Contrato Global:</b> Soma todos os pagamentos de todos os serviços naquela competência (Mês/Ano). Compara com a meta mensal global do contrato.</li>
-    <li><b>Visão Por Serviço:</b> Permite selecionar um item (ex: "Locação de Veículos") e ver a evolução mensal apenas dele, comparando com o valor unitário mensal contratado.</li>
-</ul>
-<p>Ambos os relatórios exibem colunas de "Déficit/Superávit" visualmente coloridas (Vermelho/Verde) para indicar desvios da meta.</p>
-
-<h3>3.4 Caderno de Notas de Empenho (Extrato Bancário)</h3>
-<p>Gera um relatório extenso, estilo "Extrato", para cada Nota de Empenho ativa no ciclo. Ele imprime bloco a bloco, mostrando a emissão, e linha a linha cada abate (pagamento ou anulação), calculando o saldo remanescente progressivamente.</p>
-
-<hr>
-
-<h2>4. OPERACIONALIZAÇÃO DOS DADOS</h2>
-
-<h3>4.1 Gestão de Serviços (Aba 3)</h3>
-<p>Esta é a área de controle orçamentário. As colunas são dinâmicas:</p>
-<ul>
-    <li><b>Orçamento (neste ciclo):</b> Quanto dinheiro este item tem para gastar neste período.</li>
-    <li><b>Empenhado:</b> O total bruto reservado em Notas de Empenho.</li>
-    <li><b>Não Empenhado:</b> O saldo "livre" que ainda permite a emissão de novas NEs.</li>
-    <li><b>Saldo de Empenhos:</b> Dinheiro que já está em NEs mas ainda não foi pago (Liquidação pendente).</li>
-</ul>
-
-<h4>4.1.1 Detalhamento Profundo (Duplo Clique)</h4>
-<p>Ao dar duplo clique em um serviço, abre-se a janela de <b>Detalhamento Avançado</b>:</p>
-<ul>
-    <li><b>Aba Evolução Mensal:</b> Uma matriz que cruza Competências vs. Valores. Mostra percentuais de execução e acumula o saldo mês a mês.</li>
-    <li><b>Aba Por Nota de Empenho (Árvore Hierárquica):</b> 
-        <br>Esta visualização utiliza uma estrutura de árvore (Tree View). 
-        <br>1. O "Nó Pai" é a Nota de Empenho (Mostra número e valor total).
-        <br>2. Ao expandir o nó (clicando na seta), revelam-se os "Nós Filhos", que são os pagamentos individuais e anulações, com suas respectivas competências e datas.
-        <br>3. O botão <b>"Copiar Tabela"</b> nesta tela é inteligente: ele converte essa estrutura visual em texto tabulado compatível com Excel, mantendo a relação de pertencimento.
-    </li>
-</ul>
-
-<h3>4.2 Gestão Financeira (Aba 2)</h3>
-<p>O coração da execução. Aqui ocorrem os lançamentos.</p>
-<ul>
-    <li><b>Anulação de Empenho:</b> O botão "Anular" permite estornar valores. A anulação reduz o valor "Empenhado" e devolve o saldo para o Serviço de origem, permitindo que o recurso seja reutilizado em outra NE.</li>
-    <li><b>Pagamentos:</b> Ao realizar um pagamento, o sistema solicita as competências. É possível digitar múltiplas (ex: "01/2025, 02/2025"). Isso abate o saldo da NE, mas não devolve o recurso para o contrato (pois foi gasto).</li>
+    <li><b>Busca Inteligente:</b> Filtra por qualquer campo (Número, Prestador, CNPJ, Objeto).</li>
+    <li><b>Ordenação:</b> Clique no cabeçalho das colunas para organizar A-Z ou Z-A.</li>
+    <li><b>Ação:</b> Clique duplo abre o contrato. Clique direito abre opções rápidas.</li>
 </ul>
 
 <hr>
 
-<h2>5. FERRAMENTAS ENTERPRISE E INTEGRIDADE</h2>
+<h2>2. DETALHAMENTO DA BARRA DE MENUS</h2>
 
-<h3>5.1 Menu Ferramentas</h3>
+<h3>2.1 Menu ARQUIVO</h3>
 <ul>
-    <li><b>Calculadora do Sistema:</b> Atalho rápido para a calculadora nativa do Windows.</li>
-    <li><b>Verificar Integridade:</b> Realiza um <i>Health Check</i> no banco de dados JSON, contando registros e verificando a consistência do arquivo físico.</li>
-    <li><b>Assistente de Importação:</b> Permite carga em lote via arquivos CSV padronizados. Essencial para implantação inicial de dados legados.</li>
+    <li><b>Novo Contrato:</b> Inicia o assistente de cadastro.</li>
+    <li><b>Trocar Base de Dados:</b> Alterna entre arquivos <code>.json</code> diferentes (ex: separar contratos da Saúde e da Educação).</li>
+    <li><b>Fazer Backup de Segurança (.bak):</b> Cria uma cópia permanente com data/hora. Use antes de fechamentos.</li>
+    <li><b>Salvar Tudo (<kbd>Ctrl</kbd>+<kbd>S</kbd>):</b> Gravação forçada em disco.</li>
 </ul>
 
-<h3>5.2 Menu Arquivo > Backup de Segurança</h3>
-<p>Gera instantaneamente uma cópia do banco de dados atual (arquivo <code>.json</code>) na mesma pasta, renomeando-o com um carimbo de data e hora (ex: <code>dados_BACKUP_20250126_1030.bak</code>). Use antes de grandes alterações ou importações.</p>
-
-<div class="box-alert">
-    <b>Atenção:</b> O sistema de Auditoria (Logs) registra quem fez o quê, mas não desfaz ações. O Backup é sua rede de segurança para restauração de dados.
+<h3>2.2 Menu EDITAR (Segurança de Dados)</h3>
+<div class="box-security">
+    <b>Comando: Desfazer Última Exclusão/Importação (Ctrl+Alt+Z)</b><br>
+    O sistema cria automaticamente um "Ponto de Restauração" oculto antes de ações de alto risco:
+    <ul>
+        <li>Exclusão de Contratos, NEs, Serviços ou Aditivos.</li>
+        <li>Importação de dados em lote (CSV).</li>
+    </ul>
+    Se algo for apagado indevidamente, vá em <b>Editar > Desfazer Última Exclusão/Importação</b> para voltar no tempo.
+    <br><i>Nota: A criação manual de registros simples não gera ponto de restauração individual para manter a performance.</i>
 </div>
 
-<h3>5.3 Menu Nuvem (Drive)</h3>
-<p>Permite sincronização bidirecional. O recurso "Mesclar" é capaz de unir lançamentos feitos em computadores diferentes (desde que não conflitem no mesmo ID), ideal para trabalho em equipe distribuída.</p>
+<h3>2.3 Menu EXIBIR</h3>
+<ul>
+    <li><b>Painel de Pesquisa:</b> Retorna à tela inicial.</li>
+    <li><b>Alternar Tema:</b> Modos Claro/Escuro.</li>
+    <li><b>Personalizar:</b> Ajuste de cores e tamanho da fonte (Acessibilidade).</li>
+</ul>
+
+<h3>2.4 Menu CADASTROS</h3>
+<ul>
+    <li><b>Gerenciar Prestadores:</b> Base única de empresas. Edite um CNPJ aqui e ele atualiza em todos os contratos vinculados.</li>
+    <li><b>Auditoria (Logs):</b> Rastreabilidade completa das ações dos usuários.</li>
+</ul>
+
+<h3>2.5 Menu RELATÓRIOS</h3>
+<ul>
+    <li><b>Geral e Por Serviço:</b> Visões macro e micro da execução financeira.</li>
+    <li><b>Evolução Mensal:</b> Gráfico em tabela (Matriz) para análise de sazonalidade.</li>
+    <li><b>Caderno de NEs:</b> Extrato bancário detalhado de cada empenho.</li>
+</ul>
+
+<h3>2.6 Menu FERRAMENTAS</h3>
+<ul>
+    <li><b>Verificar Integridade:</b> Diagnóstico do banco de dados.</li>
+    <li><b>Assistente de Importação:</b> Carga em lote via CSV (Gera ponto de restauração automático).</li>
+    <li><b>Sincronizar Nuvem:</b> Enviar (Sobrescrever) ou Mesclar (Colaborativo).</li>
+</ul>
 
 <hr>
 
-<h2 style='background-color: #c0392b; color: white; padding: 5px;'>6. REGRAS DE BLOQUEIO E VALIDAÇÃO</h2>
+<h2>3. GESTÃO OPERACIONAL (TELA DE DETALHES)</h2>
+
+<h3>3.1 Aba 1: DADOS</h3>
+<p>Resumo estático da licitação e tabela sumária dos tetos financeiros de cada ciclo.</p>
+
+<h3>3.2 Aba 2: FINANCEIRO (Execução)</h3>
+<ul>
+    <li><b>Barra de Busca:</b> Filtre NEs por número, valor ou descrição.</li>
+    <li><b>Botões [+ NE] / [Pagar] / [Anular]:</b> Operações financeiras básicas.</li>
+    <div class="box-ai">
+        <b>[Analisar Risco]:</b> Aciona a IA para ler o Ciclo Atual e calcular riscos de execução (déficit ou sobra excessiva).
+    </div>
+    <li><b>Maximizar Histórico:</b> Visualização focada do extrato da NE.</li>
+</ul>
+
+<h3>3.3 Aba 3: SERVIÇOS (Orçamento)</h3>
+<p>Monitoramento dos tetos por item de despesa.</p>
+
+<h4>3.3.1 Detalhamento Avançado (Janela Filha)</h4>
+<p>Dê <b>duplo clique</b> em um serviço para abrir:</p>
+<ul>
+    <li><b>Evolução Mensal:</b> Matriz de pagamentos.</li>
+    <li><b>Árvore de NEs:</b> Visualização hierárquica (NE -> Pagamentos).</li>
+    <div class="box-ai">
+        <b>[🤖 Analisar Este Serviço]:</b> A IA audita especificamente o histórico deste item em busca de anomalias (ex: pagamentos duplicados).
+    </div>
+</ul>
+
+<h3>3.4 Aba 4: ADITIVOS</h3>
+<ul>
+    <li><b>Aditivo de Valor:</b> Ajusta o teto do ciclo atual.</li>
+    <li><b>Aditivo de Prazo (Renovação):</b> Encerra o ciclo atual e cria um novo (zera saldos).</li>
+</ul>
+
+<hr>
+
+<h2 style='background-color: #c0392b; color: white; padding: 5px;'>4. REGRAS DE BLOQUEIO E SEGURANÇA</h2>
 
 <table border="1" cellpadding="5" cellspacing="0">
     <tr style="background-color: #f2f2f2;">
-        <th>Operação</th>
-        <th>Condição de Bloqueio (O sistema impede a ação)</th>
+        <th>Ação</th>
+        <th>Comportamento do Sistema</th>
     </tr>
     <tr>
-        <td><b>Emitir Nova NE</b></td>
-        <td>Se o valor da NE for maior que o <b>Saldo Não Empenhado</b> do serviço escolhido no ciclo atual.</td>
+        <td><b>Emitir NE</b></td>
+        <td>Bloqueia se <code>Valor > Saldo Livre do Serviço</code> no ciclo.</td>
     </tr>
     <tr>
-        <td><b>Realizar Pagamento</b></td>
-        <td>Se o valor do pagamento for maior que o <b>Saldo Disponível</b> da Nota de Empenho.</td>
+        <td><b>Pagar</b></td>
+        <td>Bloqueia se <code>Valor > Saldo da NE</code>.</td>
     </tr>
     <tr>
-        <td><b>Excluir Serviço</b></td>
-        <td>
-            1. Bloqueado totalmente se houver NEs vinculadas a este serviço no ciclo atual.
-            <br>2. Se houver histórico em <i>outros</i> ciclos, o sistema pergunta se deseja "Excluir Totalmente" (apaga tudo) ou "Remover deste Ciclo" (apenas desvincula o orçamento atual).
-        </td>
-    </tr>
-    <tr>
-        <td><b>Excluir Aditivo</b></td>
-        <td>Se for um aditivo de "Prazo com Renovação" que gerou um Ciclo Financeiro, a exclusão é bloqueada caso já existam NEs lançadas dentro desse ciclo criado.</td>
+        <td><b>Excluir</b></td>
+        <td>Gera Ponto de Restauração automático antes de apagar registros críticos.</td>
     </tr>
 </table>
 

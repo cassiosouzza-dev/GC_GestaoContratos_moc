@@ -1446,11 +1446,22 @@ class DialogoGerenciarPrestadores(BaseDialog):
     def novo_prestador(self):
         dial = DialogoCadastroPrestador(parent=self)
         if dial.exec():
+            # Obtém dados do formulário (Razão, Fantasia, CNPJ, CNES, Cod)
             dados = dial.get_dados()
+
+            # Cria o objeto PRESTADOR (e não Contrato)
             novo_p = Prestador(*dados)
+
+            # Adiciona na lista local
             self.lista_prestadores.append(novo_p)
+
+            # Atualiza a tabela visual
             self.atualizar_tabela()
-            if self.parent_window: self.parent_window.salvar_dados()
+
+            # Salva no banco de dados principal
+            if self.parent_window:
+                self.parent_window.registrar_log("Novo Prestador", f"Cadastrou: {novo_p.nome_fantasia}")
+                self.parent_window.salvar_dados()
 
     def abrir_menu_contexto(self, pos):
         # Descobre em qual linha foi o clique
@@ -2282,6 +2293,11 @@ class DialogoChatIA(BaseDialog):
         self.txt_historico.append(f"<b style='color:red'>Erro:</b> {erro_msg}")
         self.inp_msg.setDisabled(False)
 
+
+# --- CLASSE CORRIGIDA (COM ÍCONE NATIVO) ---
+from PyQt6.QtWidgets import QStyle  # Necessário para o ícone
+
+
 class DialogoNotificacoes(BaseDialog):
     def __init__(self, lista_alertas, consultor_ia, parent=None):
         super().__init__(parent)
@@ -2289,62 +2305,98 @@ class DialogoNotificacoes(BaseDialog):
         self.resize(700, 500)
         self.lista_alertas = lista_alertas
         self.consultor = consultor_ia
-        
+
         layout = QVBoxLayout(self)
-        
-        # Cabeçalho
+
+        # --- CABEÇALHO DA JANELA ---
         h_top = QHBoxLayout()
+
+        # Ícone Grande e Título
         lbl_icon = QLabel("🔔")
         lbl_icon.setFont(QFont("Arial", 24))
+
         lbl_tit = QLabel(f"Foram encontrados {len(lista_alertas)} pontos de atenção")
         lbl_tit.setStyleSheet("font-size: 16px; font-weight: bold; color: #c0392b;")
+
+        # Botão Atualizar (Usando ícone nativo do sistema)
+        btn_refresh = QPushButton()
+        btn_refresh.setToolTip("Forçar atualização dos alertas agora")
+        btn_refresh.setFixedSize(40, 30)
+        # Pega o ícone de "Refresh" padrão do Windows/Linux
+        btn_refresh.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_BrowserReload))
+        btn_refresh.clicked.connect(self.atualizar_agora)
+
+        # Montagem do Cabeçalho
         h_top.addWidget(lbl_icon)
         h_top.addWidget(lbl_tit)
         h_top.addStretch()
+        h_top.addWidget(btn_refresh)
+
         layout.addLayout(h_top)
-        
+        # ---------------------------
+
         # Lista de Alertas
         self.list_widget = QListWidget()
-        for alerta in lista_alertas:
-            item = QListWidgetItem()
-            # Formatação visual dependendo da gravidade
-            texto = f"[{alerta['tipo']}] {alerta['mensagem']}"
-            item.setText(texto)
-            
-            if "CRÍTICO" in alerta['gravidade']:
-                item.setForeground(QColor("#e74c3c")) # Vermelho
-                item.setFont(QFont("Arial", 10, QFont.Weight.Bold))
-            elif "ALTA" in alerta['gravidade']:
-                item.setForeground(QColor("#d35400")) # Laranja
-            else:
-                item.setForeground(QColor("#f39c12")) # Amarelo escuro
-                
+
+        if not lista_alertas:
+            # Se não houver alertas, mostra aviso verde
+            item = QListWidgetItem("✅ Tudo certo! Nenhum risco detectado no momento.")
+            item.setForeground(QColor("#27ae60"))
+            item.setFont(QFont("Arial", 11, QFont.Weight.Bold))
             self.list_widget.addItem(item)
-            
+        else:
+            for alerta in lista_alertas:
+                item = QListWidgetItem()
+                texto = f"[{alerta['tipo']}] {alerta['mensagem']}"
+                item.setText(texto)
+
+                if "CRÍTICO" in alerta['gravidade']:
+                    item.setForeground(QColor("#e74c3c"))  # Vermelho
+                    item.setFont(QFont("Arial", 10, QFont.Weight.Bold))
+                elif "ALTA" in alerta['gravidade']:
+                    item.setForeground(QColor("#d35400"))  # Laranja
+                else:
+                    item.setForeground(QColor("#f39c12"))  # Amarelo escuro
+
+                self.list_widget.addItem(item)
+
         layout.addWidget(self.list_widget)
-        
+
         # Área da IA
         self.grp_ia = QGroupBox("Análise Inteligente de Riscos")
         l_ia = QVBoxLayout(self.grp_ia)
-        
+
         self.txt_ia = QTextEdit()
         self.txt_ia.setReadOnly(True)
         self.txt_ia.setPlaceholderText("Clique no botão abaixo para pedir à IA um plano de ação sobre esses alertas...")
         self.txt_ia.setMaximumHeight(150)
-        
-        self.btn_ia = QPushButton("🤖 Recomendação IA)")
+
+        self.btn_ia = QPushButton("🤖 Recomendação IA")
         self.btn_ia.setStyleSheet("background-color: #1d809c; color: white; font-weight: bold; padding: 10px;")
         self.btn_ia.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_ia.clicked.connect(self.gerar_analise_ia)
-        
+
+        if not lista_alertas:
+            self.btn_ia.setDisabled(True)
+            self.txt_ia.setPlaceholderText("Sem alertas para analisar.")
+
         l_ia.addWidget(self.txt_ia)
         l_ia.addWidget(self.btn_ia)
-        
+
         layout.addWidget(self.grp_ia)
-        
+
         btn_fechar = QPushButton("Fechar")
         btn_fechar.clicked.connect(self.accept)
         layout.addWidget(btn_fechar)
+
+    # --- MÉTODOS DE AÇÃO ---
+
+    def atualizar_agora(self):
+        """Fecha a janela, recalcula alertas na janela principal e reabre"""
+        if self.parent():
+            self.parent().processar_alertas()  # Recalcula
+            self.close()
+            self.parent().abrir_notificacoes()  # Reabre
 
     def gerar_analise_ia(self):
         if not self.lista_alertas:
@@ -2352,9 +2404,8 @@ class DialogoNotificacoes(BaseDialog):
             return
 
         self.txt_ia.setText("⏳ A IA está analisando... (O sistema continua responsivo)")
-        self.btn_ia.setDisabled(True)  # Evita clique duplo
+        self.btn_ia.setDisabled(True)
 
-        # Monta o prompt aqui mesmo
         texto_alertas = "\n".join([f"- {a['tipo']}: {a['mensagem']}" for a in self.lista_alertas])
         prompt = f"""
         Aja como um Gestor de Contratos Sênior. O sistema detectou os seguintes problemas críticos:
@@ -2362,8 +2413,6 @@ class DialogoNotificacoes(BaseDialog):
         Gere um RESUMO EXECUTIVO curto (máx 5 linhas) sugerindo prioridades.
         """
 
-        # Lança a Thread
-        # Nota: Usamos lambda ou função auxiliar para acessar o método generate_content
         def consultar_api():
             return self.consultor.model.generate_content(prompt).text
 
@@ -2420,83 +2469,124 @@ class SistemaGestao(QMainWindow):
         self.em_tutorial = False
 
     def iniciar_tutorial_interativo(self):
-        """Orquestra uma sequência de passos para ensinar o usuário"""
-        
-        # 1. Boas Vindas
-        res = DarkMessageBox.info(self, "Tutorial Interativo", 
-            "Bem-vindo ao Modo de Aprendizado!\n\n"
-            "Vou guiar você criando um contrato completo do zero:\n"
-            "1. Criar o Contrato\n"
-            "2. Cadastrar um Serviço\n"
-            "3. Emitir Nota de Empenho\n"
-            "4. Realizar um Pagamento\n\n"
-            "Clique em OK para começar.", QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel)
-        
-        if res == QMessageBox.StandardButton.Cancel: return
+        """Orquestra uma sequência de passos para ensinar o usuário (VERSÃO ENTERPRISE)"""
 
-        self.em_tutorial = True # Ativa o modo mágico
+        # 1. Boas Vindas
+        msg_intro = (
+            "Bem-vindo ao Tour do GC Gestor Enterprise!\n\n"
+            "Vou te guiar pelas novas funcionalidades:\n"
+            "1. Cadastro com Validação Visual (Badges)\n"
+            "2. Execução Financeira com Filtros\n"
+            "3. Auditoria Avançada (Árvore de Detalhes)\n\n"
+            "Vamos criar um cenário de teste juntos? Clique em OK."
+        )
+        if DarkMessageBox.info(self, "Tutorial Interativo", msg_intro,
+                               QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel) == QMessageBox.StandardButton.Cancel:
+            return
+
+        self.em_tutorial = True
+
+        # Backup dos prestadores para não sujar permanentemente se cancelar
+        backup_prestadores = list(self.db_prestadores)
+
+        # Cria um prestador temporário para o tutorial funcionar liso
+        p_tutorial = Prestador("Empresa Tutorial Ltda", "Empresa Tutorial Ltda", "00.000.000/0001-00", "1234567", "999")
+        if not any(p.cnpj == "00.000.000/0001-00" for p in self.db_prestadores):
+            self.db_prestadores.append(p_tutorial)
 
         try:
-            # --- PASSO 1: CRIAR CONTRATO ---
-            DarkMessageBox.info(self, "Passo 1/4", 
-                "Primeiro, vamos cadastrar o CONTRATO.\n\n"
-                "Vou abrir a janela e preencher os dados de exemplo para você.\n"
-                "Apenas confira e clique em 'OK' na janela que abrir.")
-            
-            # Chama a função existente (que vamos modificar no Passo 3 para reagir ao tutorial)
+            # --- PASSO 1: CONTRATO ---
+            DarkMessageBox.info(self, "Passo 1/5: O Contrato",
+                                "Primeiro, vamos cadastrar um Contrato.\n\n"
+                                "Observe que agora o sistema valida o prestador.\n"
+                                "Vou preencher os dados automaticamente para você.")
+
             self.abrir_novo_contrato()
-            
-            # Verifica se o usuário criou mesmo (pegamos o último da lista)
+
+            # Verifica se criou
             if not self.db_contratos or self.db_contratos[-1].prestador != "Empresa Tutorial Ltda":
-                self.em_tutorial = False; return # Usuário cancelou
-            
-            # Força a abertura desse contrato na tela de detalhes
+                self.em_tutorial = False;
+                self.db_prestadores = backup_prestadores;
+                return
+
+                # Vai para a tela de detalhes
             self.contrato_selecionado = self.db_contratos[-1]
             self.atualizar_painel_detalhes()
-            self.stack.setCurrentIndex(1) # Muda para a página de detalhes
+            self.stack.setCurrentIndex(1)
 
-            # --- PASSO 2: CRIAR SERVIÇO ---
-            DarkMessageBox.info(self, "Passo 2/4", 
-                "Ótimo! Contrato criado.\n\n"
-                "Agora precisamos definir O QUE foi contratado (Serviços/Itens).\n"
-                "Vou preencher um serviço de 'Manutenção' para você.")
-            
+            # Destaque para os Badges
+            DarkMessageBox.info(self, "Novidade Visual",
+                                "👀 Olhe para o topo da tela!\n\n"
+                                "Os dados do Prestador (CNPJ, CNES) agora aparecem\n"
+                                "automaticamente ao lado do nome, puxados do cadastro.")
+
+            # --- PASSO 2: SERVIÇO ---
+            DarkMessageBox.info(self, "Passo 2/5: Serviços",
+                                "Agora vamos definir o Objeto (Serviço).\n"
+                                "Lembre-se: O orçamento é separado por 'Ciclo Financeiro'.")
+
+            self.abas.setCurrentIndex(2)  # Aba Serviços
             self.abrir_novo_servico()
 
-            # --- PASSO 3: NOTA DE EMPENHO ---
-            DarkMessageBox.info(self, "Passo 3/4", 
-                "Agora que temos o contrato e o serviço, vamos reservar o dinheiro (Empenho).\n\n"
-                "Vou criar uma Nota de Empenho vinculada ao serviço anterior.")
-            
-            self.abas.setCurrentIndex(1) # Muda para aba Financeiro visualmente
+            # --- PASSO 3: EMPENHO ---
+            DarkMessageBox.info(self, "Passo 3/5: Financeiro",
+                                "Vamos para a aba Financeiro emitir uma Nota de Empenho.\n\n"
+                                "DICA: Agora você pode filtrar as NEs usando a barra de busca 🔍 acima da tabela.")
+
+            self.abas.setCurrentIndex(1)  # Aba Financeiro
             self.dialogo_nova_ne()
 
             # Seleciona a NE criada para permitir o pagamento
             if self.contrato_selecionado.lista_notas_empenho:
                 self.ne_selecionada = self.contrato_selecionado.lista_notas_empenho[-1]
-                # Simula seleção na tabela
-                self.tab_empenhos.selectRow(0)
-                self.atualizar_painel_detalhes()
+                # Simula seleção na tabela (truque visual)
+                if self.tab_empenhos.rowCount() > 0:
+                    self.tab_empenhos.selectRow(0)
+                    self.selecionar_ne(self.tab_empenhos.item(0, 0))
 
-            # --- PASSO 4: PAGAMENTO ---
-            DarkMessageBox.info(self, "Passo 4/4", 
-                "Dinheiro reservado! Agora a empresa trabalhou e vamos PAGAR.\n\n"
-                "Vou lançar um pagamento parcial na NE que acabamos de criar.")
-            
+                    # --- PASSO 4: PAGAMENTO ---
+            DarkMessageBox.info(self, "Passo 4/5: Execução",
+                                "Agora vamos realizar um pagamento parcial nesta NE.\n"
+                                "Isso vai gerar histórico para nossa auditoria.")
+
             self.abrir_pagamento()
 
+            # --- PASSO 5: VISÃO PROFUNDA (TREE VIEW) ---
+            DarkMessageBox.info(self, "Passo 5/5: Auditoria Avançada (O Grande Final)",
+                                "Agora vem a melhor parte! 🌟\n\n"
+                                "Vou abrir a 'Visão Detalhada' desse serviço automaticamente.\n"
+                                "Você verá a nova Árvore Hierárquica (Tree View) mostrando\n"
+                                "exatamente onde o dinheiro foi gasto.")
+
+            # Simula o clique duplo no serviço para abrir a janela "Filha"
+            if self.contrato_selecionado.lista_servicos:
+                sub = self.contrato_selecionado.lista_servicos[0]
+
+                # Prepara dados para abrir a janela
+                ciclo_id = self.combo_ciclo_visualizacao.currentData() or 0
+                dt_ini = self.contrato_selecionado.comp_inicio
+                dt_fim = self.contrato_selecionado.comp_fim
+                lista_nes = [ne for ne in self.contrato_selecionado.lista_notas_empenho if ne.subcontrato_idx == 0]
+
+                # Abre a janela já na aba da árvore
+                dial = DialogoDetalheServico(sub, lista_nes, dt_ini, dt_fim, ciclo_id, parent=self)
+                dial.abas.setCurrentIndex(1)  # Força aba da Árvore
+                dial.exec()
+
             # --- FIM ---
-            DarkMessageBox.info(self, "Parabéns!", 
-                "Tutorial Concluído com Sucesso!\n\n"
-                "Você aprendeu o fluxo principal do sistema.\n"
-                "Os dados criados aqui são reais, você pode excluí-los depois se quiser.")
+            DarkMessageBox.info(self, "Tutorial Finalizado",
+                                "Pronto! Você explorou o fluxo completo.\n\n"
+                                "Experimente também o botão [💬 IA] na tela inicial para fazer\n"
+                                "perguntas sobre este contrato que acabamos de criar.")
 
         except Exception as e:
             DarkMessageBox.critical(self, "Erro no Tutorial", str(e))
-        
+
         finally:
-            self.em_tutorial = False # Desliga o modo mágico
-        
+            self.em_tutorial = False
+            # Opcional: Remove o prestador fake se quiser limpar,
+            # mas geralmente é bom deixar para o usuário ver.
+
     def fazer_login(self):
         """Abre a tela de login bloqueante no início"""
         dial = DialogoLogin()
@@ -2577,6 +2667,59 @@ class SistemaGestao(QMainWindow):
         self.salvar_dados()
         event.accept()
 
+    # --- NOVO: SISTEMA DE PONTO DE RESTAURAÇÃO (UNDO) ---
+
+    def criar_ponto_restauracao(self):
+        """Salva um snapshot oculto antes de ações destrutivas"""
+        try:
+            dados_backup = {
+                "contratos": [c.to_dict() for c in self.db_contratos],
+                "logs": [l.to_dict() for l in self.db_logs],
+                "prestadores": [p.to_dict() for p in self.db_prestadores]
+            }
+            # Salva num arquivo oculto/temporário
+            with open("temp_undo_point.json", 'w', encoding='utf-8-sig') as f:
+                json.dump(dados_backup, f, indent=4, ensure_ascii=False)
+
+            self.status_bar.showMessage("Ponto de restauração criado automaticamente.")
+        except Exception as e:
+            print(f"Erro ao criar ponto de restauração: {e}")
+
+    def desfazer_ultima_critica(self):
+        """Restaura o estado do sistema para o último ponto salvo"""
+        if not os.path.exists("temp_undo_point.json"):
+            DarkMessageBox.warning(self, "Impossível Desfazer", "Nenhuma ação crítica recente para desfazer.")
+            return
+
+        if DarkMessageBox.question(self, "Desfazer Crítico",
+                                   "Isso restaurará o sistema para o momento ANTES da última exclusão/importação/cadastro.\n\n"
+                                   "Qualquer alteração feita DEPOIS disso será perdida.\n"
+                                   "Tem certeza?") == QMessageBox.StandardButton.Yes:
+            try:
+                # 1. Lê o arquivo temporário
+                with open("temp_undo_point.json", 'r', encoding='utf-8-sig') as f:
+                    raw_data = json.load(f)
+
+                # 2. Restaura a memória
+                self.db_contratos = [Contrato.from_dict(d) for d in raw_data.get("contratos", [])]
+                self.db_logs = [RegistroLog.from_dict(d) for d in raw_data.get("logs", [])]
+                self.db_prestadores = [Prestador.from_dict(d) for d in raw_data.get("prestadores", [])]
+
+                # 3. Atualiza a tela
+                self.contrato_selecionado = None  # Reseta seleção para evitar erros de ponteiro
+                self.ne_selecionada = None
+                self.filtrar_contratos()
+                self.processar_alertas()  # <--- NOVA LINHA: Restaura os alertas como eram antes do erro
+                self.voltar_para_pesquisa()  # Volta pra tela inicial para garantir limpeza
+
+                # 4. Salva no disco principal para consolidar a volta no tempo
+                self.salvar_dados()
+
+                DarkMessageBox.info(self, "Sucesso", "Sistema restaurado com sucesso!")
+
+            except Exception as e:
+                DarkMessageBox.critical(self, "Erro Fatal", f"Falha ao restaurar: {str(e)}")
+
     def salvar_dados(self):
         # Cria um dicionário contendo Contratos E Logs
         dados_completos = {
@@ -2589,6 +2732,7 @@ class SistemaGestao(QMainWindow):
                 json.dump(dados_completos, f, indent=4, ensure_ascii=False)
         except Exception as e:
             print(f"Erro ao salvar: {e}")
+
 
     def processar_alertas(self):
         """Varredura automática de riscos"""
@@ -3110,14 +3254,19 @@ class SistemaGestao(QMainWindow):
         m_arq.addAction(acao_salvar)
         m_arq.addAction("Sair do Sistema", self.close)
 
-        # --- 2. MENU EDITAR (Padrão de Interface) --- <--- NOVO
+
+        # --- 2. MENU EDITAR (Atualizado com Undo) ---
         m_edit = mb.addMenu("Editar")
-        # Estes são "Dummy" visuais ou funcionam nativamente nos campos de texto
-        m_edit.addAction("Desfazer (Ctrl+Z)",
-                         lambda: self.focusWidget().undo() if hasattr(self.focusWidget(), 'undo') else None)
-        m_edit.addAction("Refazer (Ctrl+Y)",
-                         lambda: self.focusWidget().redo() if hasattr(self.focusWidget(), 'redo') else None)
+
+        # O "Desfazer" global do sistema
+        acao_undo = QAction("Desfazer Última Exclusão/Importação (Ctrl+Alt+Z)", self)
+        acao_undo.setShortcut("Ctrl+Alt+Z")  # <--- O comando técnico muda aqui
+        acao_undo.triggered.connect(self.desfazer_ultima_critica)
+        m_edit.addAction(acao_undo)
+
         m_edit.addSeparator()
+
+        # Comandos de texto (nativos)
         m_edit.addAction("Recortar (Ctrl+X)",
                          lambda: self.focusWidget().cut() if hasattr(self.focusWidget(), 'cut') else None)
         m_edit.addAction("Copiar (Ctrl+C)",
@@ -3192,8 +3341,8 @@ class SistemaGestao(QMainWindow):
         txt_sobre = (
             "GC Gestor de Contratos - Versão 9.0 Enterprise\n"
             "Desenvolvido em Python/PyQt6\n\n"
-            "Autor: Cássio de Souza Lopes\n"
-            "Servidor da Secretaria Municipal de Saúde de Montes Claros(MG)\n"
+            "Autor: Cássio de Souza Lopes, servo de Jesus Cristo ✝.\n"
+            "Servidor da Secretaria Municipal de Saúde de Montes Claros(MG)\nMestre em Desenvolvimento Social (UNIMONTES)\nBacharel em Economia(UNIMONTES)\nGraduando em Análise e Desenvolvimento de Sistemas (UNINTER)\n"
             "GitHub: github.com/cassioslopes\n"
             "Email: cassio.souzza@gmail.com"
         )
@@ -3798,11 +3947,16 @@ class SistemaGestao(QMainWindow):
         # CORREÇÃO: Passamos self.db_prestadores como primeiro argumento
         dial = DialogoCriarContrato(self.db_prestadores, parent=self)
 
-        # --- LÓGICA DO TUTORIAL ---
+        # --- LÓGICA DO TUTORIAL (CORRIGIDA) ---
         if self.em_tutorial:
             dial.inp_numero.setText("999/2025")
-            # Nota: No tutorial, o combobox pode não ter esse prestador,
-            # mas vamos deixar assim por enquanto ou adicionar manualmente se der erro.
+
+            # PROCURA A EMPRESA DO TUTORIAL E SELECIONA ELA
+            # O findData busca pelo valor oculto (Nome Fantasia)
+            idx_tut = dial.combo_prestador.findData("Empresa Tutorial Ltda")
+            if idx_tut >= 0:
+                dial.combo_prestador.setCurrentIndex(idx_tut)
+
             dial.inp_desc.setText("Contrato de Exemplo para Aprendizado")
             dial.inp_valor.set_value(12000.00)
             dial.inp_licitacao.setText("Pregão 01/25")
@@ -3826,7 +3980,7 @@ class SistemaGestao(QMainWindow):
 
             # Atualiza os dados básicos
             (c.numero, c.prestador, c.descricao,
-             novo_valor_inicial,  # <--- Capturamos o novo valor aqui
+             novo_valor_inicial,
              c.vigencia_inicio, c.vigencia_fim,
              c.comp_inicio, c.comp_fim,
              c.licitacao, c.dispensa) = d
@@ -3841,12 +3995,15 @@ class SistemaGestao(QMainWindow):
             self.registrar_log("Editar Contrato", f"Alterou dados base do contrato {c.numero}")
 
             self.filtrar_contratos()
+            self.processar_alertas()  # <--- NOVA LINHA: Recalcula se o contrato deixou de estar vencido
             self.salvar_dados()
 
     def excluir_contrato_externo(self, c):
         if DarkMessageBox.question(self, "Excluir", f"Excluir {c.numero}?") == QMessageBox.StandardButton.Yes:
-            self.db_contratos.remove(c);
-            self.filtrar_contratos();
+            self.criar_ponto_restauracao()
+            self.db_contratos.remove(c)
+            self.filtrar_contratos()
+            self.processar_alertas()  # <--- NOVA LINHA: Remove o alerta do contrato excluído
             self.salvar_dados()
 
     def dialogo_nova_ne(self):
@@ -3872,7 +4029,7 @@ class SistemaGestao(QMainWindow):
             ok, msg = self.contrato_selecionado.adicionar_nota_empenho(nova_ne)
             if ok:
                 self.registrar_log("Nova NE", f"NE {num} (R$ {fmt_br(val)}) adicionada ao contrato {self.contrato_selecionado.numero}")
-                self.atualizar_painel_detalhes(); self.salvar_dados()
+                self.atualizar_painel_detalhes(); self.processar_alertas(); self.salvar_dados()
             else:
                 DarkMessageBox.critical(self, "Bloqueio", msg)
 
@@ -3898,6 +4055,7 @@ class SistemaGestao(QMainWindow):
                 
             self.atualizar_painel_detalhes()
             self.atualizar_movimentos()
+            self.processar_alertas()
             self.salvar_dados()
 
 
@@ -3932,6 +4090,7 @@ class SistemaGestao(QMainWindow):
                 
             self.atualizar_painel_detalhes()
             self.atualizar_movimentos()
+            self.processar_alertas()
             self.salvar_dados()
 
     def abrir_novo_servico(self):
@@ -3978,7 +4137,6 @@ class SistemaGestao(QMainWindow):
     def abrir_novo_aditivo(self):
         if not self.contrato_selecionado: return
 
-        # Captura o ID do ciclo atual (visualizado na combobox)
         ciclo_view_id = self.combo_ciclo_visualizacao.currentData()
 
         dial = DialogoAditivo(self.contrato_selecionado, parent=self)
@@ -3986,13 +4144,14 @@ class SistemaGestao(QMainWindow):
             tipo, valor, data_n, desc, renova, data_ini, serv_idx = dial.get_dados()
             adt = Aditivo(0, tipo, valor, data_n, desc, renova, data_ini, serv_idx)
 
-            # Passamos o ciclo_view_id como destino
             msg = self.contrato_selecionado.adicionar_aditivo(adt, id_ciclo_alvo=ciclo_view_id)
 
-            self.registrar_log("Novo Aditivo", f"Aditivo de {tipo} (R$ {fmt_br(valor)}) no contrato {self.contrato_selecionado.numero}")
+            self.registrar_log("Novo Aditivo",
+                               f"Aditivo de {tipo} (R$ {fmt_br(valor)}) no contrato {self.contrato_selecionado.numero}")
 
             DarkMessageBox.info(self, "Aditivo", msg)
             self.atualizar_painel_detalhes()
+            self.processar_alertas()  # <--- NOVA CHAMADA: Recalcula prazos/saldos
             self.salvar_dados()
 
     # --- EXPORTAÇÃO E IMPORTAÇÃO ---
@@ -4115,6 +4274,7 @@ class SistemaGestao(QMainWindow):
             with open(fname, 'r', encoding='utf-8') as f:
                 reader = csv.reader(f, delimiter=';');
                 next(reader, None)
+                self.criar_ponto_restauracao()
                 for row in reader:
                     if len(row) < 10: continue
                     self.db_contratos.append(
@@ -4136,6 +4296,7 @@ class SistemaGestao(QMainWindow):
             with open(fname, 'r', encoding='utf-8') as f:
                 reader = csv.reader(f, delimiter=';');
                 next(reader, None)
+                self.criar_ponto_restauracao()
                 for row in reader:
                     if len(row) < 6: continue
                     idx_serv = -1
@@ -4185,6 +4346,7 @@ class SistemaGestao(QMainWindow):
             with open(fname, 'r', encoding='utf-8') as f:
                 reader = csv.reader(f, delimiter=';')
                 next(reader, None)
+                self.criar_ponto_restauracao()
                 for row in reader:
                     if len(row) < 2: continue
 
@@ -4339,13 +4501,16 @@ class SistemaGestao(QMainWindow):
             if len(self.ne_selecionada.historico) == 1: self.ne_selecionada.valor_inicial = val;
             self.ne_selecionada.historico[0].valor = val
             self.atualizar_painel_detalhes();
+            self.processar_alertas()
             self.salvar_dados()
 
     def excluir_ne(self):
         if self.ne_selecionada and DarkMessageBox.question(self, "Confirma", "Excluir?") == QMessageBox.StandardButton.Yes:
+            self.criar_ponto_restauracao()
             self.contrato_selecionado.lista_notas_empenho.remove(self.ne_selecionada);
             self.ne_selecionada = None;
             self.atualizar_painel_detalhes();
+            self.processar_alertas()
             self.salvar_dados()
 
     def menu_subcontrato(self, pos):
@@ -4520,6 +4685,7 @@ class SistemaGestao(QMainWindow):
         # Confirmação final
         if DarkMessageBox.question(self, "Confirmar", "Tem a certeza que deseja apagar permanentemente?",
                                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No) == QMessageBox.StandardButton.Yes:
+            self.criar_ponto_restauracao()
 
             # Reindexação (Atualiza índices das NEs e Aditivos de outros serviços)
             for ne in self.contrato_selecionado.lista_notas_empenho:
@@ -4531,6 +4697,7 @@ class SistemaGestao(QMainWindow):
             del self.contrato_selecionado.lista_servicos[row]
 
             self.atualizar_painel_detalhes()
+            self.processar_alertas()
             self.salvar_dados()
 
     def menu_aditivo(self, pos):
@@ -4601,13 +4768,14 @@ class SistemaGestao(QMainWindow):
                 if adt.servico_idx >= 0 and adt.servico_idx < len(self.contrato_selecionado.lista_servicos):
                     sub_new = self.contrato_selecionado.lista_servicos[adt.servico_idx]
                     val_atual_new = sub_new.get_valor_ciclo(adt.ciclo_pertencente_id)
-                    # Soma o novo valor
                     sub_new.set_valor_ciclo(adt.ciclo_pertencente_id, val_atual_new + adt.valor)
 
-            self.salvar_dados()
-            self.atualizar_painel_detalhes()
+                self.salvar_dados()
+                self.atualizar_painel_detalhes()
+                self.processar_alertas()
 
     def excluir_aditivo(self, row):
+        self.criar_ponto_restauracao()
         adt = self.contrato_selecionado.lista_aditivos[row]
         id_alvo = adt.id_aditivo
 
@@ -4642,6 +4810,7 @@ class SistemaGestao(QMainWindow):
 
         self.salvar_dados()
         self.atualizar_painel_detalhes()
+        self.processar_alertas()
 
     def menu_movimentacao(self, pos):
         item = self.tab_mov.itemAt(pos)
@@ -4687,6 +4856,7 @@ class SistemaGestao(QMainWindow):
                     DarkMessageBox.warning(self, "Erro", m)
 
     def excluir_pagamento(self, row):
+        self.criar_ponto_restauracao()
         mov = self.ne_selecionada.historico[row]
         tipo = mov.tipo
         valor_apagado = mov.valor
@@ -5128,6 +5298,7 @@ class SistemaGestao(QMainWindow):
             with open(fname, 'r', encoding='utf-8') as f:
                 reader = csv.reader(f, delimiter=';')
                 next(reader, None) # Pula cabeçalho
+                self.criar_ponto_restauracao()
                 for row in reader:
                     if len(row) < 3: continue # Mínimo Razao, Fantasia, CNPJ
                     p = Prestador(
