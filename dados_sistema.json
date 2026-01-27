@@ -3,14 +3,17 @@
         {
             "numero": "P100/2026 (teste)",
             "prestador": "HOSPITAL UM (teste)",
-            "descricao": "Contratualização Hospitalar",
+            "descricao": "Contratualização Hospitalar.",
             "valor_inicial": 1000000.0,
             "vigencia_inicio": "23/01/2026",
-            "vigencia_fim": "23/01/2027",
+            "vigencia_fim": "24/01/2027",
             "comp_inicio": "01/2026",
             "comp_fim": "12/2026",
             "licitacao": "01/2026",
             "dispensa": "10/2026",
+            "anulado": false,
+            "usuario_exclusao": null,
+            "data_exclusao": null,
             "ultimo_ciclo_id": 3,
             "ultima_modificacao": "2026-01-24T19:11:24.529124",
             "ciclos": [
@@ -32,6 +35,11 @@
                 {
                     "id_ciclo": 3,
                     "nome": "2º TA Prazo/Valor",
+                    "valor_base": 100000000.0
+                },
+                {
+                    "id_ciclo": 4,
+                    "nome": "3º TA Prazo/Valor",
                     "valor_base": 100000000.0
                 }
             ],
@@ -60,49 +68,24 @@
                         },
                         {
                             "tipo": "Pagamento",
-                            "valor": 0.0,
-                            "competencia": "01/2026",
+                            "valor": 200.0,
+                            "competencia": "03/2026",
                             "observacao": ""
                         },
                         {
                             "tipo": "Pagamento",
-                            "valor": 0.0,
+                            "valor": 100.0,
                             "competencia": "05/2026",
                             "observacao": ""
                         },
                         {
-                            "tipo": "Pagamento",
-                            "valor": 550.0,
-                            "competencia": "01/2026, 02/2026, 03/2026, 04/2026",
-                            "observacao": "1º quadrim."
-                        }
-                    ],
-                    "valor_pago": 1000.0
-                },
-                {
-                    "numero": "003",
-                    "valor_inicial": 12000.0,
-                    "descricao": "teste",
-                    "subcontrato_idx": 1,
-                    "fonte_recurso": "1600 federal",
-                    "data_emissao": "24/01/2026",
-                    "ciclo_id": 3,
-                    "aditivo_vinculado_id": null,
-                    "historico": [
-                        {
-                            "tipo": "Emissão Original",
-                            "valor": 12000.0,
+                            "tipo": "Anulação",
+                            "valor": -200.0,
                             "competencia": "-",
-                            "observacao": ""
-                        },
-                        {
-                            "tipo": "Pagamento",
-                            "valor": 12000.0,
-                            "competencia": "01/2026, 02/2026, 03/2026",
-                            "observacao": ""
+                            "observacao": "TESTE"
                         }
                     ],
-                    "valor_pago": 12000.0
+                    "valor_pago": 750.0
                 }
             ],
             "lista_aditivos": [
@@ -127,6 +110,28 @@
                     "data_inicio_vigencia": "23/01/2028",
                     "ciclo_pertencente_id": 3,
                     "servico_idx": -1
+                },
+                {
+                    "id_aditivo": 7,
+                    "tipo": "Prazo",
+                    "valor": 100000000.0,
+                    "data_nova": "28/01/2031",
+                    "descricao": "PRORROGAÇÃO",
+                    "renovacao_valor": true,
+                    "data_inicio_vigencia": "27/01/2029",
+                    "ciclo_pertencente_id": 4,
+                    "servico_idx": -1
+                },
+                {
+                    "id_aditivo": 8,
+                    "tipo": "Valor",
+                    "valor": 1000.0,
+                    "data_nova": "27/01/2027",
+                    "descricao": "1º TA Valor - ",
+                    "renovacao_valor": false,
+                    "data_inicio_vigencia": "27/01/2026",
+                    "ciclo_pertencente_id": 3,
+                    "servico_idx": 0
                 }
             ],
             "lista_servicos": [
@@ -134,18 +139,12 @@
                     "descricao": "PÓS FIXADO",
                     "valor_mensal": 10000.0,
                     "valores_por_ciclo": {
-                        "3": 120000.0
-                    }
-                },
-                {
-                    "descricao": "çl",
-                    "valor_mensal": 1000.0,
-                    "valores_por_ciclo": {
-                        "3": 12000.0
+                        "3": 121000.0,
+                        "4": 120000.0
                     }
                 }
             ],
-            "_contador_aditivos": 6
+            "_contador_aditivos": 8
         },
         {
             "numero": "1",
@@ -158,6 +157,9 @@
             "comp_fim": "01/2027",
             "licitacao": "a",
             "dispensa": "s",
+            "anulado": false,
+            "usuario_exclusao": null,
+            "data_exclusao": null,
             "ultimo_ciclo_id": 0,
             "ultima_modificacao": "2026-01-24T19:11:24.529124",
             "ciclos": [
@@ -183,6 +185,9 @@
             "comp_fim": "01/2027",
             "licitacao": "Pregão 01/25",
             "dispensa": "",
+            "anulado": false,
+            "usuario_exclusao": null,
+            "data_exclusao": null,
             "ultimo_ciclo_id": 0,
             "ultima_modificacao": "2026-01-26T11:40:04.066770",
             "ciclos": [
@@ -229,6 +234,34 @@
                     }
                 }
             ],
+            "_contador_aditivos": 0
+        },
+        {
+            "numero": "",
+            "prestador": "HOSPITAL UM (teste)",
+            "descricao": "",
+            "valor_inicial": 0.0,
+            "vigencia_inicio": "27/01/2026",
+            "vigencia_fim": "27/01/2027",
+            "comp_inicio": "01/2026",
+            "comp_fim": "01/2027",
+            "licitacao": "",
+            "dispensa": "",
+            "anulado": true,
+            "usuario_exclusao": "Cássio de Souza Lopes",
+            "data_exclusao": "27/01/2026 15:31",
+            "ultimo_ciclo_id": 0,
+            "ultima_modificacao": "2026-01-27T11:48:23.802552",
+            "ciclos": [
+                {
+                    "id_ciclo": 0,
+                    "nome": "Contrato Inicial",
+                    "valor_base": 0.0
+                }
+            ],
+            "lista_notas_empenho": [],
+            "lista_aditivos": [],
+            "lista_servicos": [],
             "_contador_aditivos": 0
         }
     ],
@@ -505,6 +538,118 @@
             "cpf": "082.206.416-22",
             "acao": "Sincronização",
             "detalhe": "Restaurado/Importado contrato 111111111/111. Origem: Teste do Testador (26/01/2026 16:42:51)"
+        },
+        {
+            "data": "27/01/2026 11:37:31",
+            "nome": "Cássio de Souza Lopes",
+            "cpf": "082.206.416-22",
+            "acao": "Nova NE",
+            "detalhe": "NE  (R$ R$ 0,00) adicionada ao contrato P100/2026 (teste)"
+        },
+        {
+            "data": "27/01/2026 11:41:03",
+            "nome": "Cássio de Souza Lopes",
+            "cpf": "082.206.416-22",
+            "acao": "Excluir Pagamento",
+            "detalhe": "Excluiu Pagamento de R$ R$ 550,00 da NE 0002"
+        },
+        {
+            "data": "27/01/2026 11:41:16",
+            "nome": "Cássio de Souza Lopes",
+            "cpf": "082.206.416-22",
+            "acao": "Anulação",
+            "detalhe": "Anulou R$ R$ 200,00 na NE 0002. Motivo: TESTE"
+        },
+        {
+            "data": "27/01/2026 11:44:08",
+            "nome": "Cássio de Souza Lopes",
+            "cpf": "082.206.416-22",
+            "acao": "Novo Aditivo",
+            "detalhe": "Aditivo de Prazo (R$ R$ 0,00) no contrato P100/2026 (teste)"
+        },
+        {
+            "data": "27/01/2026 11:48:23",
+            "nome": "Cássio de Souza Lopes",
+            "cpf": "082.206.416-22",
+            "acao": "Criar Contrato",
+            "detalhe": "Novo contrato criado: "
+        },
+        {
+            "data": "27/01/2026 12:24:44",
+            "nome": "Cássio de Souza Lopes",
+            "cpf": "082.206.416-22",
+            "acao": "Editar Contrato",
+            "detalhe": "Alterou dados base do contrato P100/2026 (teste)"
+        },
+        {
+            "data": "27/01/2026 12:25:06",
+            "nome": "Cássio de Souza Lopes",
+            "cpf": "082.206.416-22",
+            "acao": "Editar Contrato",
+            "detalhe": "Alterou dados base do contrato P100/2026 (teste)"
+        },
+        {
+            "data": "27/01/2026 15:13:51",
+            "nome": "Cássio de Souza Lopes",
+            "cpf": "082.206.416-22",
+            "acao": "EXCLUSÃO",
+            "detalhe": "Excluiu contrato "
+        },
+        {
+            "data": "27/01/2026 15:31:13",
+            "nome": "Cássio de Souza Lopes",
+            "cpf": "082.206.416-22",
+            "acao": "EXCLUSÃO",
+            "detalhe": "Excluiu contrato "
+        },
+        {
+            "data": "27/01/2026 15:31:31",
+            "nome": "Cássio de Souza Lopes",
+            "cpf": "082.206.416-22",
+            "acao": "Excluir Pagamento",
+            "detalhe": "Excluiu Pagamento de R$ R$ 12.000,00 da NE 003"
+        },
+        {
+            "data": "27/01/2026 16:00:25",
+            "nome": "Cássio de Souza Lopes",
+            "cpf": "082.206.416-22",
+            "acao": "EXCLUSÃO",
+            "detalhe": "Excluiu contrato 1"
+        },
+        {
+            "data": "27/01/2026 16:11:04",
+            "nome": "Cássio de Souza Lopes",
+            "cpf": "082.206.416-22",
+            "acao": "Editar Pagamento",
+            "detalhe": "Editou pgto na NE 0002."
+        },
+        {
+            "data": "27/01/2026 16:12:55",
+            "nome": "Cássio de Souza Lopes",
+            "cpf": "082.206.416-22",
+            "acao": "Editar Pagamento",
+            "detalhe": "Editou pgto na NE 0002."
+        },
+        {
+            "data": "27/01/2026 16:13:24",
+            "nome": "Cássio de Souza Lopes",
+            "cpf": "082.206.416-22",
+            "acao": "Editar Pagamento",
+            "detalhe": "Editou pgto na NE 0002."
+        },
+        {
+            "data": "27/01/2026 17:44:22",
+            "nome": "Cássio de Souza Lopes",
+            "cpf": "082.206.416-22",
+            "acao": "Novo Aditivo",
+            "detalhe": "Aditivo de Valor (R$ R$ 1.000,00) no contrato P100/2026 (teste)"
+        },
+        {
+            "data": "27/01/2026 18:04:52",
+            "nome": "Cássio de Souza Lopes",
+            "cpf": "082.206.416-22",
+            "acao": "Segurança",
+            "detalhe": "Alterou a própria senha"
         }
     ],
     "prestadores": [
@@ -522,5 +667,14 @@
             "cnes": "1234567",
             "cod_cp": "999"
         }
-    ]
+    ],
+    "usuarios": {
+        "082.206.416-22": {
+            "nome": "Cássio de Souza Lopes",
+            "hash": "bd7ba07b2bb53ca2cbdbc0176b91faab24bf100f282d5117c1f624ae75eeeffb",
+            "admin": false,
+            "data_criacao": "27/01/2026 18:20",
+            "palavra_secreta": "Crux Sacra Sit Mihi Lux"
+        }
+    }
 }
