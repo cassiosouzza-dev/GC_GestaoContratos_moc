@@ -4390,11 +4390,9 @@ class SistemaGestao(QMainWindow):
         if not hasattr(self, 'custom_table_header'): self.custom_table_header = None
         if not hasattr(self, 'custom_table_bg'): self.custom_table_bg = None
 
-        # --- DEFINIÇÃO DAS PALETAS DE CORES ---
         if self.custom_bg:
-            # MODO PERSONALIZADO
+            # --- MODO PERSONALIZADO ---
             cor_base = QColor(self.custom_bg)
-            # Se não tiver cor de seleção salva, usa o Azul Padrão (#0078d7) em vez do azul claro antigo
             cor_destaque = QColor(self.custom_sel if self.custom_sel else "#0078d7")
             is_dark = cor_base.lightness() < 128
 
@@ -4410,6 +4408,7 @@ class SistemaGestao(QMainWindow):
                 c_btn = cor_base.lighter(125).name()
                 c_btn_hover = cor_base.lighter(140).name()
                 c_azul_fundo = self.custom_tab if self.custom_tab else cor_base.lighter(110).name()
+                c_resumo_bg = cor_base.lighter(105).name()
             else:
                 c_fundo_alt = "#ffffff"
                 c_header = self.custom_table_header if self.custom_table_header else cor_base.darker(110).name()
@@ -4420,6 +4419,7 @@ class SistemaGestao(QMainWindow):
                 c_btn = cor_base.lighter(105).name()
                 c_btn_hover = cor_base.darker(105).name()
                 c_azul_fundo = self.custom_tab if self.custom_tab else cor_base.darker(105).name()
+                c_resumo_bg = "#f9f9f9"
 
             c_selecao = cor_destaque.name()
             c_azul = cor_destaque.name()
@@ -4427,7 +4427,7 @@ class SistemaGestao(QMainWindow):
             c_borda_foco = c_selecao
 
         elif self.tema_escuro:
-            # MODO ESCURO PADRÃO
+            # --- DARK MODE PADRÃO ---
             c_fundo = "#1e1e1e";
             c_fundo_alt = "#252526"
             c_texto = "#e0e0e0";
@@ -4438,33 +4438,36 @@ class SistemaGestao(QMainWindow):
             c_azul = "#3794ff"
             c_btn = "#333333";
             c_btn_hover = "#444444"
-            c_texto_sel = "#ffffff"
+            c_texto_sel = "#ffffff";
+            c_resumo_bg = "#252526"
             c_tbl_bg = self.custom_table_bg if self.custom_table_bg else "#121212"
             c_header = self.custom_table_header if self.custom_table_header else "#2d2d2d"
             c_azul_fundo = self.custom_tab if self.custom_tab else "#2d2d2d"
 
         else:
-            # MODO CLARO PADRÃO (AQUI ESTÁ O SEU AZUL)
+            # --- LIGHT MODE PADRÃO ---
             c_fundo = "#f3f3f3"
             c_fundo_alt = "#ffffff"
-            c_texto = "#1a1a1a";
+            c_texto = "#1a1a1a"
             c_texto_sec = "#555555"
             c_borda = "#cccccc"
 
-            # --- AZUL WINDOWS ---
             c_selecao = "#0078d7"
             c_borda_foco = "#0078d7"
             c_azul = "#005a9e"
             c_texto_sel = "#ffffff"
-            # --------------------
 
             c_btn = "#e1e1e1";
             c_btn_hover = "#d1d1d1"
+            c_resumo_bg = "#f8f8f8"
+
             c_azul_fundo = self.custom_tab if self.custom_tab else "#e1e1e1"
             c_header = self.custom_table_header if self.custom_table_header else "#f0f0f0"
             c_tbl_bg = self.custom_table_bg if self.custom_table_bg else "#ffffff"
 
+        # Cor do texto da aba
         cor_txt_aba = self.custom_tab_text if self.custom_tab_text else c_azul
+
         s_font = f"{self.tamanho_fonte}px"
         s_borda_foco = "2px solid" if (self.tema_escuro or self.custom_bg) else "1px solid"
 
@@ -4476,7 +4479,7 @@ class SistemaGestao(QMainWindow):
         if hasattr(self, 'lbl_titulo'): self.lbl_titulo.setStyleSheet(estilo_titulo)
         if hasattr(self, 'lbl_logo'): self.lbl_logo.setStyleSheet(estilo_logo)
 
-        # Aplicar Palette (Importante para diálogos nativos)
+        # Palette do Qt
         palette = QPalette()
         palette.setColor(QPalette.ColorRole.Window, QColor(c_fundo))
         palette.setColor(QPalette.ColorRole.WindowText, QColor(c_texto))
@@ -4492,42 +4495,38 @@ class SistemaGestao(QMainWindow):
         palette.setColor(QPalette.ColorRole.HighlightedText, QColor(c_texto_sel))
         app.setPalette(palette)
 
-        # --- CSS REFORÇADO ---
         estilo_css = f"""
         QMainWindow, QDialog {{ background-color: {c_fundo}; }}
         QWidget {{ color: {c_texto}; font-size: {s_font}; }}
         QLabel {{ color: {c_texto}; }}
 
         QGroupBox {{ border: 1px solid {c_borda}; border-radius: 6px; margin-top: 25px; font-weight: bold; }}
-        QGroupBox::title {{ subcontrol-origin: margin; left: 10px; padding: 0 5px; color: {c_azul}; font-size: {int(self.tamanho_fonte) + 2}px; font-weight: bold; }}
+
+        /* AQUI FOI A MUDANÇA: 'color: {c_texto}' EM VEZ DE '{c_azul}' */
+        QGroupBox::title {{ subcontrol-origin: margin; left: 10px; padding: 0 5px; color: {c_texto}; font-size: {int(self.tamanho_fonte) + 2}px; font-weight: bold; }}
 
         QLineEdit, QDateEdit, QComboBox, QSpinBox {{ background-color: {c_fundo_alt}; border: 1px solid {c_borda}; border-radius: 4px; padding: 6px; color: {c_texto}; font-size: {s_font}; }}
         QLineEdit:focus, QDateEdit:focus, QComboBox:focus {{ border: {s_borda_foco} {c_borda_foco}; }}
         QLineEdit:disabled, QDateEdit:disabled {{ background-color: {c_fundo}; color: {c_texto_sec}; border: 1px solid {c_borda}; }}
 
-        /* TABELA - ONDE A MÁGICA ACONTECE */
         QTableWidget {{ 
             background-color: {c_tbl_bg}; 
             alternate-background-color: {c_tbl_bg};
             gridline-color: {c_borda}; 
             border: 1px solid {c_borda}; 
             color: {c_texto}; 
-            font-size: {s_font};
-
-            /* Força a cor de seleção no nível do Widget */
+            font-size: {s_font}; 
             selection-background-color: {c_selecao};
             selection-color: {c_texto_sel};
         }}
 
-        QTableWidget::item {{ background-color: {c_tbl_bg}; color: {c_texto}; }}
+        QTableWidget::item {{ background-color: {c_tbl_bg}; }}
 
-        /* Seleção Ativa */
         QTableWidget::item:selected {{ 
             background-color: {c_selecao}; 
             color: {c_texto_sel}; 
         }}
 
-        /* Seleção Inativa (Quando clica fora da tabela, continua azul) */
         QTableWidget::item:selected:!active {{ 
             background-color: {c_selecao}; 
             color: {c_texto_sel}; 
@@ -5035,22 +5034,40 @@ class SistemaGestao(QMainWindow):
 
         from PyQt6.QtWidgets import QGroupBox, QGridLayout
         self.grp_detalhes_ne = QGroupBox("Detalhes da Nota de Empenho Selecionada")
-        self.grp_detalhes_ne.setMaximumHeight(100)
+        self.grp_detalhes_ne.setMaximumHeight(130)  # Aumentei um pouco a altura
         layout_det_ne = QGridLayout(self.grp_detalhes_ne)
 
-        self.lbl_ne_ciclo = QLabel("Ciclo: -");
+        # Labels existentes
+        self.lbl_ne_ciclo = QLabel("Ciclo: -")
         self.lbl_ne_emissao = QLabel("Emissão: -")
-        self.lbl_ne_aditivo = QLabel("Aditivo: -");
-        self.lbl_ne_desc = QLabel("Descrição: -");
+        self.lbl_ne_aditivo = QLabel("Aditivo: -")
+
+        # --- NOVOS LABELS ---
+        self.lbl_ne_fonte = QLabel("Fonte: -")
+        self.lbl_ne_servico = QLabel("Serviço: -")
+        # --------------------
+
+        self.lbl_ne_desc = QLabel("Descrição: -")
         self.lbl_ne_desc.setWordWrap(True)
 
         font_bold = QFont("Arial", 9, QFont.Weight.Bold)
-        for l in [self.lbl_ne_ciclo, self.lbl_ne_emissao, self.lbl_ne_aditivo, self.lbl_ne_desc]: l.setFont(font_bold)
+        for l in [self.lbl_ne_ciclo, self.lbl_ne_emissao, self.lbl_ne_aditivo,
+                  self.lbl_ne_desc, self.lbl_ne_fonte, self.lbl_ne_servico]:
+            l.setFont(font_bold)
 
-        layout_det_ne.addWidget(self.lbl_ne_ciclo, 0, 0);
+        # --- REORGANIZAÇÃO DO GRID (3 Linhas) ---
+        # Linha 0: Ciclo | Emissão | Fonte
+        layout_det_ne.addWidget(self.lbl_ne_ciclo, 0, 0)
         layout_det_ne.addWidget(self.lbl_ne_emissao, 0, 1)
-        layout_det_ne.addWidget(self.lbl_ne_aditivo, 0, 2);
-        layout_det_ne.addWidget(self.lbl_ne_desc, 1, 0, 1, 3)
+        layout_det_ne.addWidget(self.lbl_ne_fonte, 0, 2)
+
+        # Linha 1: Serviço (ocupa 2 colunas) | Aditivo
+        layout_det_ne.addWidget(self.lbl_ne_servico, 1, 0, 1, 2)
+        layout_det_ne.addWidget(self.lbl_ne_aditivo, 1, 2)
+
+        # Linha 2: Descrição (ocupa tudo)
+        layout_det_ne.addWidget(self.lbl_ne_desc, 2, 0, 1, 3)
+
         l_fin.addWidget(self.grp_detalhes_ne)
 
         # --- NOVO: BARRA DE BUSCA FINANCEIRO ---
@@ -5979,36 +5996,47 @@ class SistemaGestao(QMainWindow):
     # --- MENUS CONTEXTO E AUXILIARES ---
 
     def selecionar_ne(self, item):
+        # Obtém o objeto NE guardado na linha clicada
         self.ne_selecionada = self.tab_empenhos.item(item.row(), 0).data(Qt.ItemDataRole.UserRole)
 
         if self.ne_selecionada and self.contrato_selecionado:
-            # (Código de labels de ciclo/emissão/aditivo mantém igual...)
             c = self.contrato_selecionado
             ne = self.ne_selecionada
-            
+
+            # 1. Busca Nome do Ciclo
             nome_ciclo = "?"
             for ciclo in c.ciclos:
-                if ciclo.id_ciclo == ne.ciclo_id: nome_ciclo = ciclo.nome; break
-            
-            info_aditivo = "Não vinculado"
+                if ciclo.id_ciclo == ne.ciclo_id:
+                    nome_ciclo = ciclo.nome
+                    break
+
+            # 2. Busca Nome do Aditivo
+            info_aditivo = "Não vinculado (Saldo Geral)"
             if ne.aditivo_vinculado_id:
                 for a in c.lista_aditivos:
-                    if a.id_aditivo == ne.aditivo_vinculado_id: info_aditivo = f"{a.descricao} (ID {a.id_aditivo})"; break
+                    if a.id_aditivo == ne.aditivo_vinculado_id:
+                        info_aditivo = f"{a.descricao} (ID {a.id_aditivo})"
+                        break
 
+            # 3. Busca Nome do Serviço (NOVO)
+            nome_servico = "Serviço não identificado"
+            if 0 <= ne.subcontrato_idx < len(c.lista_servicos):
+                nome_servico = c.lista_servicos[ne.subcontrato_idx].descricao
+
+            # --- ATUALIZA OS LABELS NA TELA ---
             self.lbl_ne_ciclo.setText(f"Ciclo: {nome_ciclo}")
             self.lbl_ne_emissao.setText(f"Emissão: {ne.data_emissao}")
+            self.lbl_ne_fonte.setText(f"Fonte: {ne.fonte_recurso}")  # <--- AQUI
+            self.lbl_ne_servico.setText(f"Serviço: {nome_servico}")  # <--- AQUI
             self.lbl_ne_aditivo.setText(f"Aditivo: {info_aditivo}")
             self.lbl_ne_desc.setText(f"Descrição: {ne.descricao}")
 
-            # --- CORREÇÃO DO TÍTULO VERDE ---
+            # Atualiza o título verde do histórico
             if hasattr(self, 'lbl_hist'):
-                # Usa a nova property .saldo_disponivel
                 saldo = ne.saldo_disponivel
-                
                 info_nota = (f"NE {ne.numero} | {ne.descricao} | "
                              f"Valor: {fmt_br(ne.valor_inicial)} | "
                              f"<span style='color: #27ae60; font-weight: bold;'>Saldo: {fmt_br(saldo)}</span>")
-                
                 self.lbl_hist.setText(f"Histórico Financeiro: {info_nota}")
 
         self.atualizar_movimentos()

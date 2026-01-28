@@ -47,7 +47,7 @@
                 {
                     "numero": "0002",
                     "valor_inicial": 1000.0,
-                    "descricao": "-",
+                    "descricao": "teste da descrição",
                     "subcontrato_idx": 0,
                     "fonte_recurso": "1600 federal",
                     "data_emissao": "23/01/2026",
