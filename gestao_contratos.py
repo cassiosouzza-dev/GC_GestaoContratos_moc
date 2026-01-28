@@ -5151,7 +5151,7 @@ class SistemaGestao(QMainWindow):
 
         b_nserv = QPushButton("+ Serviço")
         b_nserv.setFixedWidth(200)
-        b_nserv.setStyleSheet("background-color: #2980b9; color: white; font-weight: bold; padding: 6px;")
+        b_nserv.setStyleSheet("background-color: #d0d0d0; color: black; font-weight: bold; padding: 6px;")
         b_nserv.clicked.connect(self.abrir_novo_servico)
         l_serv.addWidget(b_nserv)
 

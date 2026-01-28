@@ -1,171 +1,467 @@
-# MANUAL TÉCNICO OPERACIONAL - GC GESTOR ENTERPRISE
-# DOCUMENTAÇÃO OFICIAL UNIFICADA
+# ARQUIVO: manual_texto.py
+# Documentação Técnica Oficial - GC Gestor Enterprise v9.0
 
 HTML_MANUAL = """
-<style>
-    body { font-family: 'Segoe UI', 'Roboto', Helvetica, Arial, sans-serif; line-height: 1.6; color: #333; margin: 20px; background-color: #fdfdfd; }
-    h1 { color: #2c3e50; text-align: center; border-bottom: 3px solid #2c3e50; padding-bottom: 15px; margin-bottom: 30px; font-size: 28px; }
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Manual Técnico Operacional - GC Gestor</title>
+    <style>
+        :root {
+            --primary-color: #0078d7; /* Azul Windows */
+            --secondary-color: #2c3e50;
+            --accent-color: #27ae60;
+            --danger-color: #c0392b;
+            --bg-color: #f9f9f9;
+            --text-color: #333;
+            --border-color: #ddd;
+        }
 
-    /* Hierarquia Visual */
-    h2 { 
-        background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%); 
-        color: white; 
-        padding: 12px 20px; 
-        margin-top: 50px; 
-        border-radius: 6px; 
-        font-size: 18px; 
-        text-transform: uppercase; 
-        letter-spacing: 1px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-    }
-    h3 { 
-        color: #2980b9; 
-        border-left: 5px solid #2980b9; 
-        padding-left: 15px; 
-        margin-top: 35px; 
-        font-size: 16px; 
-        background-color: #ecf0f1;
-        padding-top: 8px;
-        padding-bottom: 8px;
-        border-radius: 0 4px 4px 0;
-    }
-    h4 { color: #555; margin-top: 20px; font-size: 14px; text-decoration: underline; }
+        body {
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            color: var(--text-color);
+            background-color: var(--bg-color);
+            margin: 0;
+            padding: 30px;
+        }
 
-    /* Caixas Especiais */
-    .box-info { background-color: #e1f5fe; border: 1px solid #81d4fa; border-left: 5px solid #03a9f4; padding: 15px; margin: 15px 0; font-size: 13px; border-radius: 4px; }
-    .box-ai { background-color: #f3e5f5; border: 1px solid #e1bee7; border-left: 5px solid #9c27b0; padding: 15px; margin: 15px 0; font-size: 13px; border-radius: 4px; }
-    .box-security { background-color: #fff3e0; border: 1px solid #ffe0b2; border-left: 5px solid #ff9800; padding: 15px; margin: 15px 0; font-size: 13px; border-radius: 4px; }
-    .box-cloud { background-color: #e8f5e9; border: 1px solid #c8e6c9; border-left: 5px solid #4caf50; padding: 15px; margin: 15px 0; font-size: 13px; border-radius: 4px; }
+        /* Títulos */
+        h1 {
+            color: var(--secondary-color);
+            text-align: center;
+            border-bottom: 3px solid var(--primary-color);
+            padding-bottom: 15px;
+            font-size: 2.2em;
+            margin-bottom: 40px;
+        }
 
-    /* Tabelas e Atalhos */
-    table { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
-    th { background-color: #34495e; border: 1px solid #34495e; padding: 12px; text-align: left; font-weight: bold; color: white; }
-    td { border: 1px solid #bdc3c7; padding: 10px; }
-    tr:nth-child(even) { background-color: #f9f9f9; }
-    kbd { background-color: #f7f7f7; border-radius: 3px; border: 1px solid #ccc; padding: 2px 6px; font-family: monospace; font-weight: 700; color: #333; box-shadow: 0 2px 0 rgba(0,0,0,0.2); }
+        h2 {
+            background-color: var(--secondary-color);
+            color: #fff;
+            padding: 10px 15px;
+            border-radius: 5px;
+            margin-top: 40px;
+            font-size: 1.5em;
+            display: flex;
+            align-items: center;
+        }
 
-    /* Listas */
-    ul { margin-left: 20px; }
-    li { margin-bottom: 8px; }
-</style>
+        h3 {
+            color: var(--primary-color);
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 5px;
+            margin-top: 25px;
+        }
 
-<h1>MANUAL TÉCNICO DE OPERAÇÃO (MTO)</h1>
-<p style='text-align: center; color: #7f8c8d; font-size: 12px;'>GC Gestor Enterprise v9.0 | Documentação Oficial</p>
+        /* Sanfona (Details/Summary) */
+        details {
+            background-color: #fff;
+            border: 1px solid var(--border-color);
+            border-radius: 5px;
+            margin-bottom: 15px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            transition: all 0.3s ease;
+        }
 
-<div class="box-info">
-    <b>💡 Conceito Central: Ciclos Financeiros</b><br>
-    O GC Gestor não trata o contrato como uma linha contínua infinita, mas como "gavetas" separadas chamadas <b>Ciclos Financeiros</b>. 
-    <br>Isso garante que o saldo do Ano 1 não se misture indevidamente com o Ano 2, respeitando o princípio da anualidade orçamentária do setor público.
-</div>
+        details[open] {
+            border-left: 5px solid var(--primary-color);
+        }
 
-<h2>1. TRABALHO EM EQUIPE E NUVEM (GOOGLE DRIVE)</h2>
-<p>O sistema possui um motor de sincronização "Enterprise" que permite que várias pessoas trabalhem em computadores diferentes. Acesse pelo menu <b>Ferramentas > Sincronizar com Google Drive</b>.</p>
+        summary {
+            padding: 15px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 1.1em;
+            list-style: none;
+            background-color: #ffffff;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-radius: 5px;
+        }
 
-<div class="box-cloud">
-    <h3>Entendendo as 4 Opções de Sincronização</h3>
-    
-    <p><b>1. ⬇️⬆️ Sincronizar Tudo (Recomendado)</b></p>
-    <ul>
-        <li>Baixa novidades dos colegas e envia as suas. Resolve conflitos se houver.</li>
-    </ul>
+        summary:hover {
+            background-color: #f0f8ff;
+        }
 
-    <p><b>2. ⬆️ Apenas Subir Minhas Alterações</b></p>
-    <ul>
-        <li>Envia seu trabalho para a nuvem sem alterar nada na sua tela. Não apaga dados dos outros.</li>
-    </ul>
+        summary::after {
+            content: '+';
+            font-weight: bold;
+            color: var(--primary-color);
+            font-size: 1.5em;
+        }
 
-    <p><b>3. ⬇️ Baixar Cópia da Nuvem (Salvar Como...)</b></p>
-    <ul>
-        <li><b>O que faz:</b> Baixa o arquivo da nuvem e salva numa pasta do seu computador.</li>
-        <li><b>Para que serve:</b> Ideal para auditoria. Você pode baixar para ver o que tem na nuvem sem misturar com seus dados atuais. O sistema perguntará se você quer abrir esse arquivo imediatamente.</li>
-    </ul>
+        details[open] summary::after {
+            content: '-';
+            color: var(--danger-color);
+        }
 
-    <p><b>4. ⚠️ Sobrescrever Nuvem (Reset)</b></p>
-    <ul>
-        <li>Apaga a nuvem e impõe a versão do seu computador. Use com cautela.</li>
-    </ul>
-</div>
+        details[open] summary {
+            border-bottom: 1px solid #eee;
+        }
 
-<hr>
+        .content {
+            padding: 20px;
+            background-color: #fff;
+            border-radius: 0 0 5px 5px;
+        }
 
-<h2>2. OPERAÇÃO DIÁRIA E FINANCEIRO</h2>
+        /* Elementos Visuais */
+        .btn-sim {
+            display: inline-block;
+            padding: 2px 8px;
+            background-color: #e0e0e0;
+            border: 1px solid #999;
+            border-radius: 4px;
+            font-family: monospace;
+            font-weight: bold;
+            color: #333;
+            font-size: 0.9em;
+        }
 
-<h3>2.1 Cadastro com Validação</h3>
-<p>Ao criar um contrato, selecione o prestador na lista. O sistema puxará automaticamente:</p>
-<ul>
-    <li>Razão Social e Nome Fantasia</li>
-    <li>CNPJ (Formatado)</li>
-    <li>CNES e Código CP</li>
-</ul>
-<p><i>Dica: Mantenha o cadastro de prestadores (Menu Cadastros) sempre atualizado.</i></p>
+        .badge {
+            background-color: var(--primary-color);
+            color: white;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.8em;
+            vertical-align: middle;
+        }
 
-<h3>2.2 Execução Financeira (Empenhos e Pagamentos)</h3>
-<p>Na aba <b>Financeiro</b> do contrato:</p>
-<ul>
-    <li><b>Emitir NE:</b> O sistema bloqueia se o valor for maior que o saldo do Serviço no ciclo atual.</li>
-    <li><b>Realizar Pagamento:</b> Selecione a NE na tabela e clique em "Pagar". O sistema permite selecionar múltiplas competências (meses).</li>
-    <li><b>Anular:</b> Estorna o valor para o saldo da NE.</li>
-</ul>
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+            font-size: 0.95em;
+        }
 
-<h3>2.3 Visão Detalhada (Tree View)</h3>
-<p>Dê <b>duplo clique</b> em qualquer serviço na aba "Serviços" para abrir a auditoria profunda. Você verá:</p>
-<ul>
-    <li>Gráfico em tabela da evolução mensal.</li>
-    <li>Árvore hierárquica expandível: <b>Serviço > Nota de Empenho > Pagamentos/Anulações</b>.</li>
-    <li>Botão para copiar esses dados direto para o Excel.</li>
-</ul>
+        th, td {
+            border: 1px solid var(--border-color);
+            padding: 8px 12px;
+            text-align: left;
+        }
 
-<hr>
+        th {
+            background-color: #f1f1f1;
+            color: var(--secondary-color);
+        }
 
-<h2>3. INTELIGÊNCIA ARTIFICIAL (IA)</h2>
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
 
-<div class="box-ai">
-    <b>O Assistente Virtual (Gemini 1.5 Flash)</b><br>
-    O sistema "lê" seus dados e pode responder perguntas complexas.
-</div>
+        /* Caixas de Destaque */
+        .box-warning {
+            background-color: #fff3e0;
+            border-left: 5px solid #e67e22;
+            padding: 15px;
+            margin: 15px 0;
+        }
 
-<h3>Funcionalidades da IA:</h3>
-<ul>
-    <li><b>Botão [💬 IA] (Tela Inicial):</b> Chat livre. Pergunte "Qual contrato vence este mês?" ou "Resuma a situação da empresa X".</li>
-    <li><b>Botão [Analisar Risco] (Financeiro):</b> A IA audita o contrato aberto e aponta tendências de déficit ou superávit.</li>
-    <li><b>Análise de Alertas:</b> Na tela de notificações (Sininho 🔔), a IA pode gerar um plano de ação para resolver pendências críticas.</li>
-</ul>
+        .box-tip {
+            background-color: #e8f6f3;
+            border-left: 5px solid #27ae60;
+            padding: 15px;
+            margin: 15px 0;
+        }
 
-<hr>
+        .box-code {
+            background-color: #2d3436;
+            color: #dfe6e9;
+            padding: 15px;
+            font-family: monospace;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
 
-<h2>4. SEGURANÇA E BACKUP</h2>
+        .breadcrumbs {
+            font-size: 0.9em;
+            color: #7f8c8d;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
 
-<h3>4.1 O Sistema "Undo" (Desfazer)</h3>
-<div class="box-security">
-    Se você excluir um contrato, empenho ou serviço por engano, não entre em pânico.
-    <br>O sistema cria um <b>Ponto de Restauração</b> automático antes de qualquer exclusão crítica.
+    <h1>MANUAL TÉCNICO OPERACIONAL (MTO)<br><small style="font-size: 0.5em; color: #7f8c8d;">GC Gestor Enterprise v9.0</small></h1>
+
+    <div class="box-tip">
+        <strong>👋 Bem-vindo!</strong><br>
+        Este manual é interativo. Clique nos tópicos abaixo para expandir e ver os detalhes. 
+        Recomendamos ler a seção "Conceitos Fundamentais" antes de começar a operar.
+    </div>
+
+    <h2>1. CONCEITOS FUNDAMENTAIS</h2>
+
+    <details open>
+        <summary>1.1. O Princípio dos Ciclos Financeiros</summary>
+        <div class="content">
+            <p>Diferente de planilhas simples de Excel, o GC Gestor foi desenhado para respeitar o <b>Princípio da Anualidade Orçamentária</b> do setor público.</p>
+
+            <p>Um contrato não é uma linha infinita de tempo. Ele é dividido em "gavetas" chamadas <b>Ciclos</b>:</p>
+            <ul>
+                <li><b>Ciclo 0 (Contrato Inicial):</b> É o período original do contrato (geralmente 12 meses). O saldo deste ciclo é definido pelo valor inicial da licitação.</li>
+                <li><b>Ciclos Subsequentes (Renovações):</b> Quando você faz um Aditivo de Prazo com Renovação de Valor, o sistema cria automaticamente uma nova "gaveta" (Ciclo 1, Ciclo 2...).</li>
+            </ul>
+
+            <div class="box-warning">
+                <b>Por que isso é importante?</b><br>
+                Ao emitir uma Nota de Empenho (NE), você deve selecionar a qual <b>Ciclo</b> ela pertence. O sistema impede que você use o saldo do Ano 1 para pagar uma despesa do Ano 2, garantindo conformidade fiscal.
+            </div>
+
+
+
+            <p>Na tela de detalhes do contrato, há uma caixa de seleção no topo (ComboBox) que permite "viajar no tempo" e ver os saldos de cada ciclo separadamente.</p>
+        </div>
+    </details>
+
+    <details>
+        <summary>1.2. Estrutura Hierárquica dos Dados</summary>
+        <div class="content">
+            <p>O sistema organiza os dados na seguinte estrutura de dependência:</p>
+            <ol>
+                <li><b>Prestador (Empresa):</b> A entidade raiz. Possui CNPJ, Razão Social, etc.</li>
+                <li><b>Contrato:</b> Vinculado a um prestador. Possui número, vigência e regras.</li>
+                <li><b>Serviços (Subcontratos):</b> São os itens do contrato (ex: "Locação de Veículo", "Plantão Médico"). O orçamento é definido aqui.</li>
+                <li><b>Notas de Empenho (NE):</b> São a reserva do dinheiro. Uma NE deve ser obrigatoriamente vinculada a um Serviço e a um Ciclo.</li>
+                <li><b>Movimentações:</b> São os <b>Pagamentos</b> (liquidações) ou <b>Anulações</b> feitos dentro de uma NE.</li>
+            </ol>
+            <p>Essa estrutura permite relatórios de "Gasto por Serviço" extremamente precisos.</p>
+        </div>
+    </details>
+
+    <h2>2. INSTALAÇÃO E CONFIGURAÇÃO TÉCNICA</h2>
+
+    <details>
+        <summary>2.1. Arquivos Necessários</summary>
+        <div class="content">
+            <p>O sistema funciona em modo "Portable" (não requer instalação no Windows, apenas execução). Para o funcionamento completo (Enterprise), a pasta do executável deve conter:</p>
+            <table border="1">
+                <tr><th>Arquivo</th><th>Função</th><th>Obrigatório?</th></tr>
+                <tr><td><code>gestao_contratos.exe</code></td><td>O programa principal.</td><td>Sim</td></tr>
+                <tr><td><code>dados_sistema.json</code></td><td>O banco de dados local. Se não existir, o sistema cria um vazio.</td><td>Sim</td></tr>
+                <tr><td><code>chave_api.txt</code></td><td>Contém a chave da IA (Google Gemini). Sem ele, o chat e a análise de risco não funcionam.</td><td>Não (Recomendado)</td></tr>
+                <tr><td><code>credentials.json</code></td><td>Credenciais de API do Google Drive para sincronização na nuvem.</td><td>Não (Recomendado)</td></tr>
+                <tr><td><code>icon_gc.png</code></td><td>Ícone visual do sistema.</td><td>Não</td></tr>
+            </table>
+        </div>
+    </details>
+
+    <details>
+        <summary>2.2. Configurando a Inteligência Artificial (Gemini)</summary>
+        <div class="content">
+            <p>Para ativar o botão <b>[💬 IA]</b> e a <b>Análise de Risco</b>, siga os passos:</p>
+            <ol>
+                <li>Acesse o <b>Google AI Studio</b> (<a href="https://aistudio.google.com/app/apikey" target="_blank">aistudio.google.com/app/apikey</a>).</li>
+                <li>Faça login com uma conta Google.</li>
+                <li>Clique em <b>Create API Key</b>.</li>
+                <li>Copie a string gerada (começa geralmente com "AIza...").</li>
+                <li>Na pasta do sistema, crie um arquivo de texto chamado <code>chave_api.txt</code>.</li>
+                <li>Cole a chave dentro dele e salve.</li>
+                <li>Reinicie o sistema. A barra de status mostrará "✅ IA Online".</li>
+            </ol>
+        </div>
+    </details>
+
+    <details>
+        <summary>2.3. Configurando a Nuvem (Google Drive)</summary>
+        <div class="content">
+            <p>Para permitir que múltiplos usuários compartilhem a mesma base de dados via nuvem:</p>
+            <ol>
+                <li>Vá ao <b>Google Cloud Console</b>.</li>
+                <li>Crie um projeto e ative a <b>Google Drive API</b>.</li>
+                <li>Configure a "Tela de Consentimento OAuth" (adicione os e-mails dos usuários como testadores).</li>
+                <li>Crie uma credencial do tipo "OAuth Client ID" (Desktop App).</li>
+                <li>Baixe o JSON da credencial e renomeie para <code>credentials.json</code>.</li>
+                <li>Coloque esse arquivo na pasta do sistema de todos os usuários.</li>
+            </ol>
+            <div class="box-tip">Na primeira vez que você clicar em "Sincronizar", o navegador abrirá pedindo permissão de acesso ao Drive.</div>
+        </div>
+    </details>
+
+    <h2>3. GUIA DE OPERAÇÃO DIÁRIA</h2>
+
+    <details>
+        <summary>3.1. Tela Inicial e Pesquisa</summary>
+        <div class="content">
+            <p>A tela inicial é seu painel de controle. A barra de busca central é "Omni-search", ou seja, procura em tudo ao mesmo tempo:</p>
+            <ul>
+                <li>Número do Contrato.</li>
+                <li>Número da Nota de Empenho (NE).</li>
+                <li>Nome Fantasia ou Razão Social do Prestador.</li>
+                <li>CNPJ ou CPF.</li>
+                <li>Descrição do Objeto.</li>
+            </ul>
+            <p><b>Dica de Uso:</b> Se você digitar o número de uma NE específica, o sistema mostrará o contrato relacionado e destacará que encontrou uma NE. Ao clicar duas vezes, ele abrirá o contrato já focado na aba Financeiro e com a NE selecionada.</p>
+        </div>
+    </details>
+
+    <details>
+        <summary>3.2. Cadastrando um Novo Contrato</summary>
+        <div class="content">
+            <div class="breadcrumbs">Menu: Arquivo > Novo Contrato ou Botão "+ Novo Contrato"</div>
+            <p>Ao abrir a tela de cadastro:</p>
+            <ol>
+                <li><b>Número:</b> Use o formato padrão do seu órgão (ex: 123/2025).</li>
+                <li><b>Prestador:</b> É uma caixa de seleção. O sistema exige que o prestador já esteja cadastrado previamente. Isso evita erros de digitação (ex: "Empresa X" vs "Empresa X Ltda").</li>
+                <li><b>Valor Inicial:</b> Insira o valor global do contrato. Este valor será o teto do "Ciclo 0".</li>
+                <li><b>Vigência e Competências:</b> Defina as datas de início e fim. O sistema calcula automaticamente os alertas de vencimento com base nisso.</li>
+            </ol>
+        </div>
+    </details>
+
+    <details>
+        <summary>3.3. Aba Financeiro: Empenhos e Pagamentos</summary>
+        <div class="content">
+            <p>Esta é a aba mais importante. Ela é dividida em duas tabelas: Superior (Lista de NEs) e Inferior (Histórico da NE selecionada).</p>
+
+            <h4>Criar Nota de Empenho (+ NE)</h4>
+            <p>Você deve informar:</p>
+            <ul>
+                <li><b>Ciclo Financeiro:</b> De qual "ano/gaveta" o dinheiro vai sair.</li>
+                <li><b>Serviço:</b> A qual item do contrato essa NE se refere (o sistema valida se há saldo no serviço).</li>
+                <li><b>Fonte de Recurso:</b> Apenas informativo.</li>
+                <li><b>Valor:</b> O valor bloqueado.</li>
+            </ul>
+
+            <h4>Realizar Pagamento (Liquidação)</h4>
+            <ol>
+                <li>Selecione a NE na tabela superior.</li>
+                <li>Clique no botão verde <b>Pagar</b>.</li>
+                <li>Selecione as competências (meses) a que se refere o pagamento na lista. Você pode marcar várias.</li>
+                <li>Informe o valor e uma observação.</li>
+            </ol>
+            <p>O saldo da NE será reduzido e o percentual de execução do contrato aumentará.</p>
+
+            <h4>Anular (Estorno)</h4>
+            <p>Use o botão vermelho <b>Anular</b> para devolver saldo para a NE. Isso é usado quando uma NE foi emitida a maior ou o serviço não foi prestado. O valor "Pago" diminui e o "Saldo" aumenta.</p>
+        </div>
+    </details>
+
+    <details>
+        <summary>3.4. Aba Serviços e Aditivos</summary>
+        <div class="content">
+            <h4>Aba Serviços</h4>
+            <p>Aqui você define <b>no que</b> o dinheiro pode ser gasto. Cada serviço tem um "Valor Mensal" estimado.</p>
+            <p>Ao criar um serviço, você pode definir se o valor dele se aplica apenas ao ciclo atual ou se deve ser replicado para todos os ciclos do contrato.</p>
+
+            <h4>Aba Aditivos</h4>
+            <p>Gerencia alterações contratuais:</p>
+            <ul>
+                <li><b>Aditivo de Valor:</b> Aumenta ou diminui o teto do contrato. Exige vínculo com um serviço.</li>
+                <li><b>Aditivo de Prazo (Renovação):</b> Estende a vigência. Se a opção <i>"Haverá renovação de valor?"</i> for marcada, o sistema <b>cria um novo Ciclo Financeiro</b> e zera os empenhos para o novo período, preservando o histórico do anterior.</li>
+            </ul>
+        </div>
+    </details>
+
+    <h2>4. SINCRONIZAÇÃO EM NUVEM (ENTERPRISE)</h2>
+
+    <details>
+        <summary>4.1. O Painel de Sincronização</summary>
+        <div class="content">
+            <div class="breadcrumbs">Menu: Ferramentas > Sincronizar com Google Drive</div>
+            <p>O sistema possui um motor robusto de resolução de conflitos. As opções são:</p>
+
+            <h4>1. ⬇️⬆️ Sincronizar Tudo (Recomendado)</h4>
+            <p>É o modo inteligente. Ele realiza três passos:</p>
+            <ol>
+                <li><b>Baixa:</b> Pega o arquivo da nuvem e compara com o seu.</li>
+                <li><b>Mescla:</b> Se um colega criou um contrato novo, ele aparece pra você. Se você criou um, ele vai para a nuvem. Se ambos editaram o mesmo contrato, o sistema usa a data de modificação mais recente.</li>
+                <li><b>Sobe:</b> Envia o resultado final consolidado para a nuvem.</li>
+            </ol>
+
+            <h4>2. ⬇️ Apenas Importar (Mesclar Localmente)</h4>
+            <p>Traz as novidades da nuvem para o seu computador, mas <b>NÃO</b> envia suas alterações de volta. Use isso se quiser apenas atualizar seu sistema sem risco de alterar o trabalho dos outros.</p>
+
+            <h4>3. ⬆️ Apenas Subir (Sobrescrever Nuvem)</h4>
+            <p>Pega o seu banco de dados e joga na nuvem. O sistema tenta preservar dados que existam lá e não no seu (merge), mas a sua versão tem prioridade total.</p>
+
+            <h4>4. ⚠️ Resetar Nuvem</h4>
+            <p>Apaga o arquivo do Google Drive e faz upload da sua versão local. Use apenas em casos extremos onde a nuvem esteja corrompida.</p>
+        </div>
+    </details>
+
+    <details>
+        <summary>4.2. Importação em Lote (CSV)</summary>
+        <div class="content">
+            <p>Se você tem dados legados em Excel, pode importá-los em massa.</p>
+            <p>Os arquivos CSV devem usar <b>ponto e vírgula (;)</b> como separador.</p>
+            <div class="box-code">
+                <b>Layout para Contratos:</b><br>
+                Numero;Prestador;Objeto;Valor;VigInicio;VigFim;CompInicio;CompFim;Licitacao;Dispensa<br><br>
+                <b>Layout para Empenhos:</b><br>
+                NE;Valor;Descricao;NomeDoServico;Fonte;DataEmissao
+            </div>
+            <p>Vá em <i>Ferramentas > Assistente de Importação</i> para utilizar.</p>
+        </div>
+    </details>
+
+    <h2>5. PERSONALIZAÇÃO E EXTRAS</h2>
+
+    <details>
+        <summary>5.1. Temas e Aparência</summary>
+        <div class="content">
+            <div class="breadcrumbs">Menu: Exibir > Personalizar Cores e Fontes</div>
+            <p>O sistema vem com o tema padrão <b>Claro (Corporate Blue)</b>. Você pode alterar para:</p>
+            <ul>
+                <li><b>Modo Escuro (Slate):</b> Um tema cinza-chumbo moderno para descanso visual.</li>
+                <li><b>Dracula / Ocean / Matrix:</b> Temas coloridos de alto contraste.</li>
+                <li><b>Personalizado:</b> Você pode escolher a cor exata de fundo, seleção, cabeçalhos de tabela e tamanho da fonte.</li>
+            </ul>
+        </div>
+    </details>
+
+    <details>
+        <summary>5.2. Sistema de Segurança (Undo/Reforço)</summary>
+        <div class="content">
+            <p><b>Desfazer (Ctrl+Alt+Z):</b> O sistema cria um "ponto de restauração" oculto antes de qualquer operação crítica (como excluir um contrato ou importar um CSV). Se você errar, use o menu <i>Editar > Desfazer</i> para voltar no tempo.</p>
+            <p><b>Backup Manual (.bak):</b> No menu Arquivo, você pode gerar uma cópia timestamped (com data e hora) do banco de dados na mesma pasta do sistema.</p>
+        </div>
+    </details>
+
+    <h2>6. RESOLUÇÃO DE PROBLEMAS (FAQ)</h2>
+
+    <details>
+        <summary>6.1. O sistema não abre ou fecha sozinho</summary>
+        <div class="content">
+            <ul>
+                <li>Verifique se o arquivo <code>dados_sistema.json</code> está corrompido. Tente renomeá-lo para .old e abrir o sistema (ele criará um novo).</li>
+                <li>Verifique se há algum antivírus bloqueando o executável.</li>
+            </ul>
+        </div>
+    </details>
+
+    <details>
+        <summary>6.2. A IA diz "Indisponível"</summary>
+        <div class="content">
+            <ul>
+                <li>Verifique se o arquivo <code>chave_api.txt</code> existe na pasta.</li>
+                <li>Abra o arquivo e verifique se não há espaços em branco antes ou depois da chave.</li>
+                <li>Verifique sua conexão com a internet.</li>
+            </ul>
+        </div>
+    </details>
+
+    <details>
+        <summary>6.3. Erro ao Sincronizar: "Token Expired" ou "Auth Error"</summary>
+        <div class="content">
+            <p>Isso acontece quando a permissão do Google Drive expira.</p>
+            <ol>
+                <li>Feche o sistema.</li>
+                <li>Vá na pasta do sistema e apague o arquivo <code>token.json</code> (se existir). NÃO apague o credentials.json.</li>
+                <li>Abra o sistema e tente sincronizar novamente. O navegador pedirá login mais uma vez.</li>
+            </ol>
+        </div>
+    </details>
+
     <br><br>
-    👉 Pressione <kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>Z</kbd> ou vá no menu <b>Editar > Desfazer</b> para voltar no tempo.
-</div>
+    <div style="text-align: center; color: #aaa; font-size: 0.8em; border-top: 1px solid #eee; padding-top: 20px;">
+        GC Gestor de Contratos Enterprise &copy; 2025<br>
+        Desenvolvido com Python, PyQt6 e Google Gemini AI.
+    </div>
 
-<h3>4.2 Backup Manual</h3>
-<p>Além da nuvem, você pode gerar um arquivo local <code>.bak</code> pelo menu <b>Arquivo > Fazer Backup de Segurança</b>.</p>
-
-<hr>
-
-<h2>5. GUIA DE CONFIGURAÇÃO (PRIMEIRO USO)</h2>
-
-<h3>Passo 1: Ativar a IA (Google Gemini)</h3>
-<ol>
-    <li>Acesse: <b>aistudio.google.com/app/apikey</b></li>
-    <li>Faça login com seu Gmail e clique em <b>"Create API Key"</b>.</li>
-    <li>Copie o código gerado (começa com "AIza...").</li>
-    <li>No sistema, crie um arquivo de texto chamado <b>chave_api.txt</b> na mesma pasta do executável.</li>
-    <li>Cole o código dentro e salve.</li>
-</ol>
-
-<h3>Passo 2: Ativar a Nuvem (Google Drive)</h3>
-<ol>
-    <li>Solicite ao administrador o arquivo de credenciais da API do Google Drive.</li>
-    <li>Renomeie esse arquivo obrigatoriamente para: <b>credentials.json</b></li>
-    <li>Coloque-o na pasta do sistema (junto com o executável).</li>
-    <li>Na primeira vez que clicar em Sincronizar, uma janela do navegador abrirá pedindo permissão.</li>
-</ol>
-
-<p style='text-align: right; font-size: 10px; color: #999; margin-top: 50px;'>GC Gestor Enterprise - Desenvolvido por Cássio de Souza Lopes.</p>
+</body>
+</html>
 """
