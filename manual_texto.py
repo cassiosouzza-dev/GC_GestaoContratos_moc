@@ -1,5 +1,5 @@
 # ARQUIVO: manual_texto.py
-# Documentação Técnica Oficial - GC Gestor Enterprise v9.0
+# Documentação Técnica Oficial - GC Gestor v1.0
 
 HTML_MANUAL = """
 <!DOCTYPE html>
@@ -185,35 +185,32 @@ HTML_MANUAL = """
 </head>
 <body>
 
-    <h1>MANUAL TÉCNICO OPERACIONAL (MTO)<br><small style="font-size: 0.5em; color: #7f8c8d;">GC Gestor Enterprise v9.0</small></h1>
+    <h1>MANUAL TÉCNICO OPERACIONAL (MTO)<br><small style="font-size: 0.5em; color: #7f8c8d;">GC Gestor v1.0</small></h1>
 
     <div class="box-tip">
         <strong>👋 Bem-vindo!</strong><br>
-        Este manual é interativo. Clique nos tópicos abaixo para expandir e ver os detalhes. 
+         
         Recomendamos ler a seção "Conceitos Fundamentais" antes de começar a operar.
     </div>
 
     <h2>1. CONCEITOS FUNDAMENTAIS</h2>
 
     <details open>
-        <summary>1.1. O Princípio dos Ciclos Financeiros</summary>
+        <summary>1.1. Ciclos Financeiros</summary>
         <div class="content">
-            <p>Diferente de planilhas simples de Excel, o GC Gestor foi desenhado para respeitar o <b>Princípio da Anualidade Orçamentária</b> do setor público.</p>
-
-            <p>Um contrato não é uma linha infinita de tempo. Ele é dividido em "gavetas" chamadas <b>Ciclos</b>:</p>
+                        
             <ul>
-                <li><b>Ciclo 0 (Contrato Inicial):</b> É o período original do contrato (geralmente 12 meses). O saldo deste ciclo é definido pelo valor inicial da licitação.</li>
-                <li><b>Ciclos Subsequentes (Renovações):</b> Quando você faz um Aditivo de Prazo com Renovação de Valor, o sistema cria automaticamente uma nova "gaveta" (Ciclo 1, Ciclo 2...).</li>
+                <li><b>Ciclo 0 (Contrato Inicial):</b> É o período original do contrato (geralmente 12 meses). O saldo deste ciclo é definido pelo valor inicial do contrato/licitação.</li>
+                <li><b>Ciclos Subsequentes (Renovações):</b> Quando você registra um Aditivo de Prazo com Renovação de Valor, o sistema cria automaticamente um novo ciclo (Ciclo 1, Ciclo 2...).</li>
             </ul>
 
             <div class="box-warning">
-                <b>Por que isso é importante?</b><br>
-                Ao emitir uma Nota de Empenho (NE), você deve selecionar a qual <b>Ciclo</b> ela pertence. O sistema impede que você use o saldo do Ano 1 para pagar uma despesa do Ano 2, garantindo conformidade fiscal.
+                Ao emitir uma Nota de Empenho (NE), você deve selecionar a qual <b>Ciclo</b> ela pertence. O sistema impede que você use o saldo do Ciclo 1 para pagar uma despesa do Ciclo 2, garantindo conformidade fiscal.
             </div>
 
 
 
-            <p>Na tela de detalhes do contrato, há uma caixa de seleção no topo (ComboBox) que permite "viajar no tempo" e ver os saldos de cada ciclo separadamente.</p>
+            <p>Na tela de detalhes do contrato, há uma caixa de seleção no topo (ComboBox) que permite "alternar entre os ciclos" e visualizar os saldos de cada ciclo separadamente.</p>
         </div>
     </details>
 
@@ -222,13 +219,13 @@ HTML_MANUAL = """
         <div class="content">
             <p>O sistema organiza os dados na seguinte estrutura de dependência:</p>
             <ol>
-                <li><b>Prestador (Empresa):</b> A entidade raiz. Possui CNPJ, Razão Social, etc.</li>
-                <li><b>Contrato:</b> Vinculado a um prestador. Possui número, vigência e regras.</li>
-                <li><b>Serviços (Subcontratos):</b> São os itens do contrato (ex: "Locação de Veículo", "Plantão Médico"). O orçamento é definido aqui.</li>
+                <li><b>Prestador (Empresa):</b> Possui CNPJ, Razão Social, etc.</li>
+                <li><b>Contrato:</b> Vinculado a um prestador. Possui número, vigência, valor definido e regras.</li>
+                <li><b>Serviços (Subcontratos):</b> São os itens do contrato (ex: "Pós fixado", "OPMEs", "Incentivo Urg. Emerg.", etc.). O orçamento é definido aqui.</li>
                 <li><b>Notas de Empenho (NE):</b> São a reserva do dinheiro. Uma NE deve ser obrigatoriamente vinculada a um Serviço e a um Ciclo.</li>
-                <li><b>Movimentações:</b> São os <b>Pagamentos</b> (liquidações) ou <b>Anulações</b> feitos dentro de uma NE.</li>
+                <li><b>Movimentações:</b> São os <b>Pagamentos</b> (liquidações) e <b>Anulações</b> feitos dentro de uma NE.</li>
             </ol>
-            <p>Essa estrutura permite relatórios de "Gasto por Serviço" extremamente precisos.</p>
+            <p>Essa estrutura permite relatórios de "Gasto por Serviço" precisos.</p>
         </div>
     </details>
 
@@ -237,7 +234,7 @@ HTML_MANUAL = """
     <details>
         <summary>2.1. Arquivos Necessários</summary>
         <div class="content">
-            <p>O sistema funciona em modo "Portable" (não requer instalação no Windows, apenas execução). Para o funcionamento completo (Enterprise), a pasta do executável deve conter:</p>
+            <p>O sistema funciona em modo "Portable" (não requer instalação no Windows, apenas execução). Para o funcionamento completo, a pasta do executável deve conter:</p>
             <table border="1">
                 <tr><th>Arquivo</th><th>Função</th><th>Obrigatório?</th></tr>
                 <tr><td><code>gestao_contratos.exe</code></td><td>O programa principal.</td><td>Sim</td></tr>
@@ -307,7 +304,7 @@ HTML_MANUAL = """
                 <li><b>Número:</b> Use o formato padrão do seu órgão (ex: 123/2025).</li>
                 <li><b>Prestador:</b> É uma caixa de seleção. O sistema exige que o prestador já esteja cadastrado previamente. Isso evita erros de digitação (ex: "Empresa X" vs "Empresa X Ltda").</li>
                 <li><b>Valor Inicial:</b> Insira o valor global do contrato. Este valor será o teto do "Ciclo 0".</li>
-                <li><b>Vigência e Competências:</b> Defina as datas de início e fim. O sistema calcula automaticamente os alertas de vencimento com base nisso.</li>
+                <li><b>Vigência e Competências a serem pagas:</b> Defina as datas de início e fim e as competências a serem pagas no contrato/ciclo. O sistema calcula automaticamente os alertas de vencimento com base nisso.</li>
             </ol>
         </div>
     </details>
@@ -356,7 +353,7 @@ HTML_MANUAL = """
         </div>
     </details>
 
-    <h2>4. SINCRONIZAÇÃO EM NUVEM (ENTERPRISE)</h2>
+    <h2>4. SINCRONIZAÇÃO EM NUVEM</h2>
 
     <details>
         <summary>4.1. O Painel de Sincronização</summary>
@@ -458,7 +455,7 @@ HTML_MANUAL = """
 
     <br><br>
     <div style="text-align: center; color: #aaa; font-size: 0.8em; border-top: 1px solid #eee; padding-top: 20px;">
-        GC Gestor de Contratos Enterprise &copy; 2025<br>
+        GC Gestor de Contratos v1.0 &copy; 2025<br>
         Desenvolvido com Python, PyQt6 e Google Gemini AI.
     </div>
 
