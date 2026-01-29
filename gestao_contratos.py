@@ -16,9 +16,12 @@ import urllib.request
 
 # --- CONFIGURAÇÃO DE ATUALIZAÇÃO ---
 VERSAO_ATUAL = 1.0
-URL_VERSAO_TXT = "https://seusite.com/arquivos/versao.txt"  # Link direto para o txt
-URL_NOVO_EXE = "https://seusite.com/arquivos/gc_gestor.exe" # Link direto para o exe
-NOME_EXECUTAVEL = "gestao_contratos.exe" # Nome do seu arquivo final
+
+# O sistema lerá este arquivo para saber se há novidades
+URL_VERSAO_TXT = "https://raw.githubusercontent.com/cassiosouzza-dev/Controller/main/versao.txt"
+
+# Se houver, ele baixará o EXE deste link (Redirecionamento automático do GitHub)
+URL_NOVO_EXE = "https://github.com/cassiosouzza-dev/Controller/releases/latest/download/GC_Gestor_v1.exe"
 
 # --- CARREGAMENTO SEGURO DA CHAVE API (SEM CHAVE NO CÓDIGO) ---
 def obter_chave_api():
