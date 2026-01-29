@@ -409,7 +409,7 @@ class NotaEmpenho:
 
 class Aditivo:
     def __init__(self, id_aditivo, tipo, valor=0.0, data_nova=None, descricao="", renovacao_valor=False,
-                 data_inicio_vigencia=None, servico_idx=-1):
+                 data_inicio_vigencia=None, servico_idx=-1, comp_inicio=None, comp_fim=None):
         self.id_aditivo = id_aditivo
         self.tipo = tipo
         self.valor = valor
@@ -418,14 +418,27 @@ class Aditivo:
         self.renovacao_valor = renovacao_valor
         self.data_inicio_vigencia = data_inicio_vigencia
         self.ciclo_pertencente_id = -1
-        self.servico_idx = servico_idx 
+        self.servico_idx = servico_idx
+        self.comp_inicio = comp_inicio
+        self.comp_fim = comp_fim
 
     def to_dict(self): return self.__dict__
 
     @staticmethod
     def from_dict(d):
-        adt = Aditivo(d['id_aditivo'], d['tipo'], d['valor'], d['data_nova'], d['descricao'], d['renovacao_valor'],
-                      d['data_inicio_vigencia'], d.get('servico_idx', -1))
+        # USAR .get() EM TUDO PARA EVITAR CRASH COM DADOS VELHOS DA NUVEM
+        adt = Aditivo(
+            d.get('id_aditivo'),
+            d.get('tipo', 'Prazo'),
+            d.get('valor', 0.0),
+            d.get('data_nova'),
+            d.get('descricao', ''),
+            d.get('renovacao_valor', False),
+            d.get('data_inicio_vigencia'),
+            d.get('servico_idx', -1),
+            d.get('comp_inicio'),
+            d.get('comp_fim')
+        )
         adt.ciclo_pertencente_id = d.get('ciclo_pertencente_id', -1)
         return adt
 
@@ -493,11 +506,7 @@ class Contrato:
         self.usuario_exclusao = None
         self.data_exclusao = None
 
-
-
         self.ultimo_ciclo_id = 0
-
-        # Se não tiver data (novo), usa AGORA.
         self.ultima_modificacao = ultima_modificacao if ultima_modificacao else datetime.now().isoformat()
 
         self.ciclos = []
@@ -507,7 +516,6 @@ class Contrato:
         self.lista_servicos = []
         self._contador_aditivos = 0
 
-    # 2. Método para atualizar a data de edição
     def marcar_alteracao(self):
         self.ultima_modificacao = datetime.now().isoformat()
 
@@ -516,7 +524,6 @@ class Contrato:
         if aditivos_prazo: return aditivos_prazo[-1].data_nova
         return self.vigencia_fim
 
-        
     def adicionar_aditivo(self, adt, id_ciclo_alvo=None):
         self._contador_aditivos += 1
         adt.id_aditivo = self._contador_aditivos
@@ -541,14 +548,10 @@ class Contrato:
             return f"Novo Ciclo Criado: {nome_ciclo}. Serviços replicados."
 
         elif adt.tipo == "Valor":
-            # CORREÇÃO: Usa o ciclo alvo escolhido ou o último válido
             ciclo_atual = None
-
             if id_ciclo_alvo is not None:
-                # Tenta achar o ciclo que o usuário estava vendo
                 ciclo_atual = next((c for c in self.ciclos if c.id_ciclo == id_ciclo_alvo), None)
 
-            # Se não achou ou não foi passado, pega o último não cancelado
             if not ciclo_atual:
                 ciclo_atual = next((c for c in reversed(self.ciclos) if "(CANCELADO)" not in c.nome),
                                    self.ciclos[0])
@@ -584,22 +587,19 @@ class Contrato:
     def adicionar_nota_empenho(self, ne):
         saldo_ciclo = self.get_saldo_ciclo_geral(ne.ciclo_id)
         if ne.valor_inicial > saldo_ciclo + 0.01: return False, f"Valor indisponível no Saldo Geral do Ciclo. Resta: {saldo_ciclo:,.2f}"
-        
+
         if ne.aditivo_vinculado_id:
             saldo_adt = self.get_saldo_aditivo_especifico(ne.aditivo_vinculado_id)
             if ne.valor_inicial > saldo_adt + 0.01: return False, f"Valor excede o saldo do Aditivo. Resta: {saldo_adt:,.2f}"
-            
+
         if 0 <= ne.subcontrato_idx < len(self.lista_servicos):
             sub = self.lista_servicos[ne.subcontrato_idx]
-            
-            gasto_sub = sum(e.valor_inicial for e in self.lista_notas_empenho 
+            gasto_sub = sum(e.valor_inicial for e in self.lista_notas_empenho
                             if e.subcontrato_idx == ne.subcontrato_idx and e.ciclo_id == ne.ciclo_id)
-            
             valor_servico_no_ciclo = sub.get_valor_ciclo(ne.ciclo_id)
-            
             saldo_sub = valor_servico_no_ciclo - gasto_sub
             if ne.valor_inicial > saldo_sub + 0.01: return False, f"Valor excede o saldo do serviço '{sub.descricao}' neste ciclo."
-            
+
         self.lista_notas_empenho.append(ne)
         return True, "Nota de Empenho vinculada."
 
@@ -616,29 +616,36 @@ class Contrato:
 
     @staticmethod
     def from_dict(d):
-        # 3. Lê a data do JSON
         c = Contrato(
-            d['numero'], d['prestador'], d['descricao'], d['valor_inicial'], d['vigencia_inicio'],
-            d['vigencia_fim'], d['comp_inicio'], d['comp_fim'], d.get('licitacao', ''), d.get('dispensa', ''),
-            d.get('ultima_modificacao') # <--- Carrega data
+            d.get('numero'),
+            d.get('prestador'),
+            d.get('descricao'),
+            d.get('valor_inicial', 0.0),
+            d.get('vigencia_inicio'),
+            d.get('vigencia_fim'),
+            d.get('comp_inicio'),
+            d.get('comp_fim'),
+            d.get('licitacao', ''),
+            d.get('dispensa', ''),
+            d.get('ultima_modificacao')
         )
         c.ultimo_ciclo_id = d.get('ultimo_ciclo_id', 0)
-        c.ciclos = [CicloFinanceiro.from_dict(cd) for cd in d['ciclos']]
-        c.lista_servicos = [SubContrato.from_dict(sd) for sd in d['lista_servicos']]
-        c.lista_aditivos = [Aditivo.from_dict(ad) for ad in d['lista_aditivos']]
-        c.lista_notas_empenho = [NotaEmpenho.from_dict(nd) for nd in d['lista_notas_empenho']]
+        c.ciclos = [CicloFinanceiro.from_dict(cd) for cd in d.get('ciclos', [])]
+        c.lista_servicos = [SubContrato.from_dict(sd) for sd in d.get('lista_servicos', [])]
+        c.lista_aditivos = [Aditivo.from_dict(ad) for ad in d.get('lista_aditivos', [])]
+        c.lista_notas_empenho = [NotaEmpenho.from_dict(nd) for nd in d.get('lista_notas_empenho', [])]
         c._contador_aditivos = d.get('_contador_aditivos', 0)
         c.anulado = d.get('anulado', False)
         c.usuario_exclusao = d.get('usuario_exclusao', None)
         c.data_exclusao = d.get('data_exclusao', None)
 
-
-        
+        # Reconecta aditivos de valor aos ciclos
         for adt in c.lista_aditivos:
             if adt.tipo == "Valor" and adt.ciclo_pertencente_id != -1:
                 for ciclo in c.ciclos:
                     if ciclo.id_ciclo == adt.ciclo_pertencente_id:
-                        ciclo.aditivos_valor.append(adt); break
+                        ciclo.aditivos_valor.append(adt);
+                        break
         return c
 
 class Prestador:
@@ -680,30 +687,27 @@ class DialogoAjuda(BaseDialog):
         btn_fechar.clicked.connect(self.accept)
         layout.addWidget(btn_fechar)
 
+
 class DialogoCriarContrato(BaseDialog):
-    # ATENÇÃO: Adicionado 'lista_prestadores' nos argumentos
     def __init__(self, lista_prestadores, contrato_editar=None, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Cadastro de Contrato")
-        self.resize(700, 600)
+        self.resize(700, 650)
         layout = QFormLayout(self)
-        
+
         self.inp_numero = QLineEdit();
-        
-        # --- MUDANÇA: AGORA É UM COMBOBOX ---
+
         self.combo_prestador = QComboBox()
-        self.combo_prestador.setEditable(False) # Obriga a escolher da lista
-        
-        # Popula o Combobox
+        self.combo_prestador.setEditable(False)
+
         for p in lista_prestadores:
-            # Exibe: Nome Fantasia (Razão Social) - CNPJ
+            # --- CORREÇÃO AQUI: nome_fantasia em vez de nome_prestador ---
             texto = f"{p.nome_fantasia} ({p.razao_social})"
-            # Salva o Nome Fantasia como dado principal (para compatibilidade com sistema antigo)
             self.combo_prestador.addItem(texto, p.nome_fantasia)
-            
+            self.combo_prestador.setItemData(self.combo_prestador.count() - 1, p.nome_fantasia)
+
         if self.combo_prestador.count() == 0:
-            self.combo_prestador.addItem("Nenhum prestador cadastrado (Cadastre no menu Prestadores)", "")
-        # ------------------------------------
+            self.combo_prestador.addItem("Nenhum prestador cadastrado", "")
 
         self.inp_desc = QLineEdit();
         self.inp_valor = CurrencyInput()
@@ -713,34 +717,36 @@ class DialogoCriarContrato(BaseDialog):
         self.date_vig_ini.setCalendarPopup(True)
         self.date_vig_fim = QDateEdit(QDate.currentDate().addYears(1));
         self.date_vig_fim.setCalendarPopup(True)
+
         self.inp_comp_ini = QLineEdit(QDate.currentDate().toString("MM/yyyy"));
         self.inp_comp_ini.setInputMask("99/9999")
         self.inp_comp_fim = QLineEdit(QDate.currentDate().addYears(1).toString("MM/yyyy"));
         self.inp_comp_fim.setInputMask("99/9999")
-        
+
         layout.addRow("Número Contrato:", self.inp_numero);
-        layout.addRow("Prestador (Vinculado):", self.combo_prestador) # Mudou aqui
+        layout.addRow("Prestador (Vinculado):", self.combo_prestador)
         layout.addRow("Objeto:", self.inp_desc);
         layout.addRow("Valor Inicial (Ciclo 0):", self.inp_valor)
         layout.addRow("Licitação/Edital:", self.inp_licitacao);
         layout.addRow("Inexigibilidade/Disp:", self.inp_dispensa)
+
+        layout.addRow(QLabel(""))
+        layout.addRow(QLabel("<b>Vigência (Datas de Assinatura):</b>"))
         layout.addRow("Início Vigência:", self.date_vig_ini);
         layout.addRow("Fim Vigência:", self.date_vig_fim)
-        layout.addRow("Competência Inicial:", self.inp_comp_ini);
-        layout.addRow("Competência Final:", self.inp_comp_fim)
+
+        lbl_comp = QLabel("Competências de Execução (Obrigatório):")
+        lbl_comp.setStyleSheet("font-weight: bold; color: #c0392b; margin-top: 10px;")
+        layout.addRow(lbl_comp)
+        layout.addRow("Comp. Inicial (MM/AAAA):", self.inp_comp_ini);
+        layout.addRow("Comp. Final (MM/AAAA):", self.inp_comp_fim)
 
         if contrato_editar:
             self.inp_numero.setText(contrato_editar.numero);
-            
-            # Tenta selecionar o prestador antigo na lista
-            index = self.combo_prestador.findData(contrato_editar.prestador)
-            if index >= 0:
-                self.combo_prestador.setCurrentIndex(index)
-            else:
-                # Se for um contrato antigo com prestador que não tá na lista, adiciona temporariamente
-                self.combo_prestador.addItem(f"{contrato_editar.prestador} (Não cadastrado)", contrato_editar.prestador)
-                self.combo_prestador.setCurrentIndex(self.combo_prestador.count()-1)
-
+            for i in range(self.combo_prestador.count()):
+                if self.combo_prestador.itemText(i).startswith(contrato_editar.prestador):
+                    self.combo_prestador.setCurrentIndex(i)
+                    break
             self.inp_desc.setText(contrato_editar.descricao);
             self.inp_valor.set_value(contrato_editar.valor_inicial);
             self.inp_licitacao.setText(contrato_editar.licitacao);
@@ -751,15 +757,30 @@ class DialogoCriarContrato(BaseDialog):
             self.inp_comp_fim.setText(contrato_editar.comp_fim)
 
         botoes = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
-        botoes.accepted.connect(self.accept);
+        botoes.accepted.connect(self.validar_e_aceitar)
         botoes.rejected.connect(self.reject);
         layout.addWidget(botoes)
 
-    def get_dados(self): 
-        # Retorna o .currentData() que é o Nome Fantasia limpo
-        prestador_escolhido = self.combo_prestador.currentData()
-        if not prestador_escolhido: prestador_escolhido = "Desconhecido"
-        
+    def validar_e_aceitar(self):
+        if not self.inp_numero.text().strip():
+            DarkMessageBox.warning(self, "Dados Incompletos", "O Número do Contrato é obrigatório.")
+            self.inp_numero.setFocus()
+            return
+
+        c_ini = ''.join(filter(str.isdigit, self.inp_comp_ini.text()))
+        c_fim = ''.join(filter(str.isdigit, self.inp_comp_fim.text()))
+
+        if len(c_ini) < 6 or len(c_fim) < 6:
+            DarkMessageBox.warning(self, "Dados Incompletos",
+                                   "As <b>Competências Inicial e Final</b> são obrigatórias.\n"
+                                   "Por favor, preencha no formato MM/AAAA.\n\n"
+                                   "Isso é essencial para calcular o Ciclo 0 corretamente.")
+            self.inp_comp_ini.setFocus()
+            return
+        self.accept()
+
+    def get_dados(self):
+        prestador_escolhido = self.combo_prestador.currentText().split(' (')[0]
         return (self.inp_numero.text(), prestador_escolhido, self.inp_desc.text(),
                 self.inp_valor.get_value(), self.date_vig_ini.text(), self.date_vig_fim.text(),
                 self.inp_comp_ini.text(), self.inp_comp_fim.text(), self.inp_licitacao.text(),
@@ -767,35 +788,30 @@ class DialogoCriarContrato(BaseDialog):
 
 class DialogoNovoEmpenho(BaseDialog):
     def __init__(self, contrato, ne_editar=None, parent=None):
-        super().__init__(parent);
-        self.contrato = contrato;
-        self.setWindowTitle("Nota de Empenho");
-        self.resize(500, 650) # Aumentei um pouco a altura para caber a lista
+        super().__init__(parent)
+        self.contrato = contrato
+        self.ne_editar = ne_editar
+
+        self.setWindowTitle("Nota de Empenho")
+        self.resize(500, 650)
         layout = QFormLayout(self)
-        
-        self.inp_num = QLineEdit();
-        self.inp_desc = QLineEdit();
-        self.inp_fonte = QLineEdit();
-        self.date_emissao = QDateEdit(QDate.currentDate());
-        self.date_emissao.setCalendarPopup(True);
+
+        # --- 1. CRIAÇÃO DOS COMPONENTES (NA ORDEM CERTA) ---
+        self.inp_num = QLineEdit()
+        self.inp_desc = QLineEdit()
+        self.inp_fonte = QLineEdit()
+        self.date_emissao = QDateEdit(QDate.currentDate())
+        self.date_emissao.setCalendarPopup(True)
         self.inp_val = CurrencyInput()
 
+        # Combos
         self.combo_ciclo = QComboBox()
-        self.combo_ciclo.currentIndexChanged.connect(self.ao_mudar_ciclo)
-
         self.combo_aditivo = QComboBox()
         self.combo_sub = QComboBox()
 
-        for c in contrato.ciclos:
-            saldo = contrato.get_saldo_ciclo_geral(c.id_ciclo)
-            if ne_editar and ne_editar.ciclo_id == c.id_ciclo: saldo += ne_editar.valor_inicial
-            self.combo_ciclo.addItem(f"{c.nome} (Livre: R$ {fmt_br(saldo)})", c.id_ciclo)
-
-        # --- NOVA LISTA DE COMPETÊNCIAS DA NE ---
+        # Lista de Competências (CRIADA AGORA, ANTES DE POPULAR O CICLO)
         self.lista_comp = QListWidget()
-        self.lista_comp.setMaximumHeight(150) # Altura fixa para não ocupar tudo
-        
-        # Estilo Limpo (Copiado do seu gosto)
+        self.lista_comp.setMaximumHeight(150)
         self.lista_comp.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         self.lista_comp.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.lista_comp.setStyleSheet("""
@@ -809,55 +825,56 @@ class DialogoNovoEmpenho(BaseDialog):
             QListWidget::indicator:checked { background-color: #555555; border: 2px solid #555555; }
         """)
 
-        # Popula os meses
-        meses = gerar_competencias(contrato.comp_inicio, contrato.comp_fim)
-        
-        # Recupera selecionados se for edição
-        selecionados_antes = []
-        if ne_editar and ne_editar.competencias_ne:
-            selecionados_antes = [c.strip() for c in ne_editar.competencias_ne.split(',')]
+        # --- 2. LÓGICA E CONEXÕES ---
 
-        for m in meses:
-            item = QListWidgetItem(m)
-            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-            if ne_editar and m in selecionados_antes:
-                item.setCheckState(Qt.CheckState.Checked)
-            else:
-                item.setCheckState(Qt.CheckState.Unchecked)
-            self.lista_comp.addItem(item)
-        # ----------------------------------------
+        # Conecta o sinal (Agora é seguro, pois self.lista_comp já existe)
+        self.combo_ciclo.currentIndexChanged.connect(self.ao_mudar_ciclo)
 
-        layout.addRow("1. Ciclo Financeiro:", self.combo_ciclo);
+        # Popula os ciclos (Isso vai disparar ao_mudar_ciclo no primeiro item)
+        for c in contrato.ciclos:
+            saldo = contrato.get_saldo_ciclo_geral(c.id_ciclo)
+            if ne_editar and ne_editar.ciclo_id == c.id_ciclo:
+                saldo += ne_editar.valor_inicial
+            self.combo_ciclo.addItem(f"{c.nome} (Livre: R$ {fmt_br(saldo)})", c.id_ciclo)
+
+        # --- 3. MONTAGEM DO FORMULÁRIO ---
+        layout.addRow("1. Ciclo Financeiro:", self.combo_ciclo)
         layout.addRow("2. Vincular a Aditivo (Opcional):", self.combo_aditivo)
-        layout.addRow("Número da Nota:", self.inp_num);
-        layout.addRow("Data de Emissão:", self.date_emissao);
+        layout.addRow("Número da Nota:", self.inp_num)
+        layout.addRow("Data de Emissão:", self.date_emissao)
         layout.addRow("Fonte de Recurso:", self.inp_fonte)
-        layout.addRow("Descrição:", self.inp_desc);
-        layout.addRow("Vincular a Serviço:", self.combo_sub);
+        layout.addRow("Descrição:", self.inp_desc)
+        layout.addRow("Vincular a Serviço:", self.combo_sub)
         layout.addRow("Valor:", self.inp_val)
-        layout.addRow("Competências Cobertas (Meses):", self.lista_comp) # Adiciona no form
+        layout.addRow("Competências Cobertas (Meses):", self.lista_comp)
 
+        # --- 4. PREENCHIMENTO SE FOR EDIÇÃO ---
         if ne_editar:
-            self.inp_num.setText(ne_editar.numero);
-            self.inp_desc.setText(ne_editar.descricao);
+            self.inp_num.setText(ne_editar.numero)
+            self.inp_desc.setText(ne_editar.descricao)
             self.inp_fonte.setText(ne_editar.fonte_recurso)
-            self.date_emissao.setDate(str_to_date(ne_editar.data_emissao));
+            self.date_emissao.setDate(str_to_date(ne_editar.data_emissao))
             self.inp_val.set_value(ne_editar.valor_inicial)
 
-            idx_c = self.combo_ciclo.findData(ne_editar.ciclo_id);
+            # Seleciona o ciclo (vai disparar a atualização das datas de novo)
+            idx_c = self.combo_ciclo.findData(ne_editar.ciclo_id)
             if idx_c >= 0: self.combo_ciclo.setCurrentIndex(idx_c)
-
-            self.ao_mudar_ciclo()
 
             if ne_editar.aditivo_vinculado_id:
                 idx_a = self.combo_aditivo.findData(ne_editar.aditivo_vinculado_id)
                 if idx_a >= 0: self.combo_aditivo.setCurrentIndex(idx_a)
-            if ne_editar.subcontrato_idx < self.combo_sub.count(): 
+
+            if ne_editar.subcontrato_idx < self.combo_sub.count():
                 self.combo_sub.setCurrentIndex(ne_editar.subcontrato_idx)
+
             if len(ne_editar.historico) > 1: self.inp_val.setEnabled(False)
         else:
-            self.combo_ciclo.setCurrentIndex(self.combo_ciclo.count() - 1)
-            self.ao_mudar_ciclo()
+            # Seleciona o último ciclo por padrão
+            if self.combo_ciclo.count() > 0:
+                self.combo_ciclo.setCurrentIndex(self.combo_ciclo.count() - 1)
+
+        # Força atualização final para garantir consistência
+        self.ao_mudar_ciclo()
 
         botoes = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         botoes.accepted.connect(self.accept)
@@ -867,6 +884,72 @@ class DialogoNovoEmpenho(BaseDialog):
     def ao_mudar_ciclo(self):
         self.atualizar_combo_aditivos()
         self.atualizar_combo_servicos()
+        self.atualizar_lista_competencias()
+
+    def _extrair_mm_yyyy(self, data_str):
+        if not data_str: return ""
+        try:
+            parts = data_str.split('/')
+            if len(parts) == 3:
+                return f"{parts[1]}/{parts[2]}"
+            if len(parts) == 2:
+                return data_str
+        except:
+            pass
+        return ""
+
+    def atualizar_lista_competencias(self):
+        if not self.contrato: return
+        id_ciclo = self.combo_ciclo.currentData()
+        if id_ciclo is None: return
+
+        c_ini = self.contrato.comp_inicio
+        c_fim = self.contrato.comp_fim
+
+        if id_ciclo == 0:
+            # Ciclo 0 (Original)
+            primeiro_adt = next((a for a in self.contrato.lista_aditivos if a.ciclo_pertencente_id == 1), None)
+            if primeiro_adt and primeiro_adt.data_inicio_vigencia:
+                c_fim = self._extrair_mm_yyyy(primeiro_adt.data_inicio_vigencia)
+        else:
+            # Ciclo Aditivo
+            adt = next((a for a in self.contrato.lista_aditivos if a.ciclo_pertencente_id == id_ciclo), None)
+            if adt:
+                # Usa getattr para segurança em bases antigas
+                adt_comp_ini = getattr(adt, 'comp_inicio', None)
+                adt_comp_fim = getattr(adt, 'comp_fim', None)
+                adt_data_ini = getattr(adt, 'data_inicio_vigencia', None)
+                adt_data_nova = getattr(adt, 'data_nova', None)
+
+                if adt_comp_ini and len(adt_comp_ini) >= 7:
+                    c_ini = adt_comp_ini
+                elif adt_data_ini:
+                    c_ini = self._extrair_mm_yyyy(adt_data_ini)
+
+                if adt_comp_fim and len(adt_comp_fim) >= 7:
+                    c_fim = adt_comp_fim
+                elif adt_data_nova:
+                    c_fim = self._extrair_mm_yyyy(adt_data_nova)
+
+        meses = gerar_competencias(c_ini, c_fim)
+        if not meses: meses = [f"Erro nas datas: {c_ini} a {c_fim}"]
+
+        self.lista_comp.clear()
+
+        selecionados_antes = []
+        if self.ne_editar:
+            raw_comps = getattr(self.ne_editar, 'competencias_ne', "")
+            if raw_comps:
+                selecionados_antes = [c.strip() for c in raw_comps.split(',')]
+
+        for m in meses:
+            item = QListWidgetItem(m)
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            if m in selecionados_antes:
+                item.setCheckState(Qt.CheckState.Checked)
+            else:
+                item.setCheckState(Qt.CheckState.Unchecked)
+            self.lista_comp.addItem(item)
 
     def atualizar_combo_servicos(self):
         id_ciclo_atual = self.combo_ciclo.currentData()
@@ -881,11 +964,13 @@ class DialogoNovoEmpenho(BaseDialog):
 
         if idx_atual >= 0 and idx_atual < self.combo_sub.count():
             self.combo_sub.setCurrentIndex(idx_atual)
+        elif self.combo_sub.count() > 0:
+            self.combo_sub.setCurrentIndex(0)
 
     def atualizar_combo_aditivos(self):
-        self.combo_aditivo.clear();
+        self.combo_aditivo.clear()
         self.combo_aditivo.addItem("--- Usar Saldo Geral do Ciclo ---", None)
-        id_ciclo_atual = self.combo_ciclo.currentData();
+        id_ciclo_atual = self.combo_ciclo.currentData()
         if id_ciclo_atual is None: return
         ciclo_obj = next((c for c in self.contrato.ciclos if c.id_ciclo == id_ciclo_atual), None)
         if ciclo_obj:
@@ -894,7 +979,6 @@ class DialogoNovoEmpenho(BaseDialog):
                 self.combo_aditivo.addItem(f"{adt.descricao} (Resta: R$ {fmt_br(saldo)})", adt.id_aditivo)
 
     def get_dados(self):
-        # Captura os meses selecionados
         sel = []
         for i in range(self.lista_comp.count()):
             it = self.lista_comp.item(i)
@@ -904,14 +988,14 @@ class DialogoNovoEmpenho(BaseDialog):
 
         return (self.inp_num.text(), self.inp_desc.text(), self.combo_sub.currentIndex(), self.inp_val.get_value(),
                 self.inp_fonte.text(), self.date_emissao.text(), self.combo_ciclo.currentData(),
-                self.combo_aditivo.currentData(), str_comp) # <--- Retorna a string de competências
+                self.combo_aditivo.currentData(), str_comp)
 
 class DialogoAditivo(BaseDialog):
     def __init__(self, contrato, aditivo_editar=None, parent=None):
         super().__init__(parent);
         self.contrato = contrato
         self.setWindowTitle("Aditivo Contratual");
-        self.resize(550, 500)
+        self.resize(550, 600)
         layout = QFormLayout(self)
 
         self.combo_tipo = QComboBox();
@@ -938,13 +1022,31 @@ class DialogoAditivo(BaseDialog):
         self.date_nova.setEnabled(False)
         self.inp_desc = QLineEdit()
 
+        # --- NOVOS CAMPOS DE COMPETÊNCIA ---
+        self.inp_c_ini = QLineEdit()
+        self.inp_c_ini.setInputMask("99/9999")
+        self.inp_c_ini.setPlaceholderText("MM/AAAA")
+
+        self.inp_c_fim = QLineEdit()
+        self.inp_c_fim.setInputMask("99/9999")
+        self.inp_c_fim.setPlaceholderText("MM/AAAA")
+        # -----------------------------------
+
         layout.addRow("Tipo:", self.combo_tipo)
         layout.addRow("", self.chk_renovacao)
         layout.addRow("", self.lbl_info)
         layout.addRow("Vincular a Serviço (Valor):", self.combo_servico)
-        layout.addRow("Início da Vigência:", self.date_inicio)
+        layout.addRow("Início da Vigência (Data):", self.date_inicio)
+        layout.addRow("Fim da Vigência (Data):", self.date_nova)
+
+        # Adiciona ao layout
+        self.lbl_comp_t = QLabel("Competências do Novo Ciclo (Obrigatório):")
+        self.lbl_comp_t.setStyleSheet("font-weight: bold; margin-top: 10px; color: #c0392b")  # Vermelho para destacar
+        layout.addRow(self.lbl_comp_t)
+        layout.addRow("Comp. Inicial:", self.inp_c_ini)
+        layout.addRow("Comp. Final:", self.inp_c_fim)
+
         layout.addRow("Valor do Aditivo:", self.inp_valor)
-        layout.addRow("Nova Data Fim (Contrato):", self.date_nova)
         layout.addRow("Justificativa:", self.inp_desc)
 
         if aditivo_editar:
@@ -957,13 +1059,21 @@ class DialogoAditivo(BaseDialog):
             self.inp_desc.setText(aditivo_editar.descricao);
             self.chk_renovacao.setChecked(aditivo_editar.renovacao_valor)
 
+            # Preenche competências se existirem
+            if aditivo_editar.comp_inicio: self.inp_c_ini.setText(aditivo_editar.comp_inicio)
+            if aditivo_editar.comp_fim: self.inp_c_fim.setText(aditivo_editar.comp_fim)
+
             idx_serv = self.combo_servico.findData(aditivo_editar.servico_idx)
             if idx_serv >= 0: self.combo_servico.setCurrentIndex(idx_serv)
 
             self.mudar_tipo()
 
         botoes = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
-        botoes.accepted.connect(self.accept)
+
+        # --- MUDANÇA: CONECTA A UMA FUNÇÃO DE VALIDAÇÃO ---
+        botoes.accepted.connect(self.validar_e_aceitar)
+        # --------------------------------------------------
+
         botoes.rejected.connect(self.reject)
         layout.addWidget(botoes)
 
@@ -971,43 +1081,66 @@ class DialogoAditivo(BaseDialog):
         is_prazo = self.combo_tipo.currentText().startswith("Prazo")
 
         if is_prazo:
-            # SE FOR PRAZO (Com ou sem renovação)
             self.chk_renovacao.setVisible(True)
             self.date_nova.setEnabled(True)
-
-            # Habilita valor APENAS se for renovação
             self.inp_valor.setEnabled(self.chk_renovacao.isChecked())
-
-            # --- MUDANÇA AQUI: ---
-            # Antes estava atrelado ao checkbox. Agora fica sempre True se for Prazo.
             self.date_inicio.setEnabled(True)
-            # ---------------------
-
-            # Em Aditivo de Prazo, não vinculamos a UM serviço específico.
             self.combo_servico.setCurrentIndex(0)
             self.combo_servico.setEnabled(False)
 
-            if self.chk_renovacao.isChecked():
-                self.lbl_info.setText("Este aditivo criará um NOVO CICLO (Renovação Global).")
+            # Lógica dos campos de competência
+            is_renovacao = self.chk_renovacao.isChecked()
+            self.inp_c_ini.setEnabled(is_renovacao)
+            self.inp_c_fim.setEnabled(is_renovacao)
+            self.lbl_comp_t.setVisible(is_renovacao)
+            self.inp_c_ini.setVisible(is_renovacao)
+            self.inp_c_fim.setVisible(is_renovacao)
+
+            if is_renovacao:
+                self.lbl_info.setText("Cria NOVO CICLO. Definição de competências é OBRIGATÓRIA.")
             else:
                 self.lbl_info.setText("Apenas prorrogação de data final.")
-
         else:
-            # SE FOR VALOR (Acréscimo/Supressão no ciclo atual)
             self.chk_renovacao.setVisible(False)
             self.chk_renovacao.setChecked(False)
-
             self.inp_valor.setEnabled(True)
             self.date_nova.setEnabled(False)
             self.date_inicio.setEnabled(False)
-
             self.combo_servico.setEnabled(True)
             self.lbl_info.setText("O valor será somado/subtraído do Ciclo Atual.")
 
+            # Esconde competências
+            self.inp_c_ini.setVisible(False)
+            self.inp_c_fim.setVisible(False)
+            self.lbl_comp_t.setVisible(False)
+
+    def validar_e_aceitar(self):
+        """Impede o salvamento se for Renovação e as datas estiverem vazias"""
+        is_prazo = self.combo_tipo.currentText().startswith("Prazo")
+        is_renovacao = self.chk_renovacao.isChecked()
+
+        if is_prazo and is_renovacao:
+            # Remove a máscara (barras e espaços) para contar apenas números
+            c_ini_raw = ''.join(filter(str.isdigit, self.inp_c_ini.text()))
+            c_fim_raw = ''.join(filter(str.isdigit, self.inp_c_fim.text()))
+
+            # MMAAAA = 6 dígitos
+            if len(c_ini_raw) < 6 or len(c_fim_raw) < 6:
+                DarkMessageBox.warning(self, "Dados Incompletos",
+                                       "Para Aditivos de Renovação, é <b>OBRIGATÓRIO</b> definir\n"
+                                       "as Competências Inicial e Final (MM/AAAA).\n\n"
+                                       "Isso garante a geração correta das Notas de Empenho.")
+                self.inp_c_ini.setFocus()
+                return
+
+        # Se passou na validação, fecha a janela
+        self.accept()
+
     def get_dados(self):
         tipo = "Valor" if self.combo_tipo.currentText().startswith("Valor") else "Prazo"
-        return tipo, self.inp_valor.get_value(), self.date_nova.text(), self.inp_desc.text(), self.chk_renovacao.isChecked(), self.date_inicio.text(), self.combo_servico.currentData()
-
+        return (tipo, self.inp_valor.get_value(), self.date_nova.text(), self.inp_desc.text(),
+                self.chk_renovacao.isChecked(), self.date_inicio.text(), self.combo_servico.currentData(),
+                self.inp_c_ini.text(), self.inp_c_fim.text())
 
 class DialogoPagamento(BaseDialog):
     # Adicionado parametro 'titulo' e 'label_valor'
@@ -1186,7 +1319,7 @@ class DialogoSubContrato(BaseDialog):
         if idx >= 0: self.combo_ciclo_alvo.setCurrentIndex(idx)
 
         # Checkbox
-        self.chk_todos = QCheckBox("Ignorar escolha acima e replicar para TODOS?")
+        self.chk_todos = QCheckBox("Ignorar escolha acima e replicar para TODOS os ciclos?")
         self.chk_todos.setChecked(False)
 
         layout.addRow("Descrição:", self.inp_desc)
@@ -4927,18 +5060,18 @@ class SistemaGestao(QMainWindow):
         top_bar = QHBoxLayout()
 
         # Botão Voltar
-        btn_voltar = QPushButton("←")
+        btn_voltar = QPushButton("◀️")
         btn_voltar.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_voltar.setStyleSheet("""
             QPushButton { 
-                background-color: #ffffff; 
+                background-color: #00000000; 
                 color: #2c3e50; 
                 border: 1px solid #bdc3c7; 
                 border-radius: 5px; 
-                font-size: 13px; 
+                font-size: 20px; 
                 font-weight: bold;
-                padding: 5px 10px;
-                min-width: 30px;
+                padding: 5px 5px;
+                min-width: 15px;
             }
             QPushButton:hover { 
                 background-color: #ecf0f1; 
@@ -5038,8 +5171,13 @@ class SistemaGestao(QMainWindow):
         layout_filtro.addStretch()
         self.layout_detalhes.addLayout(layout_filtro)
 
-        # --- CRIAÇÃO DAS ABAS (Restaurado - Corrige o erro atual) ---
+        # --- CRIAÇÃO DAS ABAS ---
         self.abas = QTabWidget()
+
+        # --- CORREÇÃO: Atualiza a tela toda vez que o usuário troca de aba ---
+        self.abas.currentChanged.connect(lambda: self.atualizar_painel_detalhes())
+        # ---------------------------------------------------------------------
+
         self.layout_detalhes.addWidget(self.abas)
 
         # ABA 1: DADOS
@@ -5693,8 +5831,10 @@ class SistemaGestao(QMainWindow):
 
         dial = DialogoAditivo(self.contrato_selecionado, parent=self)
         if dial.exec():
-            tipo, valor, data_n, desc, renova, data_ini, serv_idx = dial.get_dados()
-            adt = Aditivo(0, tipo, valor, data_n, desc, renova, data_ini, serv_idx)
+            # Recebe 9 valores agora
+            tipo, valor, data_n, desc, renova, data_ini, serv_idx, c_ini, c_fim = dial.get_dados()
+
+            adt = Aditivo(0, tipo, valor, data_n, desc, renova, data_ini, serv_idx, c_ini, c_fim)
 
             msg = self.contrato_selecionado.adicionar_aditivo(adt, id_ciclo_alvo=ciclo_view_id)
 
@@ -5703,7 +5843,7 @@ class SistemaGestao(QMainWindow):
 
             DarkMessageBox.info(self, "Aditivo", msg)
             self.atualizar_painel_detalhes()
-            self.processar_alertas()  # <--- NOVA CHAMADA: Recalcula prazos/saldos
+            self.processar_alertas()
             self.salvar_dados()
 
     # --- EXPORTAÇÃO E IMPORTAÇÃO ---
@@ -6376,7 +6516,7 @@ class SistemaGestao(QMainWindow):
 
         dial = DialogoAditivo(self.contrato_selecionado, aditivo_editar=adt, parent=self)
         if dial.exec():
-            tipo, valor, data_n, desc, renova, data_ini, new_serv_idx = dial.get_dados()
+            tipo, valor, data_n, desc, renova, data_ini, new_serv_idx, c_ini, c_fim = dial.get_dados()
 
             self.criar_ponto_restauracao()  # Sugestão: Adicionar ponto de restauração na edição também
 
@@ -6401,6 +6541,9 @@ class SistemaGestao(QMainWindow):
             adt.renovacao_valor = renova
             adt.data_inicio_vigencia = data_ini
             adt.servico_idx = new_serv_idx
+            # Atualiza os novos campos
+            adt.comp_inicio = c_ini
+            adt.comp_fim = c_fim
 
             # --- PASSO D: REAPLICAR NOVO IMPACTO ---
             if adt.renovacao_valor and adt.ciclo_pertencente_id != -1:
@@ -6595,9 +6738,7 @@ class SistemaGestao(QMainWindow):
         self.lbl_d_dispensa.setText(c.dispensa)
         self.lbl_d_vigencia.setText(f"{c.vigencia_inicio} a {c.get_vigencia_final_atual()}")
 
-        # --- NOVO: BUSCA DADOS COMPLETOS DO PRESTADOR ---
-        # Procura na lista de prestadores cadastrados (self.db_prestadores)
-        # compara o Nome Fantasia OU a Razão Social
+        # --- BUSCA DADOS COMPLETOS DO PRESTADOR ---
         p_encontrado = None
         for p in self.db_prestadores:
             if p.nome_fantasia == c.prestador or p.razao_social == c.prestador:
@@ -6608,109 +6749,161 @@ class SistemaGestao(QMainWindow):
             self.lbl_det_cnpj.setText(f"CNPJ: {p_encontrado.cnpj}")
             self.lbl_det_cnes.setText(f"CNES: {p_encontrado.cnes}")
             self.lbl_det_cod.setText(f"Cód: {p_encontrado.cod_cp}")
-
-            # Mostra os labels (caso estivessem escondidos)
             self.lbl_det_cnpj.setVisible(True)
             self.lbl_det_cnes.setVisible(True)
             self.lbl_det_cod.setVisible(True)
         else:
-            # Se não achar (ou for um nome antigo sem cadastro), esconde ou limpa
             self.lbl_det_cnpj.setText("CNPJ: Não cadastrado")
             self.lbl_det_cnes.setVisible(False)
             self.lbl_det_cod.setVisible(False)
-        # ------------------------------------------------
 
-        # Competência Geral
+        # Competência Geral (Visualização no topo)
         comp_final_geral = c.comp_fim
         if len(c.ciclos) > 1:
-            ultimo_adt_prazo = next((a for a in reversed(c.lista_aditivos)
-                                     if a.tipo == "Prazo" and a.renovacao_valor), None)
-            if ultimo_adt_prazo:
+            ultimo_ciclo = c.ciclos[-1]
+            adt_gerador = next((a for a in reversed(c.lista_aditivos)
+                                if a.ciclo_pertencente_id == ultimo_ciclo.id_ciclo and a.renovacao_valor), None)
+            if adt_gerador and getattr(adt_gerador, 'comp_fim', None):
+                comp_final_geral = adt_gerador.comp_fim
+            elif adt_gerador and adt_gerador.data_nova:
                 try:
-                    parts = ultimo_adt_prazo.data_nova.split('/')
-                    if len(parts) == 3: comp_final_geral = f"{parts[1]}/{parts[2]}"
+                    p = adt_gerador.data_nova.split('/'); comp_final_geral = f"{p[1]}/{p[2]}"
                 except:
                     pass
+
         self.lbl_d_comp.setText(f"{c.comp_inicio} a {comp_final_geral}")
 
-        # --- TABELA RESUMO (ABA DADOS) ---
+        # =====================================================================
+        # ABA 1: TABELA RESUMO FINANCEIRO (DADOS)
+        # =====================================================================
         self.tab_ciclos_resumo.setRowCount(0)
+        self.tab_ciclos_resumo.setColumnCount(7)
+        # Títulos ajustados para refletir que pode ser Ciclo ou Aditivo Individual
+        self.tab_ciclos_resumo.setHorizontalHeaderLabels(
+            ["Evento / Referência", "Vigência", "Competência", "Valor do Ato", "Teto", "Saldo de pagamentos",
+             "Não empenhado"])
 
-        def extrair_comp(data_str):
-            try:
-                parts = data_str.split('/')
-                if len(parts) == 3: return f"{parts[1]}/{parts[2]}"
-                return data_str
-            except:
-                return "?"
+        header = self.tab_ciclos_resumo.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(6, QHeaderView.ResizeMode.Stretch)
 
-        def item_centro(txt):
-            i = QTableWidgetItem(str(txt));
-            i.setTextAlignment(Qt.AlignmentFlag.AlignCenter);
+        def item_centro(txt, bold=False, color=None):
+            i = QTableWidgetItem(str(txt))
+            i.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            if bold: i.setFont(QFont("Arial", 9, QFont.Weight.Bold))
+            if color: i.setForeground(QColor(color))
             return i
 
-        for ciclo in c.ciclos:
-            if "(CANCELADO)" in ciclo.nome: continue
-            periodo_str = ""
-            if ciclo.id_ciclo == 0:
-                periodo_str = f"[{c.comp_inicio} a {c.comp_fim}]"
-            else:
-                adt_gerador = next((a for a in c.lista_aditivos
-                                    if a.ciclo_pertencente_id == ciclo.id_ciclo and a.renovacao_valor), None)
-                if adt_gerador:
-                    inicio = extrair_comp(adt_gerador.data_inicio_vigencia)
-                    fim = extrair_comp(adt_gerador.data_nova)
-                    periodo_str = f"[{inicio} a {fim}]"
+        # --- FUNÇÃO 1: CALCULA STATUS DO CICLO INTEIRO ---
+        def get_status_ciclo(id_ciclo):
+            ciclo_alvo = next((ci for ci in c.ciclos if ci.id_ciclo == id_ciclo), None)
+            if not ciclo_alvo: return 0, 0, 0
 
-            teto = ciclo.get_teto_total()
-            
-            # --- CÁLCULO CORRIGIDO PARA O RESUMO ---
-            total_empenhado_ciclo = sum(ne.valor_inicial for ne in c.lista_notas_empenho if ne.ciclo_id == ciclo.id_ciclo)
-            
-            total_pago_ciclo = 0.0
-            total_anulado_ciclo = 0.0
-            
+            teto = ciclo_alvo.get_teto_total()
+            gasto_liquido = 0.0
+            pago_total = 0.0
+
             for ne in c.lista_notas_empenho:
-                if ne.ciclo_id == ciclo.id_ciclo:
-                    for mov in ne.historico:
-                        if mov.tipo == "Pagamento":
-                            total_pago_ciclo += mov.valor
-                        elif mov.tipo == "Anulação":
-                            total_anulado_ciclo += abs(mov.valor) # Soma como positivo para abater depois
+                if ne.ciclo_id == id_ciclo:
+                    liq = ne.valor_inicial - ne.total_anulado
+                    gasto_liquido += liq
+                    pago_total += ne.total_pago
 
-            # Valor Não Empenhado = Teto do Ciclo - (Empenhos - Anulações de Saldo)
-            # Se a anulação reduz o empenho, ela libera saldo no ciclo.
-            valor_nao_empenhado = teto - (total_empenhado_ciclo - total_anulado_ciclo)
-            
-            # Saldo de Pagamentos = O que tenho de contrato - O que paguei
-            saldo_pagamentos = teto - total_pago_ciclo
+            saldo = teto - pago_total
+            livre = teto - gasto_liquido
+            return teto, saldo, livre
 
-            row = self.tab_ciclos_resumo.rowCount()
-            self.tab_ciclos_resumo.insertRow(row)
-            self.tab_ciclos_resumo.setItem(row, 0, item_centro(f"{ciclo.nome}  {periodo_str}"))
-            self.tab_ciclos_resumo.setItem(row, 1, item_centro(fmt_br(teto)))
-            
-            item_sp = item_centro(fmt_br(saldo_pagamentos))
-            item_sp.setForeground(QColor("#2980b9"))
-            self.tab_ciclos_resumo.setItem(row, 2, item_sp)
+        # --- FUNÇÃO 2: CALCULA STATUS INDIVIDUAL DO ADITIVO DE VALOR ---
+        def get_status_aditivo_individual(adt_obj):
+            teto = adt_obj.valor
+            gasto_liquido = 0.0
+            pago_total = 0.0
 
-            item_vne = item_centro(fmt_br(valor_nao_empenhado))
-            item_vne.setForeground(QColor("#27ae60"))
-            self.tab_ciclos_resumo.setItem(row, 3, item_vne)
+            # Varre as NEs e soma apenas as que estão vinculadas a ESTE aditivo
+            for ne in c.lista_notas_empenho:
+                if ne.aditivo_vinculado_id == adt_obj.id_aditivo:
+                    liq = ne.valor_inicial - ne.total_anulado
+                    gasto_liquido += liq
+                    pago_total += ne.total_pago
 
-        # --- SELETOR (COMBOBOX) ---
+            saldo = teto - pago_total
+            livre = teto - gasto_liquido
+            return teto, saldo, livre
+
+        # --- PASSO 1: INSERE O CONTRATO INICIAL ---
+        teto0, saldo0, livre0 = get_status_ciclo(0)
+
+        r = 0
+        self.tab_ciclos_resumo.insertRow(r)
+        self.tab_ciclos_resumo.setItem(r, 0, item_centro("Contrato Inicial", bold=True))
+        self.tab_ciclos_resumo.setItem(r, 1, item_centro(f"{c.vigencia_inicio} a {c.vigencia_fim}"))
+        self.tab_ciclos_resumo.setItem(r, 2, item_centro(f"{c.comp_inicio} a {c.comp_fim}"))
+        self.tab_ciclos_resumo.setItem(r, 3, item_centro(fmt_br(c.valor_inicial), color="#2980b9"))
+
+        self.tab_ciclos_resumo.setItem(r, 4, item_centro(fmt_br(teto0)))
+        self.tab_ciclos_resumo.setItem(r, 5, item_centro(fmt_br(saldo0), color="#2980b9"))
+        self.tab_ciclos_resumo.setItem(r, 6, item_centro(fmt_br(livre0), color="#27ae60"))
+
+        # --- PASSO 2: LOOP EM TODOS OS ADITIVOS ---
+        for idx, adt in enumerate(c.lista_aditivos):
+            r = self.tab_ciclos_resumo.rowCount()
+            self.tab_ciclos_resumo.insertRow(r)
+
+            num_ta = idx + 1
+            nome_evento = f"{num_ta}º Termo Aditivo"
+            tipo_desc = " (Valor)" if adt.tipo == "Valor" else " (Prazo/Renov.)"
+
+            # --- DECISÃO DO QUE MOSTRAR ---
+            if adt.tipo == "Valor":
+                # SE FOR VALOR: Mostra dados Individuais
+                teto_show, saldo_show, livre_show = get_status_aditivo_individual(adt)
+
+                vig_str = "Mantida"
+                comp_str = "Mantida"
+                valor_ato_str = f"+ {fmt_br(adt.valor)}" if adt.valor >= 0 else fmt_br(adt.valor)
+
+            else:
+                # SE FOR PRAZO/RENOVAÇÃO: Mostra dados do Ciclo Novo que ele criou
+                teto_show, saldo_show, livre_show = get_status_ciclo(adt.ciclo_pertencente_id)
+
+                vig_str = f"{adt.data_inicio_vigencia} a {adt.data_nova}"
+                ci = getattr(adt, 'comp_inicio', '?')
+                cf = getattr(adt, 'comp_fim', '?')
+                comp_str = f"{ci} a {cf}"
+                valor_ato_str = fmt_br(adt.valor)
+
+            self.tab_ciclos_resumo.setItem(r, 0, item_centro(nome_evento + tipo_desc))
+            self.tab_ciclos_resumo.setItem(r, 1, item_centro(vig_str))
+            self.tab_ciclos_resumo.setItem(r, 2, item_centro(comp_str))
+
+            # Valor do Ato
+            self.tab_ciclos_resumo.setItem(r, 3, item_centro(valor_ato_str, color="#8e44ad"))
+
+            # Teto, Saldo e Livre (Calculados conforme a lógica acima)
+            self.tab_ciclos_resumo.setItem(r, 4, item_centro(fmt_br(teto_show)))
+            self.tab_ciclos_resumo.setItem(r, 5, item_centro(fmt_br(saldo_show), color="#2980b9"))
+            self.tab_ciclos_resumo.setItem(r, 6, item_centro(fmt_br(livre_show), color="#27ae60"))
+
+        # --- SELETOR DE CICLO (COMBOBOX) ---
         id_selecionado = self.combo_ciclo_visualizacao.currentData()
         if id_selecionado is None and c.ultimo_ciclo_id is not None:
             id_selecionado = c.ultimo_ciclo_id
+
         self.combo_ciclo_visualizacao.blockSignals(True)
         self.combo_ciclo_visualizacao.clear()
 
         for ciclo in c.ciclos:
-            if "(CANCELADO)" in ciclo.nome: continue
+            if "(CANCELADO)" in ciclo.nome or "(EXCLUÍDO)" in ciclo.nome: continue
             self.combo_ciclo_visualizacao.addItem(ciclo.nome, ciclo.id_ciclo)
 
         idx = self.combo_ciclo_visualizacao.findData(id_selecionado)
-        if idx >= 0: self.combo_ciclo_visualizacao.setCurrentIndex(idx)
+        if idx >= 0:
+            self.combo_ciclo_visualizacao.setCurrentIndex(idx)
         elif self.combo_ciclo_visualizacao.count() > 0:
             self.combo_ciclo_visualizacao.setCurrentIndex(self.combo_ciclo_visualizacao.count() - 1)
         self.combo_ciclo_visualizacao.blockSignals(False)
@@ -6720,226 +6913,174 @@ class SistemaGestao(QMainWindow):
         # --- CÁLCULO DE MÉDIAS ---
         medias_por_servico = {}
         for idx_serv, sub in enumerate(c.lista_servicos):
-            nes_do_servico = [n for n in c.lista_notas_empenho if n.subcontrato_idx == idx_serv and n.ciclo_id == ciclo_view_id]
-            
+            nes_do_servico = [n for n in c.lista_notas_empenho if
+                              n.subcontrato_idx == idx_serv and n.ciclo_id == ciclo_view_id]
             total_pago_bruto = 0.0
             competencias_pagas = set()
-            
             for n in nes_do_servico:
                 for mov in n.historico:
                     if mov.tipo == "Pagamento":
                         total_pago_bruto += mov.valor
                         if mov.competencia and mov.competencia != "-":
                             partes = [p.strip() for p in mov.competencia.split(',') if p.strip()]
-                            for p in partes:
-                                competencias_pagas.add(p)
-            
+                            for p in partes: competencias_pagas.add(p)
             medias_por_servico[idx_serv] = total_pago_bruto / len(competencias_pagas) if competencias_pagas else 0.0
 
-            # --- TABELA EMPENHOS ---
+        # =====================================================================
+        # ABA 2: TABELA DE EMPENHOS (FINANCEIRO)
+        # =====================================================================
+        self.tab_empenhos.setSortingEnabled(False)
+        self.tab_empenhos.setRowCount(0);
+        self.tab_mov.setRowCount(0)
+        self.lbl_ne_ciclo.setText("Ciclo: -");
+        self.lbl_ne_emissao.setText("Emissão: -");
+        self.lbl_ne_aditivo.setText("Aditivo: -");
+        self.lbl_ne_desc.setText("Selecione uma NE...")
+        if hasattr(self, 'lbl_hist'): self.lbl_hist.setText("Histórico Financeiro:")
 
-            # 1. Desliga ordenação para não travar a inserção
-            self.tab_empenhos.setSortingEnabled(False)
+        for row, ne in enumerate(c.lista_notas_empenho):
+            if ne.ciclo_id != ciclo_view_id: continue
+            new_row = self.tab_empenhos.rowCount();
+            self.tab_empenhos.insertRow(new_row)
+            n_serv = c.lista_servicos[ne.subcontrato_idx].descricao if 0 <= ne.subcontrato_idx < len(
+                c.lista_servicos) else "?"
 
-            self.tab_empenhos.setRowCount(0);
-            self.tab_mov.setRowCount(0)
-            self.lbl_ne_ciclo.setText("Ciclo: -");
-            self.lbl_ne_emissao.setText("Emissão: -");
-            self.lbl_ne_aditivo.setText("Aditivo: -");
-            self.lbl_ne_desc.setText("Selecione uma NE...")
+            val_pago_ne = ne.total_pago
+            val_anulado_ne = ne.total_anulado
+            saldo_ne = ne.valor_inicial - val_anulado_ne - val_pago_ne
 
-            if hasattr(self, 'lbl_hist'): self.lbl_hist.setText("Histórico Financeiro:")
+            txt_ne = ne.numero
+            if ne.bloqueada: txt_ne += " 🔒"
 
-            # --- PARTE 1: ATUALIZAÇÃO DA TABELA DE EMPENHOS ---
-            for row, ne in enumerate(c.lista_notas_empenho):
-                if ne.ciclo_id != ciclo_view_id: continue
-                new_row = self.tab_empenhos.rowCount();
-                self.tab_empenhos.insertRow(new_row)
-                n_serv = c.lista_servicos[ne.subcontrato_idx].descricao if 0 <= ne.subcontrato_idx < len(
-                    c.lista_servicos) else "?"
+            it_ne = item_centro(txt_ne)
+            self.tab_empenhos.setItem(new_row, 0, it_ne)
+            self.tab_empenhos.setItem(new_row, 1, item_centro(ne.fonte_recurso))
+            self.tab_empenhos.setItem(new_row, 2, item_centro(n_serv))
+            self.tab_empenhos.setItem(new_row, 3, item_centro(fmt_br(ne.valor_inicial)))
+            self.tab_empenhos.setItem(new_row, 4, item_centro(fmt_br(val_pago_ne)))
 
-                val_pago_ne = sum(m.valor for m in ne.historico if m.tipo == "Pagamento")
-                val_anulado_ne = sum(abs(m.valor) for m in ne.historico if m.tipo == "Anulação")
-                saldo_ne = ne.valor_inicial - val_anulado_ne - val_pago_ne
+            i_s = QTableWidgetItem(fmt_br(saldo_ne))
+            i_s.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
 
-                # Identificador Visual se bloqueada
-                txt_ne = ne.numero
-                if ne.bloqueada: txt_ne += " 🔒"
+            if ne.bloqueada:
+                cor_bloq = QColor("#95a5a6")
+                it_ne.setForeground(cor_bloq)
+                i_s.setForeground(cor_bloq)
+                i_s.setText(f"{fmt_br(saldo_ne)} (Bloq.)")
+            else:
+                i_s.setForeground(QColor("#27ae60"))
 
-                it_ne = item_centro(txt_ne)
-                self.tab_empenhos.setItem(new_row, 0, it_ne)
-                self.tab_empenhos.setItem(new_row, 1, item_centro(ne.fonte_recurso))
-                self.tab_empenhos.setItem(new_row, 2, item_centro(n_serv))
-                self.tab_empenhos.setItem(new_row, 3, item_centro(fmt_br(ne.valor_inicial)))
-                self.tab_empenhos.setItem(new_row, 4, item_centro(fmt_br(val_pago_ne)))
+            self.tab_empenhos.setItem(new_row, 5, i_s)
+            media_servico = medias_por_servico.get(ne.subcontrato_idx, 0.0)
+            self.tab_empenhos.setItem(new_row, 6, item_centro(fmt_br(media_servico)))
+            self.tab_empenhos.item(new_row, 0).setData(Qt.ItemDataRole.UserRole, ne)
 
-                i_s = QTableWidgetItem(fmt_br(saldo_ne))
-                i_s.setTextAlignment(Qt.AlignmentFlag.AlignCenter);
-                
-                # --- VISUAL SE BLOQUEADA ---
-                if ne.bloqueada:
-                    # Linha inteira Cinza e texto riscado (opcional, aqui só cor)
-                    cor_bloq = QColor("#95a5a6") # Cinza
-                    it_ne.setForeground(cor_bloq)
-                    i_s.setForeground(cor_bloq)
-                    i_s.setText(f"{fmt_br(saldo_ne)} (Bloq.)")
-                else:
-                    i_s.setForeground(QColor("#27ae60")) # Verde normal
-                # ---------------------------
+        self.tab_empenhos.setSortingEnabled(True)
+        if hasattr(self, 'inp_busca_fin'): self.filtrar_financeiro()
 
-                self.tab_empenhos.setItem(new_row, 5, i_s)
+        # =====================================================================
+        # ABA 3: TABELA DE SERVIÇOS
+        # =====================================================================
+        self.tab_subcontratos.setSortingEnabled(False)
+        self.tab_subcontratos.setRowCount(0)
+        font_bold = QFont();
+        font_bold.setBold(True)
 
-                media_servico = medias_por_servico.get(ne.subcontrato_idx, 0.0)
-                self.tab_empenhos.setItem(new_row, 6, item_centro(fmt_br(media_servico)))
-                self.tab_empenhos.item(new_row, 0).setData(Qt.ItemDataRole.UserRole, ne)
+        for idx_real, sub in enumerate(c.lista_servicos):
+            tem_ne = any(
+                ne.subcontrato_idx == idx_real and ne.ciclo_id == ciclo_view_id for ne in c.lista_notas_empenho)
+            if ciclo_view_id not in sub.valores_por_ciclo and not tem_ne: continue
 
-            # 2. Religa a ordenação
-            self.tab_empenhos.setSortingEnabled(True)
+            valor_ciclo = sub.get_valor_ciclo(ciclo_view_id);
+            val_mensal = sub.valor_mensal
+            gasto_empenhado = 0.0;
+            gasto_pago = 0.0;
+            total_anulado_serv = 0.0
+            saldo_morto_bloqueio = 0.0
 
-            # 3. Reaplica o filtro de busca (se o usuário já tiver digitado algo antes de atualizar)
-            if hasattr(self, 'inp_busca_fin'):
-                self.filtrar_financeiro()
+            for ne in c.lista_notas_empenho:
+                if ne.subcontrato_idx == idx_real and ne.ciclo_id == ciclo_view_id:
+                    gasto_empenhado += ne.valor_inicial
+                    pg_ne = ne.total_pago
+                    anul_ne = ne.total_anulado
 
-            # --- TABELA SERVIÇOS ---
+                    gasto_pago += pg_ne
+                    total_anulado_serv += anul_ne
 
-            # 1. Desliga ordenação temporariamente
-            self.tab_subcontratos.setSortingEnabled(False)
+                    if ne.bloqueada:
+                        saldo_da_ne = ne.valor_inicial - anul_ne - pg_ne
+                        saldo_morto_bloqueio += saldo_da_ne
 
-            self.tab_subcontratos.setRowCount(0)
-            font_bold = QFont();
-            font_bold.setBold(True)
+            saldo_a_empenhar = valor_ciclo - (gasto_empenhado - total_anulado_serv)
+            saldo_das_nes = (gasto_empenhado - total_anulado_serv) - gasto_pago - saldo_morto_bloqueio
+            saldo_real_caixa = valor_ciclo - gasto_pago
 
-            for idx_real, sub in enumerate(c.lista_servicos):
-                tem_ne_neste_ciclo = any(
-                    ne.subcontrato_idx == idx_real and ne.ciclo_id == ciclo_view_id for ne in c.lista_notas_empenho)
-                if ciclo_view_id not in sub.valores_por_ciclo and not tem_ne_neste_ciclo: continue
+            new_row_idx = self.tab_subcontratos.rowCount()
+            self.tab_subcontratos.insertRow(new_row_idx)
 
-                valor_ciclo = sub.get_valor_ciclo(ciclo_view_id);
-                val_mensal = sub.valor_mensal
+            item_desc = item_centro(sub.descricao);
+            item_desc.setData(Qt.ItemDataRole.UserRole, idx_real)
+            self.tab_subcontratos.setItem(new_row_idx, 0, item_desc)
+            self.tab_subcontratos.setItem(new_row_idx, 1, item_centro(fmt_br(val_mensal)))
+            self.tab_subcontratos.setItem(new_row_idx, 2, item_centro(fmt_br(valor_ciclo)))
+            self.tab_subcontratos.setItem(new_row_idx, 3, item_centro(fmt_br(gasto_empenhado)))
 
-                gasto_empenhado = 0.0
-                gasto_pago = 0.0
-                total_anulado_serv = 0.0
-                
-                # Variável para saber quanto foi "perdido" em bloqueios
-                saldo_morto_bloqueio = 0.0 
+            i_s1 = QTableWidgetItem(fmt_br(saldo_a_empenhar));
+            i_s1.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            i_s1.setForeground(QColor("#A401F0"))
+            self.tab_subcontratos.setItem(new_row_idx, 4, i_s1)
 
-                for ne in c.lista_notas_empenho:
-                    if ne.subcontrato_idx == idx_real and ne.ciclo_id == ciclo_view_id:
-                        gasto_empenhado += ne.valor_inicial
-                        
-                        pg_ne = 0.0
-                        anul_ne = 0.0
-                        
-                        for mov in ne.historico:
-                            if mov.tipo == "Pagamento": 
-                                pg_ne += mov.valor
-                            elif mov.tipo == "Anulação": 
-                                anul_ne += abs(mov.valor)
-                        
-                        gasto_pago += pg_ne
-                        total_anulado_serv += anul_ne
-                        
-                        # --- LÓGICA CRÍTICA ---
-                        # Se bloqueada, o saldo restante (Valor - Anulado - Pago) não é útil.
-                        # Devemos removê-lo da conta de "Saldo de Empenhos".
-                        if ne.bloqueada:
-                            saldo_da_ne = ne.valor_inicial - anul_ne - pg_ne
-                            saldo_morto_bloqueio += saldo_da_ne
+            i_pg = QTableWidgetItem(fmt_br(gasto_pago));
+            i_pg.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            i_pg.setForeground(QColor("#099453"));
+            i_pg.setFont(font_bold)
+            self.tab_subcontratos.setItem(new_row_idx, 5, i_pg)
 
-                # Cálculo Normal
-                saldo_a_empenhar = valor_ciclo - (gasto_empenhado - total_anulado_serv)
-                
-                # Saldo das NEs = (Empenhado Liquido) - Pago - (Saldos Bloqueados)
-                saldo_das_nes = (gasto_empenhado - total_anulado_serv) - gasto_pago - saldo_morto_bloqueio
-                
-                saldo_real_caixa = valor_ciclo - gasto_pago
+            i_s2 = QTableWidgetItem(fmt_br(saldo_das_nes));
+            i_s2.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            i_s2.setForeground(QColor("#3dae27"))
+            self.tab_subcontratos.setItem(new_row_idx, 6, i_s2)
 
-                new_row_idx = self.tab_subcontratos.rowCount();
-                self.tab_subcontratos.insertRow(new_row_idx)
+            i_s3 = QTableWidgetItem(fmt_br(saldo_real_caixa));
+            i_s3.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            i_s3.setForeground(QColor("#087d19"));
+            i_s3.setFont(font_bold)
+            self.tab_subcontratos.setItem(new_row_idx, 7, i_s3)
 
-                item_desc = item_centro(sub.descricao);
-                item_desc.setData(Qt.ItemDataRole.UserRole, idx_real)
-                self.tab_subcontratos.setItem(new_row_idx, 0, item_desc)
-                self.tab_subcontratos.setItem(new_row_idx, 1, item_centro(fmt_br(val_mensal)))
-                self.tab_subcontratos.setItem(new_row_idx, 2, item_centro(fmt_br(valor_ciclo)))
+        self.tab_subcontratos.setSortingEnabled(True)
+        if hasattr(self, 'inp_busca_serv'): self.filtrar_servicos()
 
-                self.tab_subcontratos.setItem(new_row_idx, 3, item_centro(fmt_br(gasto_empenhado)))
+        # =====================================================================
+        # ABA 4: TABELA ADITIVOS
+        # =====================================================================
+        self.tab_aditivos.setRowCount(0)
+        self.tab_aditivos.setSortingEnabled(False)
 
-                i_s1 = QTableWidgetItem(fmt_br(saldo_a_empenhar))
-                i_s1.setTextAlignment(Qt.AlignmentFlag.AlignCenter);
-                i_s1.setForeground(QColor("#A401F0"))
-                self.tab_subcontratos.setItem(new_row_idx, 4, i_s1)
+        for row, adt in enumerate(c.lista_aditivos):
+            self.tab_aditivos.insertRow(row)
+            numero_ta = row + 1
+            tipo_display = adt.tipo
+            if adt.tipo == "Prazo" and adt.renovacao_valor: tipo_display = "Prazo e Valor"
 
-                i_pg = QTableWidgetItem(fmt_br(gasto_pago))
-                i_pg.setTextAlignment(Qt.AlignmentFlag.AlignCenter);
-                i_pg.setForeground(QColor("#099453"));
-                i_pg.setFont(font_bold)
-                self.tab_subcontratos.setItem(new_row_idx, 5, i_pg)
+            texto_ref = f"{numero_ta}º TA ({tipo_display})"
+            it_ref = item_centro(texto_ref)
+            it_ref.setForeground(QColor("#2980b9"));
+            it_ref.setFont(font_bold)
+            it_ref.setData(Qt.ItemDataRole.UserRole, adt)  # OBJETO
 
-                i_s2 = QTableWidgetItem(fmt_br(saldo_das_nes))
-                i_s2.setTextAlignment(Qt.AlignmentFlag.AlignCenter);
-                i_s2.setForeground(QColor("#3dae27"))
-                self.tab_subcontratos.setItem(new_row_idx, 6, i_s2)
+            self.tab_aditivos.setItem(row, 0, it_ref)
+            self.tab_aditivos.setItem(row, 1, item_centro("Sim" if adt.renovacao_valor else "Não"))
+            data_ini = adt.data_inicio_vigencia if adt.renovacao_valor else "-"
+            self.tab_aditivos.setItem(row, 2, item_centro(data_ini))
+            data_fim = adt.data_nova if adt.tipo == "Prazo" else "-"
+            self.tab_aditivos.setItem(row, 3, item_centro(data_fim))
+            val_txt = fmt_br(adt.valor) if (adt.tipo == "Valor" or adt.renovacao_valor) else "-"
+            self.tab_aditivos.setItem(row, 4, item_centro(val_txt))
+            self.tab_aditivos.setItem(row, 5, item_centro(adt.descricao))
 
-                i_s3 = QTableWidgetItem(fmt_br(saldo_real_caixa))
-                i_s3.setTextAlignment(Qt.AlignmentFlag.AlignCenter);
-                i_s3.setForeground(QColor("#087d19"));
-                i_s3.setFont(font_bold)
-                self.tab_subcontratos.setItem(new_row_idx, 7, i_s3)
+        self.tab_aditivos.setSortingEnabled(True)
 
-            # 2. Religa a ordenação
-            self.tab_subcontratos.setSortingEnabled(True)
-
-            # 3. Reaplica o filtro se houver texto
-            if hasattr(self, 'inp_busca_serv'):
-                self.filtrar_servicos()
-
-                # --- TABELA ADITIVOS (ATUALIZADA) ---
-                self.tab_aditivos.setRowCount(0)
-                self.tab_aditivos.setSortingEnabled(False)  # Desliga ordenação para preencher
-
-                self.tab_aditivos.setHorizontalHeaderLabels(
-                    ["Referência / Tipo", "Renova valor?", "Início Vigência", "Fim Vigência", "Valor", "Descrição"])
-
-                for row, adt in enumerate(c.lista_aditivos):
-                    self.tab_aditivos.insertRow(row)
-
-                    # --- LÓGICA DO NOME (1º TA, 2º TA...) ---
-                    numero_ta = row + 1
-
-                    # Verifica o tipo para exibição
-                    tipo_display = adt.tipo
-                    if adt.tipo == "Prazo" and adt.renovacao_valor:
-                        tipo_display = "Prazo e Valor"
-
-                    texto_ref = f"{numero_ta}º TA ({tipo_display})"
-
-                    # Item da primeira coluna (Identificador)
-                    it_ref = item_centro(texto_ref)
-                    it_ref.setForeground(QColor("#2980b9"))  # Azul para destaque
-                    it_ref.setFont(font_bold)
-
-                    # IMPORTANTE: Guarda o objeto para o menu de contexto (editar/excluir) funcionar
-                    it_ref.setData(Qt.ItemDataRole.UserRole, adt)
-
-                    self.tab_aditivos.setItem(row, 0, it_ref)
-                    self.tab_aditivos.setItem(row, 1, item_centro("Sim" if adt.renovacao_valor else "Não"))
-
-                    data_ini = adt.data_inicio_vigencia if adt.renovacao_valor else "-"
-                    self.tab_aditivos.setItem(row, 2, item_centro(data_ini))
-
-                    data_fim = adt.data_nova if adt.tipo == "Prazo" else "-"
-                    self.tab_aditivos.setItem(row, 3, item_centro(data_fim))
-
-                    val_txt = fmt_br(adt.valor) if (adt.tipo == "Valor" or adt.renovacao_valor) else "-"
-                    self.tab_aditivos.setItem(row, 4, item_centro(val_txt))
-
-                    self.tab_aditivos.setItem(row, 5, item_centro(adt.descricao))
-
-                self.tab_aditivos.setSortingEnabled(True)  # Religa ordenação
-
-        # --- ATUALIZA O NOVO PAINEL ---
+        # Atualiza o Painel Global
         self.painel_global.carregar_dados(c, ciclo_view_id)
 
     def abrir_manual(self):
