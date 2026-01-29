@@ -18,9 +18,11 @@ import urllib.request
 VERSAO_ATUAL = 1.0
 
 # O sistema lerá este arquivo para saber se há novidades
+
 URL_VERSAO_TXT = "https://raw.githubusercontent.com/cassiosouzza-dev/Controller/main/versao.txt"
 
 # Se houver, ele baixará o EXE deste link (Redirecionamento automático do GitHub)
+URL_NOTAS_TXT = "https://raw.githubusercontent.com/cassiosouzza-dev/Controller/main/notas.txt"
 URL_NOVO_EXE = "https://github.com/cassiosouzza-dev/Controller/releases/latest/download/GC_Gestor_v1.exe"
 
 # --- CARREGAMENTO SEGURO DA CHAVE API (SEM CHAVE NO CÓDIGO) ---
@@ -2209,6 +2211,13 @@ class DialogoLogin(BaseDialog):
         form_layout.addRow("Nome:", self.inp_nome)
         form_layout.addRow("Senha:", self.inp_senha)
         # Adicionamos o label e o input que criamos
+
+        # --- NOVO: Checkbox Lembrar-me ---
+        self.chk_lembrar = QCheckBox("Lembrar meu CPF")
+        self.chk_lembrar.setStyleSheet("color: #555; font-size: 12px;")
+        form_layout.addRow("", self.chk_lembrar)
+        # ---------------------------------
+
         form_layout.addRow(self.lbl_palavra_secreta, self.inp_palavra_secreta)
 
         main_layout.addLayout(form_layout)
@@ -2350,7 +2359,7 @@ class DialogoLogin(BaseDialog):
 
         if hash_digitado == hash_salvo:
             nome = self.db_usuarios[cpf]['nome']
-            self.salvar_login_local(nome, cpf)
+            self.salvar_login_local(nome, cpf, self.chk_lembrar.isChecked())
             self.accept()
         else:
             self.lbl_msg.setText("Senha incorreta.")
@@ -2392,7 +2401,7 @@ class DialogoLogin(BaseDialog):
             with open(self.arquivo_db, 'w', encoding='utf-8-sig') as f:
                 json.dump(dados_completos, f, indent=4, ensure_ascii=False)
 
-            self.salvar_login_local(nome, cpf)
+            self.salvar_login_local(nome, cpf, self.chk_lembrar.isChecked())
             DarkMessageBox.info(self, "Bem-vindo", f"Cadastro realizado com sucesso!\nOlá, {nome}.")
             self.accept()
 
@@ -2410,14 +2419,18 @@ class DialogoLogin(BaseDialog):
                 with open(caminho, "r", encoding='utf-8') as f:
                     cfg = json.load(f)
                     last = cfg.get("ultimo_usuario", {})
-                    if last:
+
+                    # Só preenche se a flag 'lembrar' estiver True
+                    if last.get("lembrar", False):
                         self.inp_cpf.setText(last.get("cpf", ""))
-                        self.ao_digitar_cpf()
+                        self.chk_lembrar.setChecked(True)
+                        self.ao_digitar_cpf()  # Força buscar o nome
                         self.inp_senha.setFocus()
         except:
             pass
 
-    def salvar_login_local(self, nome, cpf):
+
+    def salvar_login_local(self, nome, cpf, lembrar):
         caminho = self.get_config_path()
         try:
             cfg = {}
@@ -2427,7 +2440,13 @@ class DialogoLogin(BaseDialog):
                         cfg = json.load(f)
                     except:
                         cfg = {}
-            cfg["ultimo_usuario"] = {"nome": nome, "cpf": cpf}
+
+            # Se o usuário marcou "Lembrar", salvamos. Se não, limpamos.
+            if lembrar:
+                cfg["ultimo_usuario"] = {"nome": nome, "cpf": cpf, "lembrar": True}
+            else:
+                cfg["ultimo_usuario"] = {"nome": "", "cpf": "", "lembrar": False}
+
             with open(caminho, "w", encoding='utf-8') as f:
                 json.dump(cfg, f, indent=4)
         except Exception as e:
@@ -3571,6 +3590,12 @@ class SistemaGestao(QMainWindow):
         aplicar_estilo_janela(self)
         
         self.em_tutorial = False
+
+        # --- NOVO: VERIFICAÇÃO AUTOMÁTICA AO INICIAR ---
+        # Usa QTimer para rodar 2 segundos (2000ms) após abrir a janela
+        # Passa silencioso=True para não incomodar se não tiver update
+        QTimer.singleShot(2000, lambda: self.verificar_updates(silencioso=True))
+        # -----------------------------------------------
 
 
     def iniciar_tutorial_interativo(self):
@@ -5935,31 +5960,61 @@ class SistemaGestao(QMainWindow):
         except:
             DarkMessageBox.warning(self, "Erro", "Não foi possível abrir a calculadora do sistema.")
 
-    def verificar_updates(self):
+        # Altere a definição para aceitar o parâmetro 'silencioso'
+
+    def verificar_updates(self, silencioso=False):
         self.status_bar.showMessage("Buscando atualizações...")
         QApplication.processEvents()
 
         try:
-            # 1. Lê a versão do site
+            # 1. Verifica o NÚMERO da versão
             with urllib.request.urlopen(URL_VERSAO_TXT) as response:
-                versao_remota_str = response.read().decode('utf-8').strip()
-                versao_remota = float(versao_remota_str)
+                versao_remota = float(response.read().decode('utf-8').strip())
 
             # 2. Compara
             if versao_remota > VERSAO_ATUAL:
-                msg = f"Uma nova versão ({versao_remota}) está disponível!\nVocê tem a {VERSAO_ATUAL}.\n\nDeseja baixar e atualizar agora? O sistema será reiniciado."
+                # 3. Se tem update, tenta baixar as NOTAS (Changelog)
+                novidades = "Melhorias gerais e correções de bugs."  # Texto padrão
+                try:
+                    with urllib.request.urlopen(URL_NOTAS_TXT) as resp_notas:
+                        novidades = resp_notas.read().decode('utf-8')
+                except:
+                    pass  # Se der erro lendo a nota, usa o texto padrão
 
-                if DarkMessageBox.question(self, "Atualização Disponível", msg) == QMessageBox.StandardButton.Yes:
+                # 4. Monta a mensagem bonita
+                msg = (
+                    f"<h3>🚀 Uma nova versão ({versao_remota}) está disponível!</h3>"
+                    f"<p>Você está usando a versão {VERSAO_ATUAL}.</p>"
+                    f"<hr>"
+                    f"<b>O QUE HÁ DE NOVO:</b><br>"
+                    f"<pre>{novidades}</pre>"  # <pre> mantém a formatação do texto
+                    f"<hr>"
+                    f"<p>Deseja baixar e instalar agora? O sistema será reiniciado.</p>"
+                )
+
+                # Exibe o alerta (mesmo se for silencioso, pois é importante)
+                box = DarkMessageBox(self)
+                box.setWindowTitle("Atualização Disponível")
+                box.setText(msg)  # Aceita HTML básico
+                box.setIcon(QMessageBox.Icon.Information)
+                btn_sim = box.addButton("Sim, Atualizar Agora", QMessageBox.ButtonRole.YesRole)
+                btn_nao = box.addButton("Depois", QMessageBox.ButtonRole.NoRole)
+                box.exec()
+
+                if box.clickedButton() == btn_sim:
                     self.realizar_atualizacao_automatica()
                 else:
-                    self.status_bar.showMessage("Atualização cancelada pelo usuário.")
+                    self.status_bar.showMessage("Atualização pendente.")
+
             else:
                 self.status_bar.showMessage(f"Seu sistema está atualizado (v{VERSAO_ATUAL}).")
-                DarkMessageBox.info(self, "Atualização", f"Você já tem a versão mais recente ({VERSAO_ATUAL}).")
+                if not silencioso:
+                    DarkMessageBox.info(self, "Tudo em dia", f"Você já tem a versão mais recente ({VERSAO_ATUAL}).")
 
         except Exception as e:
             self.status_bar.showMessage("Erro ao buscar atualizações.")
-            DarkMessageBox.warning(self, "Erro de Conexão", f"Não foi possível verificar atualizações.\nErro: {str(e)}")
+            if not silencioso:
+                DarkMessageBox.warning(self, "Conexão", f"Não foi possível verificar atualizações.\nErro: {str(e)}")
 
     def realizar_atualizacao_automatica(self):
         # Janela de Progresso
@@ -6043,8 +6098,22 @@ class SistemaGestao(QMainWindow):
 
     def importar_empenhos(self):
         if not self.contrato_selecionado: DarkMessageBox.warning(self, "Aviso", "Abra um contrato."); return
-        instrucao = "CSV:\nNE;Valor;Desc;NomeServico;Fonte;Data"
+        instrucao = (
+            "ESTRUTURA DO CSV PARA NOTAS DE EMPENHO (Separador: ';')\n\n"
+            "O sistema vinculará as NEs ao contrato aberto e tentará\n"
+            "encontrar o serviço pelo nome exato.\n\n"
+            "Colunas (Ordem exata):\n"
+            "1. Número da NE\n"
+            "2. Valor Original (R$)\n"
+            "3. Descrição / Histórico\n"
+            "4. Nome do Serviço (Deve ser idêntico ao cadastrado)\n"
+            "5. Fonte de Recurso\n"
+            "6. Data de Emissão (DD/MM/AAAA)\n\n"
+            "Exemplo:\n"
+            "2025NE001; 5000,00; Empenho estimativo; Vigilância; 1.500; 02/01/2025"
+        )
         DarkMessageBox.info(self, "Instruções", instrucao)
+
         fname, _ = QFileDialog.getOpenFileName(self, "CSV Empenhos", "", "CSV (*.csv)")
         if not fname: return
         try:
@@ -6088,9 +6157,14 @@ class SistemaGestao(QMainWindow):
                 break
 
         instrucao = (
-            f"IMPORTANDO PARA: {nome_ciclo}\n\n"
+            f"IMPORTANDO PARA O CICLO: {nome_ciclo}\n\n"
             "ESTRUTURA DO CSV (Separador: ponto e vírgula ';')\n"
-            "Colunas: Descrição; Valor Total; [Valor Mensal (Opcional)]"
+            "Colunas necessárias:\n"
+            "1. Descrição do Serviço (Obrigatório)\n"
+            "2. Valor Total no Ciclo (Obrigatório)\n"
+            "3. Valor da Parcela Mensal (Opcional - Se vazio, será 0)\n\n"
+            "Exemplo:\n"
+            "Vigilância Armada; 120000,00; 10000,00"
         )
         DarkMessageBox.info(self, "Instruções", instrucao)
 
@@ -6139,12 +6213,15 @@ class SistemaGestao(QMainWindow):
             return
 
         instrucao = (
-            "ESTRUTURA DO CSV PARA PAGAMENTOS (Separador: ponto e vírgula ';')\n\n"
-            "O sistema buscará a Nota de Empenho pelo NÚMERO exato.\n"
-            "Colunas necessárias:\n"
-            "1. Número da NE (Deve já existir no contrato)\n"
-            "2. Valor do Pagamento (ex: 500,00)\n"
-            "3. Competência (MM/AAAA)\n"
+            "ESTRUTURA DO CSV PARA PAGAMENTOS (Separador: ';')\n\n"
+            "O sistema buscará a NE pelo NÚMERO exato.\n\n"
+            "Colunas:\n"
+            "1. Número da NE (Obrigatório)\n"
+            "2. Valor do Pagamento (Obrigatório)\n"
+            "3. Competência MM/AAAA (Obrigatório)\n"
+            "4. Justificativa / Observação (Opcional)\n\n"
+            "Exemplo:\n"
+            "2025NE001; 1500,50; 01/2025; Pagamento referente medição 1"
         )
         DarkMessageBox.info(self, "Instruções", instrucao)
 
@@ -6164,6 +6241,7 @@ class SistemaGestao(QMainWindow):
                     num_ne = row[0].strip()
                     valor_pg = parse_float_br(row[1])
                     competencia = row[2].strip()
+                    obs = row[3].strip() if len(row) > 3 else ""
 
                     # 1. Encontrar a NE
                     ne_alvo = None

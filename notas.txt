@@ -1,0 +1,10 @@
+v1.1 - Atualização de Funcionalidades
+
+✨ NOVIDADES:
+- Login: Adicionada opção "Lembrar meu CPF" para agilizar o acesso.
+- Importação: Agora é possível adicionar justificativas/observações ao importar Pagamentos via CSV.
+- Interface: Instruções de importação atualizadas e mais claras.
+
+🔧 MELHORIAS TÉCNICAS:
+- Verificação automática de atualizações ao iniciar.
+- Correção de bugs visuais nos diálogos (Tema Escuro).
