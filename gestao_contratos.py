@@ -15,7 +15,7 @@ import google.generativeai as genai
 import urllib.request
 
 # --- CONFIGURAÇÃO DE ATUALIZAÇÃO ---
-VERSAO_ATUAL = 1.0
+VERSAO_ATUAL = 1.1
 
 # O sistema lerá este arquivo para saber se há novidades
 
@@ -3792,7 +3792,7 @@ class SistemaGestao(QMainWindow):
             pass
 
         # Cria novos labels
-        self.lbl_versao_widget = QLabel("v1.0  ")
+        self.lbl_versao_widget = QLabel("v1.1  ")
         self.lbl_versao_widget.setStyleSheet("color: #888; font-size: 11px;")
 
         nome_curto = self.usuario_nome.split()[0]
@@ -4936,7 +4936,7 @@ class SistemaGestao(QMainWindow):
         m_ajuda.addAction("Verificar Atualizações...", self.verificar_updates)
 
         txt_sobre = (
-            "GC Gestor de Contratos - Versão 1.0\n"
+            "GC Gestor de Contratos - Versão 1.1\n"
             "Desenvolvido em Python/PyQt6\n\n"
             "Autor: Cássio de Souza Lopes, servo de Jesus Cristo ✝.\n"
             "Servidor da Secretaria Municipal de Saúde de Montes Claros(MG)\nMestre em Desenvolvimento Social (UNIMONTES)\nBacharel em Economia(UNIMONTES)\nGraduando em Análise e Desenvolvimento de Sistemas (UNINTER)\n"
