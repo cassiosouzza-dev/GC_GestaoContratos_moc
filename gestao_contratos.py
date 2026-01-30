@@ -74,6 +74,7 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QAbstractItemView, QDateEdit, QTabWidget, QMenu,
                              QCheckBox, QStackedWidget, QFrame, QFileDialog, QInputDialog,
                              QSpinBox, QTextEdit, QListWidgetItem, QColorDialog, QSlider, QGroupBox) 
+from PyQt6.QtWidgets import QSplashScreen, QProgressBar
 from PyQt6.QtCore import Qt, QDate, QEvent, QTimer, QThread, pyqtSignal
 from PyQt6.QtGui import QAction, QColor, QFont, QPalette, QIcon, QPixmap, QPainter
 
@@ -3551,7 +3552,8 @@ class DialogoLixeira(BaseDialog):
 # --- 3. SISTEMA PRINCIPAL ---
 
 class SistemaGestao(QMainWindow):
-    def __init__(self):
+    # Adicione "splash=None" aqui nos parênteses
+    def __init__(self, splash=None): 
         super().__init__()
         self.db_contratos = []
         self.db_prestadores = []
@@ -3561,26 +3563,25 @@ class SistemaGestao(QMainWindow):
         self.ne_selecionada = None
         self.arquivo_db = "dados_sistema.json"
         
-        # Variáveis do Usuário Atual
         self.usuario_nome = "Desconhecido"
         self.usuario_cpf = "000.000.000-00"
-
-        # --- CORREÇÃO DE INICIALIZAÇÃO ---
-        self.tema_escuro = False # Valor padrão
-
+        self.tema_escuro = False
         self.custom_bg = None
         self.custom_sel = None
         self.tamanho_fonte = 14
 
-        self.carregar_config()   # 1. Lê a config (incluindo tema e login)
-        
-        # 2. Aplica o visual sem inverter/salvar
+        self.carregar_config()
         self.aplicar_tema_visual()
         
-        # 3. Pede Login (agora o DialogoLogin vai ler o mesmo arquivo config.json)
-        self.fazer_login() 
+        # --- CORREÇÃO: FECHA A TELA DE CARREGAMENTO ANTES DO LOGIN ---
+        if splash:
+            splash.close() # Fecha a imagem do logo para liberar o Login
+        # -------------------------------------------------------------
         
+        self.fazer_login() 
         self.init_ui()
+        self.carregar_dados()
+
         self.carregar_dados()
 
         # INICIA O CONSULTOR COM OS DADOS CARREGADOS
@@ -7597,28 +7598,129 @@ class SistemaGestao(QMainWindow):
             self.salvar_dados()
             self.registrar_log("Segurança", "Alterou a própria senha")
 
+# --- NOVA CLASSE: TELA DE CARREGAMENTO (SPLASH SCREEN) ---
+# Coloque esta classe ANTES do if __name__ == "__main__":
+class TelaCarregamento(QSplashScreen):
+    def __init__(self):
+        # Cria um Pixmap vazio para base (fundo escuro)
+        pixmap = QPixmap(450, 280)
+        pixmap.fill(QColor("#1e1e1e")) 
+        super().__init__(pixmap)
+        
+        self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint)
+        self.setWindowFlag(Qt.WindowType.FramelessWindowHint)
+        
+        # Layout Principal
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(30, 30, 30, 30)
+        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        
+        # 1. Ícone do Programa
+        lbl_icon = QLabel()
+        caminho_script = os.path.dirname(os.path.abspath(__file__))
+        caminho_icone = os.path.join(caminho_script, "icon_gc.png")
+        if os.path.exists(caminho_icone):
+            pix = QPixmap(caminho_icone).scaled(90, 90, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+            lbl_icon.setPixmap(pix)
+        else:
+            lbl_icon.setText("📊")
+            lbl_icon.setStyleSheet("font-size: 70px;")
+        lbl_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(lbl_icon)
+        
+        layout.addSpacing(15)
+        
+        # 2. Título
+        lbl_titulo = QLabel("Gestão de Contratos")
+        lbl_titulo.setStyleSheet("color: #ffffff; font-size: 18px; font-weight: bold; font-family: 'Segoe UI';")
+        lbl_titulo.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(lbl_titulo)
 
+        # Versão
+        lbl_ver = QLabel(f"Versão {VERSAO_ATUAL}")
+        lbl_ver.setStyleSheet("color: #666; font-size: 10px; margin-bottom: 10px;")
+        lbl_ver.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(lbl_ver)
+        
+        # Info de carregamento
+        self.lbl_info = QLabel("Iniciando...")
+        self.lbl_info.setStyleSheet("color: #aaaaaa; font-size: 12px;")
+        self.lbl_info.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self.lbl_info)
+        
+        layout.addSpacing(15)
+        
+        # 3. Barra de Progresso
+        self.progress = QProgressBar()
+        self.progress.setTextVisible(False)
+        self.progress.setFixedHeight(4)
+        self.progress.setStyleSheet("""
+            QProgressBar {
+                background-color: #333333;
+                border-radius: 2px;
+                border: none;
+            }
+            QProgressBar::chunk {
+                background-color: #27ae60;
+                border-radius: 2px;
+            }
+        """)
+        layout.addWidget(self.progress)
+        
+    def atualizar_progresso(self, valor, mensagem=None):
+        self.progress.setValue(valor)
+        if mensagem:
+            self.lbl_info.setText(mensagem)
+        QApplication.processEvents()
+
+# ============================================================================
+# BLOCO PRINCIPAL (SUBSTITUI TUDO QUE ESTIVER ABAIXO NO ARQUIVO)
+# ============================================================================
 if __name__ == "__main__":
+    import time
+    
+    # 1. Tenta fechar a imagem estática do PyInstaller
+    try:
+        import pyi_splash
+        pyi_splash.update_text("Carregando interface...")
+        pyi_splash.close()
+    except:
+        pass
+
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
 
-    # --- ÍCONE DA APLICAÇÃO ---
-    # Define o ícone globalmente para a barra de tarefas
+    # Ícone Global
     caminho_script = os.path.dirname(os.path.abspath(__file__))
     caminho_icone = os.path.join(caminho_script, "icon_gc.png")
     if os.path.exists(caminho_icone):
         app.setWindowIcon(QIcon(caminho_icone))
-    # --------------------------------
 
-    win = SistemaGestao()
+    # 2. MOSTRA A TELA DE CARREGAMENTO
+    splash = TelaCarregamento()
+    splash.show()
+
+    # --- CARREGAMENTO VISUAL (ANTES DO LOGIN) ---
+    splash.atualizar_progresso(10, "Carregando configurações...")
+    time.sleep(0.3) 
+
+    splash.atualizar_progresso(30, "Verificando base de dados...")
+    time.sleep(0.3)
     
-    # 1. Força a criação do ID da janela (invisível) para podermos pintar antes de mostrar
+    splash.atualizar_progresso(70, "Carregando sistema...")
+    time.sleep(0.2)
+    
+    # 3. INICIA O SISTEMA
+    # Aqui passamos 'splash'. O __init__ do sistema vai fechar a splash
+    # automaticamente antes de abrir a janela de Login.
+    win = SistemaGestao(splash) 
+    
+    # Quando o código chega aqui, o usuário já logou e a splash já fechou.
+    # Não precisa mais atualizar progresso da splash.
+
+    # 4. PREPARA E MOSTRA A JANELA PRINCIPAL
     win.winId()
-    
-    # 2. Aplica a cor escura AGORA (antes de aparecer na tela)
     aplicar_estilo_janela(win)
-    
-    # 3. Abre Maximizada (Isso força o Windows a desenhar já com a cor certa)
     win.showMaximized()
     
     sys.exit(app.exec())
