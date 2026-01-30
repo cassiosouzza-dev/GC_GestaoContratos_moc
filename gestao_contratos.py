@@ -7779,48 +7779,61 @@ class TelaCarregamento(QSplashScreen):
         QApplication.processEvents()
 
 
+# ============================================================================
+# BLOCO PRINCIPAL (CORRIGIDO E OTIMIZADO)
+# ============================================================================
 if __name__ == "__main__":
-    # --- FUNÇÃO PARA ACHAR ARQUIVOS DENTRO DO EXE (CRUCIAL) ---
+    import time
+
+
+    # Função auxiliar para recursos (ícones) dentro do EXE
     def resource_path(relative_path):
-        """ Retorna o caminho absoluto, funcionando tanto em Dev quanto no EXE """
         try:
-            # PyInstaller cria uma pasta temporária e armazena o caminho em _MEIPASS
             base_path = sys._MEIPASS
         except Exception:
             base_path = os.path.abspath(".")
-
         return os.path.join(base_path, relative_path)
 
 
-    # ------------------------------------------------
-
+    # 1. Configurações Iniciais da App
     app = QApplication(sys.argv)
-    app.setStyle("Fusion")  # Mantém o estilo visual moderno que você já usa
+    app.setStyle("Fusion")
 
-    # 1. Configura o Ícone da Janela (Usando o .ico que o Windows prefere)
-    # O PyInstaller vai colocar esse arquivo na raiz do EXE com o comando --add-data
-    caminho_icone = resource_path("icon_gc.ico")
+    # Ícone da Janela e Barra de Tarefas
+    # Tenta carregar o .ico primeiro (melhor para Windows)
+    caminho_ico = resource_path("icon_gc.ico")
+    caminho_png = resource_path("icon_gc.png")
 
-    if os.path.exists(caminho_icone):
-        app.setWindowIcon(QIcon(caminho_icone))
-    else:
-        # Fallback: Tenta achar o PNG se o ICO falhar por algum motivo
-        caminho_png = resource_path("icon_gc.png")
-        if os.path.exists(caminho_png):
-            app.setWindowIcon(QIcon(caminho_png))
+    if os.path.exists(caminho_ico):
+        app.setWindowIcon(QIcon(caminho_ico))
+    elif os.path.exists(caminho_png):
+        app.setWindowIcon(QIcon(caminho_png))
 
-    # 2. Fecha a tela de Splash (Carregamento) se ela existir
-    # Isso evita que a imagem de abertura fique travada na tela
-    try:
-        import pyi_splash
+    #2. excluído*
 
-        pyi_splash.update_text("Iniciando o sistema...")
-        pyi_splash.close()
-    except ImportError:
-        pass
 
-    # 3. Inicia o Sistema
-    window = SistemaGestao()  # Certifique-se que sua classe principal chama 'SistemaGestao'
-    window.show()
+    # 3. Exibe a NOSSA Tela de Carregamento (Splash Personalizada)
+    splash = TelaCarregamento()
+    splash.show()
 
+    # Simulação de carregamento (Estética e funcional)
+    splash.atualizar_progresso(10, "Carregando configurações...")
+    time.sleep(0.3)
+
+    splash.atualizar_progresso(30, "Verificando base de dados...")
+    time.sleep(0.3)
+
+    splash.atualizar_progresso(70, "Iniciando sistema...")
+    time.sleep(0.2)
+
+    # 4. Inicia a Janela Principal
+    # Passamos 'splash' para que a janela principal possa fechá-lo quando estiver pronta
+    win = SistemaGestao(splash)
+
+    # Configurações finais da janela antes de mostrar
+    win.winId()  # Garante handle para o Windows
+    aplicar_estilo_janela(win)  # Força modo escuro na barra de título
+    win.showMaximized()  # Abre grandão
+
+    # 5. Loop da Aplicação
     sys.exit(app.exec())
