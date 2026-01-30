@@ -15,6 +15,16 @@ import google.generativeai as genai
 
 import urllib.request
 
+def resource_path(relative_path):
+    """ Retorna o caminho absoluto, funcionando tanto em Dev quanto no EXE """
+    try:
+        # PyInstaller cria uma pasta temporária e armazena o caminho em _MEIPASS
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+
+    return os.path.join(base_path, relative_path)
+
 # --- 2. ADICIONE ESTE BLOCO MÁGICO AQUI ---
 # Correção para o erro SSL: CERTIFICATE_VERIFY_FAILED
 # Isso permite que o EXE acesse o GitHub sem ter os certificados do Windows instalados
