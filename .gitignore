@@ -1,29 +1,56 @@
-# --- Python e Bytecode (Arquivos gerados automaticamente) ---
+# --- Python e Bytecode (Gerados automaticamente) ---
 __pycache__/
 *.py[cod]
 *$py.class
 
-# --- Ambientes Virtuais (Não envie isso para o Git!) ---
+# --- Ambientes Virtuais e Interpretadores Locais ---
 venv/
 .venv/
 env/
 .env
+# Ignora a pasta do Python Portátil se você a colocou dentro do projeto
+python-3.12.8-embed-amd64/
+python-3.12*/
 
-# --- Dados do Sistema (IMPORTANTE) ---
-# Ignora o banco de dados real para não expor seus contratos
+# --- PyInstaller (Arquivos de compilação do EXE) ---
+# Você não deve enviar o EXE nem as pastas de construção para o Git
+build/
+dist/
+*.spec
+
+# --- Arquivos de Configuração e Segredos (CRÍTICO: NÃO REMOVA ISSO) ---
+# Impede que suas senhas e chaves subam para o GitHub
+chave_api.txt
+credentials.json
+token.json
+client_secret.json
+
+# --- Dados do Sistema ---
+# Ignora o banco de dados real para manter a privacidade
 dados_sistema.json
+dados_gestao_contratos_db.json
+# Ignora backups locais
+*.bak
+backup_nuvem.json
 
-# Ignora as configurações locais (tema escuro/claro salvo)
+# --- Configurações Locais ---
 config.json
 
+# --- Arquivos Temporários de Atualização ---
+# O sistema cria isso enquanto atualiza, não precisa versionar
+updater.bat
+update_temp.exe
+debug_update.txt
+
 # --- Arquivos Temporários de Teste ---
-# Ignora os arquivos falsos criados pelos scripts de teste que fizemos
 dados_teste_unitario.json
 temp_test_db.json
+temp_undo_point.json
 
 # --- Arquivos Exportados (Relatórios) ---
-# Ignora CSVs que você exporta, para não poluir o repositório
 *.csv
+*.html
+*.pdf
 
 # --- IDEs e Editores ---
 .vscode/

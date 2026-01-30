@@ -1,9 +1,10 @@
-
 import sys
 import os
 import json
 import csv
 import ctypes
+import ssl  # <--- 1. ADICIONE ESTE IMPORT
+import subprocess
 from datetime import datetime
 
 # Seus módulos
@@ -13,6 +14,17 @@ import sinc
 import google.generativeai as genai
 
 import urllib.request
+
+# --- 2. ADICIONE ESTE BLOCO MÁGICO AQUI ---
+# Correção para o erro SSL: CERTIFICATE_VERIFY_FAILED
+# Isso permite que o EXE acesse o GitHub sem ter os certificados do Windows instalados
+try:
+    _create_unverified_https_context = ssl._create_unverified_context
+except AttributeError:
+    pass
+else:
+    ssl._create_default_https_context = _create_unverified_https_context
+# ------------------------------------------
 
 # --- CONFIGURAÇÃO DE ATUALIZAÇÃO ---
 VERSAO_ATUAL = 1.1
@@ -2410,7 +2422,14 @@ class DialogoLogin(BaseDialog):
             DarkMessageBox.critical(self, "Erro", f"Erro ao salvar: {e}")
 
     def get_config_path(self):
-        pasta_app = os.path.dirname(os.path.abspath(__file__))
+        # Verifica se está rodando como EXE ou Script
+        if getattr(sys, 'frozen', False):
+            # Se for EXE, pega a pasta onde o .exe está
+            pasta_app = os.path.dirname(sys.executable)
+        else:
+            # Se for Script (PyCharm), pega a pasta do arquivo .py
+            pasta_app = os.path.dirname(os.path.abspath(__file__))
+
         return os.path.join(pasta_app, "config.json")
 
     def carregar_ultimo_login(self):
@@ -2463,6 +2482,104 @@ class DialogoLogin(BaseDialog):
             with open(self.arquivo_db, 'r', encoding='utf-8-sig') as f:
                 d = json.load(f)
                 self.db_usuarios = d.get("usuarios", {})
+
+
+class DialogoAtualizacao(BaseDialog):
+    def __init__(self, versao_atual, versao_nova, notas_texto, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(f"Nova Versão {versao_nova} Disponível")
+        self.resize(600, 500)  # Janela maior por padrão
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(25, 25, 25, 25)
+        layout.setSpacing(15)
+
+        # --- CABEÇALHO ---
+        h_header = QHBoxLayout()
+
+        # Ícone (Foguete)
+        lbl_icon = QLabel("🚀")
+        lbl_icon.setStyleSheet("font-size: 48px;")
+        h_header.addWidget(lbl_icon)
+
+        # Textos do Cabeçalho
+        v_titles = QVBoxLayout()
+        lbl_titulo = QLabel("Uma atualização está pronta!")
+        lbl_titulo.setStyleSheet("font-size: 20px; font-weight: bold; color: #2c3e50;")
+
+        # Comparativo de Versão (Badge visual)
+        lbl_versao = QLabel(
+            f"Sua versão: {versao_atual}  ➜  Nova versão: <span style='color:#27ae60; font-weight:bold'>{versao_nova}</span>")
+        lbl_versao.setStyleSheet(
+            "font-size: 14px; color: #555; background-color: #f0f0f0; padding: 5px; border-radius: 4px;")
+
+        v_titles.addWidget(lbl_titulo)
+        v_titles.addWidget(lbl_versao)
+        h_header.addLayout(v_titles)
+        h_header.addStretch()
+
+        layout.addLayout(h_header)
+
+        # --- ÁREA DE NOVIDADES (SCROLLABLE) ---
+        layout.addWidget(QLabel("📝 O que há de novo nesta versão:"))
+
+        self.txt_notas = QTextEdit()
+        self.txt_notas.setReadOnly(True)
+        # Formata o texto que vem do arquivo para HTML básico se não vier formatado
+        html_notas = notas_texto.replace("\n", "<br>")
+        # Estilo da caixa de texto
+        self.txt_notas.setStyleSheet("""
+            QTextEdit {
+                background-color: #ffffff;
+                color: #333333;
+                border: 1px solid #cccccc;
+                border-radius: 5px;
+                padding: 10px;
+                font-family: 'Segoe UI', sans-serif;
+                font-size: 13px;
+            }
+        """)
+        self.txt_notas.setHtml(f"<div style='line-height: 1.6;'>{html_notas}</div>")
+        layout.addWidget(self.txt_notas)
+
+        # --- RODAPÉ ---
+        lbl_aviso = QLabel("⚠️ O sistema precisará ser fechado automaticamente para aplicar a atualização.")
+        lbl_aviso.setStyleSheet("color: #e67e22; font-weight: bold; font-size: 12px;")
+        lbl_aviso.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(lbl_aviso)
+
+        # --- BOTÕES ---
+        h_btns = QHBoxLayout()
+        h_btns.addStretch()
+
+        btn_cancelar = QPushButton("Lembrar Depois")
+        btn_cancelar.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_cancelar.setMinimumHeight(40)
+        btn_cancelar.setFixedWidth(180)
+        btn_cancelar.clicked.connect(self.reject)
+
+        btn_atualizar = QPushButton("✅ Atualizar Agora")
+        btn_atualizar.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_atualizar.setMinimumHeight(40)
+        btn_atualizar.setFixedWidth(180)
+        btn_atualizar.setStyleSheet("""
+            QPushButton {
+                background-color: #27ae60; 
+                color: white; 
+                font-weight: bold; 
+                font-size: 14px;
+                border-radius: 5px;
+            }
+            QPushButton:hover { background-color: #2ecc71; }
+        """)
+        btn_atualizar.clicked.connect(self.accept)
+
+        h_btns.addWidget(btn_cancelar)
+        h_btns.addWidget(btn_atualizar)
+
+        layout.addLayout(h_btns)
+
+        aplicar_estilo_janela(self)
 
 class DialogoTrocarSenha(BaseDialog):
     def __init__(self, db_usuarios, cpf_usuario, parent=None):
@@ -3552,17 +3669,18 @@ class DialogoLixeira(BaseDialog):
 # --- 3. SISTEMA PRINCIPAL ---
 
 class SistemaGestao(QMainWindow):
-    # Adicione "splash=None" aqui nos parênteses
-    def __init__(self, splash=None): 
+    def __init__(self, splash=None):
         super().__init__()
+        # ... (suas variáveis iniciais continuam aqui: db_contratos, etc.) ...
         self.db_contratos = []
         self.db_prestadores = []
-        self.db_logs = [] 
+        self.db_logs = []
         self.lista_alertas = []
         self.contrato_selecionado = None
         self.ne_selecionada = None
         self.arquivo_db = "dados_sistema.json"
-        
+
+        # Padrões
         self.usuario_nome = "Desconhecido"
         self.usuario_cpf = "000.000.000-00"
         self.tema_escuro = False
@@ -3572,15 +3690,49 @@ class SistemaGestao(QMainWindow):
 
         self.carregar_config()
         self.aplicar_tema_visual()
-        
-        # --- CORREÇÃO: FECHA A TELA DE CARREGAMENTO ANTES DO LOGIN ---
+
+        # Fecha a splash
         if splash:
-            splash.close() # Fecha a imagem do logo para liberar o Login
-        # -------------------------------------------------------------
-        
-        self.fazer_login() 
+            splash.close()
+
+        # --- LÓGICA DE AUTO-LOGIN PÓS-UPDATE ---
+        auto_login_sucesso = False
+
+        # Verifica se o programa foi aberto pelo atualizador
+        if "--post-update" in sys.argv:
+            # Tenta ler quem estava logado por último no config.json
+            caminho_cfg = self.get_config_path()
+            if os.path.exists(caminho_cfg):
+                try:
+                    with open(caminho_cfg, "r", encoding='utf-8') as f:
+                        cfg = json.load(f)
+                        last = cfg.get("ultimo_usuario", {})
+                        cpf_salvo = last.get("cpf", "")
+
+                        # Se tiver um CPF salvo (mesmo que não marcou 'lembrar', podemos usar a config antiga)
+                        # Ou usamos a lógica de que o config já salvou o último válido
+                        if cpf_salvo:
+                            # Carrega dados do banco para pegar o nome correto
+                            # Precisamos ler o arquivo de dados rapidamente aqui
+                            if os.path.exists(self.arquivo_db):
+                                with open(self.arquivo_db, 'r', encoding='utf-8-sig') as fdb:
+                                    db_data = json.load(fdb)
+                                    users = db_data.get("usuarios", {})
+                                    if cpf_salvo in users:
+                                        self.usuario_cpf = cpf_salvo
+                                        self.usuario_nome = users[cpf_salvo]['nome']
+                                        auto_login_sucesso = True
+                except:
+                    pass
+
+        # Se não foi auto-login, abre a tela normal
+        if not auto_login_sucesso:
+            self.fazer_login()
+            # ---------------------------------------
+
         self.init_ui()
-        self.carregar_dados()
+
+        # ... resto do código ...
 
         self.carregar_dados()
 
@@ -3784,25 +3936,34 @@ class SistemaGestao(QMainWindow):
             sys.exit()
 
     def atualizar_barra_status(self):
-        """Atualiza o rodapé com o novo nome de usuário"""
-        # Remove widgets antigos da direita para não acumular
+        """Atualiza o rodapé com Usuário, Versão e Base de Dados"""
+        # Remove widgets antigos para não duplicar
         try:
             self.status_bar.removeWidget(self.lbl_usuario_widget)
             self.status_bar.removeWidget(self.lbl_versao_widget)
+            self.status_bar.removeWidget(self.lbl_db_widget)  # Remove o antigo se houver
         except:
             pass
 
-        # Cria novos labels
-        self.lbl_versao_widget = QLabel("v1.1  ")
-        self.lbl_versao_widget.setStyleSheet("color: #888; font-size: 11px;")
+        # 1. Widget da Base de Dados (Novo)
+        nome_base = os.path.basename(self.arquivo_db)
+        self.lbl_db_widget = QLabel(f"📂 {nome_base}   |   ")
+        self.lbl_db_widget.setStyleSheet("color: #7f8c8d; font-size: 11px;")
+        self.lbl_db_widget.setToolTip(f"Caminho completo: {self.arquivo_db}")
 
+        # 2. Widget do Usuário
         nome_curto = self.usuario_nome.split()[0]
-        self.lbl_usuario_widget = QLabel(f"👤 {nome_curto}  ")
+        self.lbl_usuario_widget = QLabel(f"👤 {nome_curto}   |   ")
         self.lbl_usuario_widget.setStyleSheet("color: #2c3e50; font-weight: bold; font-size: 11px;")
 
-        # Adiciona novamente
-        self.status_bar.addPermanentWidget(self.lbl_usuario_widget)
-        self.status_bar.addPermanentWidget(self.lbl_versao_widget)
+        # 3. Widget da Versão
+        self.lbl_versao_widget = QLabel(f"v{VERSAO_ATUAL}  ")
+        self.lbl_versao_widget.setStyleSheet("color: #888; font-size: 11px;")
+
+        # Adiciona na ordem (da esquerda para direita no canto direito)
+        self.status_bar.addPermanentWidget(self.lbl_db_widget)  # Banco
+        self.status_bar.addPermanentWidget(self.lbl_usuario_widget)  # Usuário
+        self.status_bar.addPermanentWidget(self.lbl_versao_widget)  # Versão
 
     def registrar_log(self, acao, detalhe):
         """Cria um registro de auditoria e salva na memória"""
@@ -3822,6 +3983,191 @@ class SistemaGestao(QMainWindow):
         if dial.exec():
             self.salvar_dados()
             self.filtrar_contratos()  # Atualiza a tela principal para mostrar o que foi restaurado
+
+    # ------------------------------------------------------------------------
+    # MÓDULO DE ATUALIZAÇÃO (SEM REINÍCIO AUTOMÁTICO - MAIS SEGURO)
+    # ------------------------------------------------------------------------
+
+    def verificar_updates(self, silencioso=False):
+        """Verifica se há atualizações e avisa que o sistema precisará ser fechado."""
+        if not silencioso:
+            self.status_bar.showMessage("Buscando atualizações...")
+        QApplication.processEvents()
+
+        try:
+            # Contexto SSL (ignora erros de certificado)
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+
+            with urllib.request.urlopen(URL_VERSAO_TXT, context=ctx) as response:
+                versao_remota = float(response.read().decode('utf-8').strip())
+
+            if versao_remota > VERSAO_ATUAL:
+                self.status_bar.showMessage(f"Nova versão {versao_remota} encontrada!")
+
+                # Baixa novidades
+                novidades = "Atualização disponível."
+                try:
+                    with urllib.request.urlopen(URL_NOTAS_TXT, context=ctx) as r:
+                        novidades = r.read().decode('utf-8')
+                except:
+                    pass
+
+                # MENSAGEM CLARA DE QUE VAI FECHAR
+                msg_html = (
+                    f"<h3>🚀 Nova Versão {versao_remota} Disponível!</h3>"
+                    f"<p>Sua versão: <b>{VERSAO_ATUAL}</b></p>"
+                    f"<hr><b>📝 O QUE MUDOU:</b><br>"
+                    f"<pre style='color:#333'>{novidades}</pre><hr>"
+                    f"⚠️ <b>ATENÇÃO:</b> Ao confirmar, o sistema baixará a atualização e <b>fechará sozinho</b>.<br>"
+                    f"Você deverá abrir o programa novamente após alguns segundos.<br><br>"
+                    f"<b>Deseja atualizar agora?</b>"
+                )
+
+                box = DarkMessageBox(self)
+                box.setWindowTitle("Atualização")
+                box.setText(msg_html)
+                box.setIcon(QMessageBox.Icon.Information)
+                btn_sim = box.addButton("✅ Atualizar e Fechar", QMessageBox.ButtonRole.YesRole)
+                box.addButton("Lembrar Depois", QMessageBox.ButtonRole.NoRole)
+
+                box.exec()
+
+                if box.clickedButton() == btn_sim:
+                    self.realizar_atualizacao_automatica()
+                else:
+                    self.status_bar.showMessage("Atualização adiada.")
+
+            else:
+                if not silencioso:
+                    DarkMessageBox.info(self, "Tudo em dia", f"Você já tem a versão mais recente ({VERSAO_ATUAL}).")
+                else:
+                    self.status_bar.showMessage(f"Sistema atualizado (v{VERSAO_ATUAL}).")
+
+        except Exception as e:
+            if not silencioso:
+                DarkMessageBox.warning(self, "Erro", f"Não foi possível verificar updates: {e}")
+
+    def realizar_atualizacao_automatica(self):
+        """Baixa, prepara o BAT e fecha o sistema com limpeza de ambiente."""
+
+        # --- LOG PARA DEBUG ---
+        def log_debug(msg):
+            try:
+                base = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.path.dirname(
+                    os.path.abspath(__file__))
+                with open(os.path.join(base, "debug_update.txt"), "a") as f:
+                    f.write(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}\n")
+            except:
+                pass
+
+        # ----------------------
+
+        # Janela de Progresso
+        d_prog = BaseDialog(self)
+        d_prog.setWindowTitle("Atualizando")
+        d_prog.resize(350, 100)
+        l_p = QVBoxLayout(d_prog)
+        l_p.addWidget(QLabel("Baixando atualização...\nPor favor, não feche esta janela."))
+        pbar = QProgressBar()
+        pbar.setValue(0)
+        l_p.addWidget(pbar)
+        d_prog.show()
+        QApplication.processEvents()
+
+        # Caminhos
+        if getattr(sys, 'frozen', False):
+            exe_atual = sys.executable
+            pasta_atual = os.path.dirname(exe_atual)
+            nome_exe = os.path.basename(exe_atual)
+        else:
+            exe_atual = sys.executable
+            pasta_atual = os.path.dirname(os.path.abspath(__file__))
+            nome_exe = "GC_Gestor_v1.exe"
+
+        caminho_novo = os.path.join(pasta_atual, "update_temp.exe")
+        caminho_bat = os.path.join(pasta_atual, "updater.bat")
+        caminho_exe_final = os.path.join(pasta_atual, nome_exe)
+
+        try:
+            log_debug("Iniciando download...")
+
+            # Download Seguro
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            req = urllib.request.Request(URL_NOVO_EXE, headers={'User-Agent': 'Mozilla/5.0'})
+
+            with urllib.request.urlopen(req, context=ctx) as response:
+                total_len = int(response.info().get('Content-Length', 0))
+                downloaded = 0
+
+                with open(caminho_novo, 'wb') as f:
+                    while True:
+                        chunk = response.read(8192)
+                        if not chunk: break
+                        f.write(chunk)
+                        downloaded += len(chunk)
+                        if total_len > 0:
+                            pbar.setValue(int(downloaded / total_len * 100))
+                        QApplication.processEvents()
+
+            log_debug("Download OK. Criando BAT...")
+            d_prog.close()
+
+            # --- SCRIPT BAT MELHORADO ---
+            # Adicionamos um delay inicial maior e garantimos a troca
+            # O comando 'start' é opcional, deixei sem conforme seu pedido,
+            # mas removi aspas extras que poderiam causar erro.
+            script_bat = f"""@echo off
+    timeout /t 2 >nul
+    :LOOP
+    taskkill /F /PID {os.getpid()} >nul 2>&1
+    timeout /t 1 >nul
+    del "{caminho_exe_final}" >nul 2>&1
+    if exist "{caminho_exe_final}" goto LOOP
+
+    move /Y "{caminho_novo}" "{caminho_exe_final}"
+    del "%~f0"
+    """
+            with open(caminho_bat, "w") as f:
+                f.write(script_bat)
+
+            log_debug("BAT criado.")
+
+            DarkMessageBox.info(self, "Sucesso",
+                                "Atualização baixada!\n\n"
+                                "O sistema irá fechar para aplicar a atualização.\n"
+                                "Aguarde 5 segundos e abra o sistema novamente.")
+
+            # --- SEGREDO 2: LIMPEZA DE AMBIENTE ANTES DE CHAMAR O BAT ---
+            # O PyInstaller define variáveis que confundem subprocessos. Vamos limpá-las.
+            env_limpo = os.environ.copy()
+            keys_to_remove = ['_MEIPASS2', 'LD_LIBRARY_PATH', 'LIBPATH']
+            for key in keys_to_remove:
+                env_limpo.pop(key, None)
+
+            if os.name == 'nt':
+                si = subprocess.STARTUPINFO()
+                si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                si.wShowWindow = subprocess.SW_HIDE
+                # Passamos o env=env_limpo para garantir que o BAT rode "limpo"
+                subprocess.Popen([caminho_bat], startupinfo=si, creationflags=subprocess.CREATE_NO_WINDOW, shell=True,
+                                 env=env_limpo)
+
+            sys.exit(0)
+
+        except Exception as e:
+            if 'd_prog' in locals(): d_prog.close()
+            log_debug(f"ERRO: {e}")
+            if os.path.exists(caminho_novo):
+                try:
+                    os.remove(caminho_novo)
+                except:
+                    pass
+
+            DarkMessageBox.critical(self, "Erro", f"Falha na atualização:\n{e}")
 
     def carregar_config(self):
         caminho = self.get_config_path()
@@ -3881,8 +4227,12 @@ class SistemaGestao(QMainWindow):
             print(f"Erro ao salvar config: {e}")
 
     def get_config_path(self):
-        """Retorna o caminho exato do config.json na mesma pasta do script"""
-        pasta_app = os.path.dirname(os.path.abspath(__file__))
+        """Retorna o caminho exato do config.json na mesma pasta do executável"""
+        if getattr(sys, 'frozen', False):
+            pasta_app = os.path.dirname(sys.executable)
+        else:
+            pasta_app = os.path.dirname(os.path.abspath(__file__))
+
         return os.path.join(pasta_app, "config.json")
 
     def salvar_config(self):
@@ -4110,17 +4460,15 @@ class SistemaGestao(QMainWindow):
         dial = DialogoNotificacoes(self.lista_alertas, self.ia, parent=self)
         dial.exec()
 
-
     def carregar_dados(self):
-        # Atualiza título para saber qual base está ativa
-        nome_base = os.path.basename(self.arquivo_db)
-        self.setWindowTitle(f"Gestão de Contratos - [Base: {nome_base}]")
+        # Define o título fixo, limpo
+        self.setWindowTitle("Gestão de Contratos")
 
         if not os.path.exists(self.arquivo_db): return
         try:
             with open(self.arquivo_db, 'r', encoding='utf-8-sig') as f:
                 raw_data = json.load(f)
-                
+
                 if isinstance(raw_data, list):
                     self.db_contratos = [Contrato.from_dict(d) for d in raw_data]
                     self.db_logs = []
@@ -4132,6 +4480,10 @@ class SistemaGestao(QMainWindow):
 
             self.filtrar_contratos()
             self.processar_alertas()
+
+            # ATUALIZA O RODAPÉ PARA MOSTRAR O NOME DO ARQUIVO CARREGADO
+            self.atualizar_barra_status()
+
         except Exception as e:
             self.db_usuarios = {}
             DarkMessageBox.critical(self, "Erro ao Carregar", f"Erro: {str(e)}")
@@ -4139,10 +4491,10 @@ class SistemaGestao(QMainWindow):
     def alternar_base_dados(self):
         # 1. Salva a base atual antes de trocar
         self.salvar_dados()
-        
+
         # 2. Pede o novo arquivo
         fname, _ = QFileDialog.getOpenFileName(self, "Selecionar Base de Dados", "", "JSON Files (*.json)")
-        
+
         if fname:
             # Verifica se é o mesmo
             if os.path.abspath(fname) == os.path.abspath(self.arquivo_db):
@@ -4151,20 +4503,16 @@ class SistemaGestao(QMainWindow):
 
             # 3. Troca o caminho do arquivo alvo
             self.arquivo_db = fname
-            
+
             # 4. Recarrega tudo
             self.db_contratos = []
             self.db_logs = []
             self.contrato_selecionado = None
             self.ne_selecionada = None
-            
-            self.carregar_dados() # Vai ler do novo self.arquivo_db
-            
-            # Atualiza Título da Janela
-            nome_arquivo = os.path.basename(self.arquivo_db)
-            self.setWindowTitle(f"Gestão de Contratos - [Base: {nome_arquivo}]")
-            
-            DarkMessageBox.info(self, "Base Trocada", f"Agora você está usando a base:\n{nome_arquivo}")
+
+            self.carregar_dados()  # Isso já vai atualizar o rodapé automaticamente
+
+            DarkMessageBox.info(self, "Base Trocada", f"Agora você está usando a base:\n{os.path.basename(fname)}")
 
     def sincronizar_nuvem(self):
         try:
@@ -5961,107 +6309,6 @@ class SistemaGestao(QMainWindow):
         except:
             DarkMessageBox.warning(self, "Erro", "Não foi possível abrir a calculadora do sistema.")
 
-        # Altere a definição para aceitar o parâmetro 'silencioso'
-
-    def verificar_updates(self, silencioso=False):
-        self.status_bar.showMessage("Buscando atualizações...")
-        QApplication.processEvents()
-
-        try:
-            # 1. Verifica o NÚMERO da versão
-            with urllib.request.urlopen(URL_VERSAO_TXT) as response:
-                versao_remota = float(response.read().decode('utf-8').strip())
-
-            # 2. Compara
-            if versao_remota > VERSAO_ATUAL:
-                # 3. Se tem update, tenta baixar as NOTAS (Changelog)
-                novidades = "Melhorias gerais e correções de bugs."  # Texto padrão
-                try:
-                    with urllib.request.urlopen(URL_NOTAS_TXT) as resp_notas:
-                        novidades = resp_notas.read().decode('utf-8')
-                except:
-                    pass  # Se der erro lendo a nota, usa o texto padrão
-
-                # 4. Monta a mensagem bonita
-                msg = (
-                    f"<h3>🚀 Uma nova versão ({versao_remota}) está disponível!</h3>"
-                    f"<p>Você está usando a versão {VERSAO_ATUAL}.</p>"
-                    f"<hr>"
-                    f"<b>O QUE HÁ DE NOVO:</b><br>"
-                    f"<pre>{novidades}</pre>"  # <pre> mantém a formatação do texto
-                    f"<hr>"
-                    f"<p>Deseja baixar e instalar agora? O sistema será reiniciado.</p>"
-                )
-
-                # Exibe o alerta (mesmo se for silencioso, pois é importante)
-                box = DarkMessageBox(self)
-                box.setWindowTitle("Atualização Disponível")
-                box.setText(msg)  # Aceita HTML básico
-                box.setIcon(QMessageBox.Icon.Information)
-                btn_sim = box.addButton("Sim, Atualizar Agora", QMessageBox.ButtonRole.YesRole)
-                btn_nao = box.addButton("Depois", QMessageBox.ButtonRole.NoRole)
-                box.exec()
-
-                if box.clickedButton() == btn_sim:
-                    self.realizar_atualizacao_automatica()
-                else:
-                    self.status_bar.showMessage("Atualização pendente.")
-
-            else:
-                self.status_bar.showMessage(f"Seu sistema está atualizado (v{VERSAO_ATUAL}).")
-                if not silencioso:
-                    DarkMessageBox.info(self, "Tudo em dia", f"Você já tem a versão mais recente ({VERSAO_ATUAL}).")
-
-        except Exception as e:
-            self.status_bar.showMessage("Erro ao buscar atualizações.")
-            if not silencioso:
-                DarkMessageBox.warning(self, "Conexão", f"Não foi possível verificar atualizações.\nErro: {str(e)}")
-
-    def realizar_atualizacao_automatica(self):
-        # Janela de Progresso
-        d_prog = BaseDialog(self)
-        d_prog.setWindowTitle("Atualizando...")
-        d_prog.resize(300, 100)
-        l_p = QVBoxLayout(d_prog)
-        lbl_status = QLabel("Baixando nova versão... Aguarde.")
-        l_p.addWidget(lbl_status)
-        d_prog.show()
-        QApplication.processEvents()
-
-        novo_arquivo = "update_temp.exe"
-
-        try:
-            # 1. Baixa o arquivo novo
-            urllib.request.urlretrieve(URL_NOVO_EXE, novo_arquivo)
-
-            lbl_status.setText("Finalizando...")
-            d_prog.close()
-
-            # 2. Prepara o Script de Troca (BAT)
-            # Este script roda fora do Python para poder deletar o executável antigo
-            nome_atual = os.path.basename(sys.executable)  # Pega o nome do exe atual
-            if not nome_atual.endswith(".exe"): nome_atual = NOME_EXECUTAVEL  # Fallback se rodar em script
-
-            script_bat = f"""
-            @echo off
-            timeout /t 2 >nul
-            del "{nome_atual}"
-            rename "{novo_arquivo}" "{nome_atual}"
-            start "{nome_atual}"
-            del "%~f0"
-            """
-
-            with open("updater.bat", "w") as f:
-                f.write(script_bat)
-
-            # 3. Executa o BAT e mata o processo atual
-            os.startfile("updater.bat")
-            sys.exit(0)
-
-        except Exception as e:
-            d_prog.close()
-            if os.path.exists(novo_arquivo): os.remove(novo_arquivo)
-            DarkMessageBox.critical(self, "Falha na Atualização", f"Erro ao baixar/instalar: {str(e)}")
 
     def verificar_integridade(self):
         # Uma função "fake" mas útil que finge verificar o banco
