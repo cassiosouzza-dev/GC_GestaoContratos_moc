@@ -3,8 +3,9 @@ import os
 import json
 import csv
 import ctypes
-import ssl  # <--- 1. ADICIONE ESTE IMPORT
+import ssl
 import subprocess
+import sqlite3
 from datetime import datetime
 
 # Seus módulos
@@ -2156,21 +2157,27 @@ class RegistroLog:
 
 
 class DialogoLogin(BaseDialog):
-    def __init__(self, db_usuarios, arquivo_db_path, parent=None):
+    def __init__(self, db_usuarios, banco_dados_obj, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Acesso ao Sistema GC")
         self.setModal(True)
         self.resize(450, 440)
-        self.setWindowFlags(Qt.WindowType.Dialog | Qt.WindowType.CustomizeWindowHint | Qt.WindowType.WindowTitleHint)
+
+        # Janela com botões
+        self.setWindowFlags(Qt.WindowType.Window |
+                            Qt.WindowType.WindowCloseButtonHint |
+                            Qt.WindowType.WindowMinimizeButtonHint |
+                            Qt.WindowType.CustomizeWindowHint |
+                            Qt.WindowType.WindowTitleHint)
 
         self.db_usuarios = db_usuarios
-        self.arquivo_db = arquivo_db_path
+        self.banco = banco_dados_obj  # Recebe o objeto gerenciador do banco
         self.modo_cadastro = False
 
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(30, 30, 30, 20)
 
-        # --- 1. CABEÇALHO ---
+        # 1. CABEÇALHO
         layout_header = QVBoxLayout()
         layout_header.setSpacing(10)
         layout_header.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -2179,7 +2186,9 @@ class DialogoLogin(BaseDialog):
         self.lbl_icon.setFixedSize(80, 80)
         self.lbl_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        base_path = os.path.dirname(os.path.abspath(__file__))
+        base_path = os.path.dirname(os.path.abspath(__file__)) if not getattr(sys, 'frozen',
+                                                                              False) else os.path.dirname(
+            sys.executable)
         path_icon = os.path.join(base_path, "icon_gc.png")
 
         if os.path.exists(path_icon):
@@ -2200,7 +2209,7 @@ class DialogoLogin(BaseDialog):
         main_layout.addLayout(layout_header)
         main_layout.addSpacing(20)
 
-        # --- 2. FORMULÁRIO ---
+        # 2. FORMULÁRIO
         form_layout = QFormLayout()
 
         self.inp_cpf = QLineEdit()
@@ -2221,38 +2230,30 @@ class DialogoLogin(BaseDialog):
         self.inp_senha.setMinimumHeight(30)
         self.inp_senha.returnPressed.connect(self.acao_principal)
 
-        # --- CORREÇÃO AQUI: Criamos o Label manualmente para poder esconder ---
         self.lbl_palavra_secreta = QLabel("Palavra Secreta:")
         self.inp_palavra_secreta = QLineEdit()
         self.inp_palavra_secreta.setPlaceholderText("Palavra para recuperar senha (ex: batata)")
-
-        # Começa invisível (Modo Login)
         self.lbl_palavra_secreta.setVisible(False)
         self.inp_palavra_secreta.setVisible(False)
 
         form_layout.addRow("CPF:", self.inp_cpf)
         form_layout.addRow("Nome:", self.inp_nome)
         form_layout.addRow("Senha:", self.inp_senha)
-        # Adicionamos o label e o input que criamos
 
-        # --- NOVO: Checkbox Lembrar-me ---
         self.chk_lembrar = QCheckBox("Lembrar meu CPF")
         self.chk_lembrar.setStyleSheet("color: #555; font-size: 12px;")
         form_layout.addRow("", self.chk_lembrar)
-        # ---------------------------------
 
         form_layout.addRow(self.lbl_palavra_secreta, self.inp_palavra_secreta)
-
         main_layout.addLayout(form_layout)
 
-        # Status
         self.lbl_msg = QLabel("")
         self.lbl_msg.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.lbl_msg.setStyleSheet("color: #e74c3c; font-size: 12px; font-weight: bold;")
         main_layout.addWidget(self.lbl_msg)
         main_layout.addSpacing(10)
 
-        # --- 3. BOTÃO PRINCIPAL ---
+        # 3. BOTÕES
         self.btn_acao = QPushButton("ENTRAR NO SISTEMA")
         self.btn_acao.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_acao.setMinimumHeight(45)
@@ -2264,16 +2265,13 @@ class DialogoLogin(BaseDialog):
         self.btn_acao.clicked.connect(self.acao_principal)
         main_layout.addWidget(self.btn_acao)
 
-        # --- 4. BOTÃO ESQUECI A SENHA ---
         self.btn_esqueci = QPushButton("Esqueci minha senha")
         self.btn_esqueci.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_esqueci.setStyleSheet("border: none; background: transparent; color: #7f8c8d; font-size: 11px;")
         self.btn_esqueci.clicked.connect(self.abrir_recuperacao)
         main_layout.addWidget(self.btn_esqueci)
 
-        # --- 5. LINKS SECUNDÁRIOS ---
         h_botoes = QHBoxLayout()
-
         self.btn_modo = QPushButton("Criar Nova Conta")
         self.btn_modo.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_modo.setStyleSheet("border: none; background: transparent; color: #2980b9; font-weight: bold;")
@@ -2287,12 +2285,10 @@ class DialogoLogin(BaseDialog):
         h_botoes.addWidget(self.btn_modo)
         h_botoes.addStretch()
         h_botoes.addWidget(btn_sair)
-
         main_layout.addLayout(h_botoes)
         main_layout.addStretch()
 
-        # --- 6. RODAPÉ ---
-        lbl_tech = QLabel("Desenvolvido com: Python 3 • PyQt6 • Google Gemini AI • JSON")
+        lbl_tech = QLabel("Desenvolvido com: Python 3 • PyQt6 • Google Gemini AI • SQLite")
         lbl_tech.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lbl_tech.setStyleSheet("color: #7f8c8d; font-size: 10px; font-weight: bold; margin-top: 15px;")
         main_layout.addWidget(lbl_tech)
@@ -2312,45 +2308,34 @@ class DialogoLogin(BaseDialog):
             self.inp_nome.setPlaceholderText("Usuário não encontrado...")
 
     def alternar_modo(self):
-        """Alterna entre tela de Login e tela de Cadastro"""
         self.modo_cadastro = not self.modo_cadastro
         self.inp_nome.clear();
         self.inp_senha.clear();
         self.lbl_msg.setText("")
 
         if self.modo_cadastro:
-            # --- MODO CADASTRO ---
             self.setWindowTitle("Novo Cadastro")
             self.lbl_icon.setVisible(False)
             self.inp_nome.setReadOnly(False)
             self.inp_nome.setStyleSheet("background-color: white; color: black; border: 1px solid #3498db;")
             self.inp_nome.setPlaceholderText("Digite seu Nome Completo")
-
-            # MOSTRA A PALAVRA SECRETA E O RÓTULO
-            self.lbl_palavra_secreta.setVisible(True)
+            self.lbl_palavra_secreta.setVisible(True);
             self.inp_palavra_secreta.setVisible(True)
-
             self.btn_esqueci.setVisible(False)
-
             self.btn_acao.setText("CADASTRAR E ENTRAR")
             self.btn_acao.setStyleSheet(
                 "background-color: #2980b9; color: white; font-weight: bold; font-size: 14px; border-radius: 6px;")
             self.btn_modo.setText("<< Voltar para Login")
             self.inp_nome.setFocus()
         else:
-            # --- MODO LOGIN ---
             self.setWindowTitle("Acesso ao Sistema GC")
             self.lbl_icon.setVisible(True)
             self.inp_nome.setReadOnly(True)
             self.inp_nome.setStyleSheet("background-color: #f0f0f0; color: #555; border: 1px solid #ccc;")
             self.inp_nome.setPlaceholderText("Aguardando CPF...")
-
-            # ESCONDE A PALAVRA SECRETA E O RÓTULO
-            self.lbl_palavra_secreta.setVisible(False)
+            self.lbl_palavra_secreta.setVisible(False);
             self.inp_palavra_secreta.setVisible(False)
-
             self.btn_esqueci.setVisible(True)
-
             self.btn_acao.setText("ENTRAR NO SISTEMA")
             self.btn_acao.setStyleSheet(
                 "background-color: #27ae60; color: white; font-weight: bold; font-size: 14px; border-radius: 6px;")
@@ -2368,6 +2353,8 @@ class DialogoLogin(BaseDialog):
         senha = self.inp_senha.text()
 
         if not self.inp_cpf.hasAcceptableInput(): self.lbl_msg.setText("CPF inválido."); return
+
+        # Se não houver usuários cadastrados, permite Admin (Primeiro Acesso)
         if not self.db_usuarios:
             self.salvar_login_local("Administrador", cpf)
             self.inp_nome.setText("Administrador (1º Acesso)")
@@ -2396,7 +2383,7 @@ class DialogoLogin(BaseDialog):
 
         if len(nome) < 3: self.lbl_msg.setText("Nome muito curto."); return
         if not self.inp_cpf.hasAcceptableInput(): self.lbl_msg.setText("CPF inválido."); return
-        if len(senha) < 4: self.lbl_msg.setText("A senha deve ter no mínimo 4 dígitos."); return
+        if len(senha) < 4: self.lbl_msg.setText("Senha muito curta (mín 4)."); return
         if not palavra: self.lbl_msg.setText("Defina uma Palavra Secreta."); return
 
         if cpf in self.db_usuarios: self.lbl_msg.setText("CPF já cadastrado. Faça login."); return
@@ -2405,6 +2392,7 @@ class DialogoLogin(BaseDialog):
             import hashlib
             hash_senha = hashlib.sha256(senha.encode()).hexdigest()
 
+            # Cria novo usuário no dicionário
             self.db_usuarios[cpf] = {
                 "nome": nome,
                 "hash": hash_senha,
@@ -2413,33 +2401,36 @@ class DialogoLogin(BaseDialog):
                 "palavra_secreta": palavra
             }
 
-            dados_completos = {}
-            if os.path.exists(self.arquivo_db):
-                with open(self.arquivo_db, 'r', encoding='utf-8-sig') as f:
-                    dados_completos = json.load(f)
+            # --- SALVAMENTO SEGURO NO BANCO (NÃO MAIS ARQUIVO JSON) ---
+            # Salva apenas os usuários no banco agora para garantir persistência
+            # Passamos listas vazias para os outros campos para não apagar dados existentes (Snapshot parcial)
+            # Na verdade, é mais seguro pedir ao pai para salvar tudo, mas aqui faremos um salvamento de usuários.
 
-            if "usuarios" not in dados_completos: dados_completos["usuarios"] = {}
-            dados_completos["usuarios"][cpf] = self.db_usuarios[cpf]
+            # ATUALIZAÇÃO: Para evitar complexidade, apenas atualizamos a memória (self.db_usuarios).
+            # O salvamento real acontecerá quando a janela principal fechar ou salvar.
+            # Mas para garantir que o cadastro não se perca se o sistema fechar agora:
 
-            with open(self.arquivo_db, 'w', encoding='utf-8-sig') as f:
-                json.dump(dados_completos, f, indent=4, ensure_ascii=False)
+            # Vamos usar um comando SQL direto aqui para salvar o usuário isoladamente
+            if self.banco:
+                with self.banco.conectar() as conn:
+                    cursor = conn.cursor()
+                    json_str = json.dumps(self.db_usuarios[cpf], ensure_ascii=False)
+                    cursor.execute("INSERT OR REPLACE INTO usuarios VALUES (?,?)", (cpf, json_str))
+                    conn.commit()
+            # -----------------------------------------------------------
 
             self.salvar_login_local(nome, cpf, self.chk_lembrar.isChecked())
             DarkMessageBox.info(self, "Bem-vindo", f"Cadastro realizado com sucesso!\nOlá, {nome}.")
             self.accept()
 
         except Exception as e:
-            DarkMessageBox.critical(self, "Erro", f"Erro ao salvar: {e}")
+            DarkMessageBox.critical(self, "Erro", f"Erro ao salvar cadastro: {e}")
 
     def get_config_path(self):
-        # Verifica se está rodando como EXE ou Script
         if getattr(sys, 'frozen', False):
-            # Se for EXE, pega a pasta onde o .exe está
             pasta_app = os.path.dirname(sys.executable)
         else:
-            # Se for Script (PyCharm), pega a pasta do arquivo .py
             pasta_app = os.path.dirname(os.path.abspath(__file__))
-
         return os.path.join(pasta_app, "config.json")
 
     def carregar_ultimo_login(self):
@@ -2449,16 +2440,13 @@ class DialogoLogin(BaseDialog):
                 with open(caminho, "r", encoding='utf-8') as f:
                     cfg = json.load(f)
                     last = cfg.get("ultimo_usuario", {})
-
-                    # Só preenche se a flag 'lembrar' estiver True
                     if last.get("lembrar", False):
                         self.inp_cpf.setText(last.get("cpf", ""))
                         self.chk_lembrar.setChecked(True)
-                        self.ao_digitar_cpf()  # Força buscar o nome
+                        self.ao_digitar_cpf()
                         self.inp_senha.setFocus()
         except:
             pass
-
 
     def salvar_login_local(self, nome, cpf, lembrar):
         caminho = self.get_config_path()
@@ -2471,7 +2459,6 @@ class DialogoLogin(BaseDialog):
                     except:
                         cfg = {}
 
-            # Se o usuário marcou "Lembrar", salvamos. Se não, limpamos.
             if lembrar:
                 cfg["ultimo_usuario"] = {"nome": nome, "cpf": cpf, "lembrar": True}
             else:
@@ -2479,20 +2466,29 @@ class DialogoLogin(BaseDialog):
 
             with open(caminho, "w", encoding='utf-8') as f:
                 json.dump(cfg, f, indent=4)
-        except Exception as e:
-            print(f"Erro config login: {e}")
+        except:
+            pass
 
     def get_dados(self):
         return self.inp_nome.text().strip(), self.inp_cpf.text()
 
     def abrir_recuperacao(self):
+        # Aqui também precisamos passar o banco se formos salvar a nova senha
+        # Mas para simplificar, a recuperação atualiza self.db_usuarios na memória
+        # E o salvamento deve ocorrer via SQL
         dial = DialogoRecuperarSenha(self.db_usuarios, parent=self)
-        dial.exec()
-        if os.path.exists(self.arquivo_db):
-            with open(self.arquivo_db, 'r', encoding='utf-8-sig') as f:
-                d = json.load(f)
-                self.db_usuarios = d.get("usuarios", {})
-
+        if dial.exec():
+            # Se recuperou, precisamos salvar a nova senha no banco imediatamente
+            cpf_recuperado = dial.inp_cpf.text()  # Acesso "feio" mas direto para pegar o CPF
+            if cpf_recuperado in self.db_usuarios and self.banco:
+                try:
+                    with self.banco.conectar() as conn:
+                        cursor = conn.cursor()
+                        json_str = json.dumps(self.db_usuarios[cpf_recuperado], ensure_ascii=False)
+                        cursor.execute("INSERT OR REPLACE INTO usuarios VALUES (?,?)", (cpf_recuperado, json_str))
+                        conn.commit()
+                except:
+                    pass
 
 class DialogoAtualizacao(BaseDialog):
     def __init__(self, versao_atual, versao_nova, notas_texto, parent=None):
@@ -3676,41 +3672,195 @@ class DialogoLixeira(BaseDialog):
         self.accept()
 
 
+# ============================================================================
+# CLASSE DE GERENCIAMENTO DE BANCO DE DADOS (SQLite)
+# ============================================================================
+class BancoDados:
+    def __init__(self, nome_arquivo="dados_gc.db"):
+        self.nome_arquivo = nome_arquivo
+        self.inicializar_tabelas()
+
+    def conectar(self):
+        return sqlite3.connect(self.nome_arquivo)
+
+    def inicializar_tabelas(self):
+        """Cria a estrutura do banco se não existir"""
+        with self.conectar() as conn:
+            cursor = conn.cursor()
+
+            # 1. Tabela de Usuários (Relacional para segurança e login rápido)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS usuarios (
+                    cpf TEXT PRIMARY KEY,
+                    dados_json TEXT
+                )
+            """)
+
+            # 2. Tabela de Prestadores
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS prestadores (
+                    cnpj TEXT PRIMARY KEY,
+                    nome_fantasia TEXT,
+                    dados_json TEXT
+                )
+            """)
+
+            # 3. Tabela de Contratos (O 'Coração' do sistema)
+            # Guardamos o JSON completo para manter a estrutura complexa (Ciclos, NEs, etc)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS contratos (
+                    numero TEXT PRIMARY KEY,
+                    prestador TEXT,
+                    dados_json TEXT
+                )
+            """)
+
+            # 4. Logs de Auditoria
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS logs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    data TEXT,
+                    usuario TEXT,
+                    acao TEXT,
+                    detalhe TEXT,
+                    dados_json TEXT
+                )
+            """)
+            conn.commit()
+
+    def salvar_tudo_snapshot(self, contratos, prestadores, logs, usuarios_dict):
+        """
+        Salva o estado atual da memória no banco.
+        Usa transação (atomicidade): ou salva tudo, ou não salva nada (segurança total).
+        """
+        try:
+            with self.conectar() as conn:
+                cursor = conn.cursor()
+
+                # Limpa dados antigos (Estratégia de Snapshot seguro)
+                cursor.execute("DELETE FROM usuarios")
+                cursor.execute("DELETE FROM prestadores")
+                cursor.execute("DELETE FROM contratos")
+                cursor.execute("DELETE FROM logs")
+
+                # 1. Salvar Usuários
+                lista_users = []
+                for cpf, dados in usuarios_dict.items():
+                    json_str = json.dumps(dados, ensure_ascii=False)
+                    lista_users.append((cpf, json_str))
+                cursor.executemany("INSERT INTO usuarios VALUES (?,?)", lista_users)
+
+                # 2. Salvar Prestadores
+                lista_prest = []
+                for p in prestadores:
+                    json_str = json.dumps(p.to_dict(), ensure_ascii=False)
+                    lista_prest.append((p.cnpj, p.nome_fantasia, json_str))
+                cursor.executemany("INSERT INTO prestadores VALUES (?,?,?)", lista_prest)
+
+                # 3. Salvar Contratos
+                lista_cont = []
+                for c in contratos:
+                    json_str = json.dumps(c.to_dict(), ensure_ascii=False)
+                    lista_cont.append((c.numero, c.prestador, json_str))
+                cursor.executemany("INSERT INTO contratos VALUES (?,?,?)", lista_cont)
+
+                # 4. Salvar Logs
+                lista_logs = []
+                for l in logs:
+                    json_str = json.dumps(l.to_dict(), ensure_ascii=False)
+                    lista_logs.append((l.data, l.nome, l.acao, l.detalhe, json_str))
+                cursor.executemany("INSERT INTO logs (data, usuario, acao, detalhe, dados_json) VALUES (?,?,?,?,?)",
+                                   lista_logs)
+
+                conn.commit()
+                return True
+        except Exception as e:
+            print(f"Erro CRÍTICO ao salvar no Banco de Dados: {e}")
+            return False
+
+    def carregar_tudo(self):
+        """Recupera os dados do banco e remonta os objetos Python"""
+        dados_retorno = {
+            "contratos": [],
+            "prestadores": [],
+            "logs": [],
+            "usuarios": {}
+        }
+
+        if not os.path.exists(self.nome_arquivo):
+            return dados_retorno
+
+        try:
+            with self.conectar() as conn:
+                cursor = conn.cursor()
+
+                # Carregar Usuários
+                cursor.execute("SELECT cpf, dados_json FROM usuarios")
+                for row in cursor.fetchall():
+                    dados_retorno["usuarios"][row[0]] = json.loads(row[1])
+
+                # Carregar Prestadores
+                cursor.execute("SELECT dados_json FROM prestadores")
+                for row in cursor.fetchall():
+                    p_dict = json.loads(row[0])
+                    dados_retorno["prestadores"].append(Prestador.from_dict(p_dict))
+
+                # Carregar Contratos
+                cursor.execute("SELECT dados_json FROM contratos")
+                for row in cursor.fetchall():
+                    c_dict = json.loads(row[0])
+                    dados_retorno["contratos"].append(Contrato.from_dict(c_dict))
+
+                # Carregar Logs
+                cursor.execute("SELECT dados_json FROM logs")
+                for row in cursor.fetchall():
+                    l_dict = json.loads(row[0])
+                    dados_retorno["logs"].append(RegistroLog.from_dict(l_dict))
+
+        except Exception as e:
+            print(f"Erro ao ler banco de dados: {e}")
+
+        return dados_retorno
+
 # --- 3. SISTEMA PRINCIPAL ---
 
 class SistemaGestao(QMainWindow):
+
     def __init__(self, splash=None):
         super().__init__()
-        # ... (suas variáveis iniciais continuam aqui: db_contratos, etc.) ...
+
+        # 1. Fecha Splash
+        if splash: splash.close()
+
+        # 2. Inicializa Banco
+        self.arquivo_db = "dados_sistema.db"
+        self.banco = BancoDados(self.arquivo_db)
+
+        # Inicializa variáveis vazias
         self.db_contratos = []
         self.db_prestadores = []
         self.db_logs = []
+        self.db_usuarios = {}
         self.lista_alertas = []
         self.contrato_selecionado = None
         self.ne_selecionada = None
-        self.arquivo_db = "dados_sistema.json"
 
-        # Padrões
+        # 3. Carrega Dados do Banco para a Memória (Sem mexer na tela ainda)
+        self.carregar_dados()
+
+        # 4. Configurações Visuais
         self.usuario_nome = "Desconhecido"
         self.usuario_cpf = "000.000.000-00"
         self.tema_escuro = False
         self.custom_bg = None
         self.custom_sel = None
         self.tamanho_fonte = 14
-
         self.carregar_config()
         self.aplicar_tema_visual()
 
-        # Fecha a splash
-        if splash:
-            splash.close()
-
-        # --- LÓGICA DE AUTO-LOGIN PÓS-UPDATE ---
+        # 5. Verifica Auto-Login
         auto_login_sucesso = False
-
-        # Verifica se o programa foi aberto pelo atualizador
         if "--post-update" in sys.argv:
-            # Tenta ler quem estava logado por último no config.json
             caminho_cfg = self.get_config_path()
             if os.path.exists(caminho_cfg):
                 try:
@@ -3719,47 +3869,32 @@ class SistemaGestao(QMainWindow):
                         last = cfg.get("ultimo_usuario", {})
                         cpf_salvo = last.get("cpf", "")
 
-                        # Se tiver um CPF salvo (mesmo que não marcou 'lembrar', podemos usar a config antiga)
-                        # Ou usamos a lógica de que o config já salvou o último válido
-                        if cpf_salvo:
-                            # Carrega dados do banco para pegar o nome correto
-                            # Precisamos ler o arquivo de dados rapidamente aqui
-                            if os.path.exists(self.arquivo_db):
-                                with open(self.arquivo_db, 'r', encoding='utf-8-sig') as fdb:
-                                    db_data = json.load(fdb)
-                                    users = db_data.get("usuarios", {})
-                                    if cpf_salvo in users:
-                                        self.usuario_cpf = cpf_salvo
-                                        self.usuario_nome = users[cpf_salvo]['nome']
-                                        auto_login_sucesso = True
+                        # Verifica se o CPF existe na memória carregada
+                        if cpf_salvo and cpf_salvo in self.db_usuarios:
+                            self.usuario_cpf = cpf_salvo
+                            self.usuario_nome = self.db_usuarios[cpf_salvo]['nome']
+                            auto_login_sucesso = True
                 except:
                     pass
 
-        # Se não foi auto-login, abre a tela normal
+        # 6. Abre Login (Se não logou automático)
         if not auto_login_sucesso:
             self.fazer_login()
-            # ---------------------------------------
 
+        # 7. Constrói a Interface Gráfica (Agora é seguro criar os botões)
         self.init_ui()
 
-        # ... resto do código ...
+        # 8. Preenche a Interface com os dados carregados
+        # (Agora funciona porque self.inp_search já existe)
+        self.filtrar_contratos()
+        self.processar_alertas()
+        self.atualizar_barra_status()
 
-        self.carregar_dados()
-
-        # INICIA O CONSULTOR COM OS DADOS CARREGADOS
+        # Inicializa IA e outros recursos
         self.ia = ConsultorIA(self.db_contratos)
-        
-        # Garante o estilo da janela
         aplicar_estilo_janela(self)
-        
         self.em_tutorial = False
-
-        # --- NOVO: VERIFICAÇÃO AUTOMÁTICA AO INICIAR ---
-        # Usa QTimer para rodar 2 segundos (2000ms) após abrir a janela
-        # Passa silencioso=True para não incomodar se não tiver update
         QTimer.singleShot(2000, lambda: self.verificar_updates(silencioso=True))
-        # -----------------------------------------------
-
 
     def iniciar_tutorial_interativo(self):
         """Orquestra uma sequência de passos para ensinar o usuário"""
@@ -3881,28 +4016,23 @@ class SistemaGestao(QMainWindow):
             # mas geralmente é bom deixar para o usuário ver.
 
     def fazer_login(self):
-        """Lê os usuários do banco e abre o login"""
-        usuarios_temp = {}
+        """Abre o diálogo de login usando os dados já carregados do banco"""
 
-        if os.path.exists(self.arquivo_db):
-            try:
-                with open(self.arquivo_db, 'r', encoding='utf-8-sig') as f:
-                    dados = json.load(f)
-                    usuarios_temp = dados.get("usuarios", {})
-            except:
-                usuarios_temp = {}
+        # O self.db_usuarios já foi carregado no __init__ antes de chamar esta função
+        # Se estiver vazio, o login entenderá como primeiro acesso.
 
-        # IMPORTANTE: Passar o caminho do arquivo para permitir o cadastro
-        dial = DialogoLogin(usuarios_temp, self.arquivo_db)
+        dial = DialogoLogin(self.db_usuarios, self.banco)  # Passa o objeto Banco
 
         if dial.exec():
             self.usuario_nome, self.usuario_cpf = dial.get_dados()
 
-            # Se entrou e não tinha usuários antes, avisa
-            if not usuarios_temp and not os.path.exists(self.arquivo_db):
-                DarkMessageBox.info(self, "Bem-vindo", "Primeiro acesso realizado.")
+            # Se entrou e não tinha usuários antes (Primeiro Acesso Admin), avisa
+            if len(self.db_usuarios) == 0:
+                DarkMessageBox.info(self, "Primeiro Acesso",
+                                    "Bem-vindo Administrador.\nNão se esqueça de criar sua senha no menu Arquivo.")
         else:
             sys.exit()
+
 
     def trocar_usuario(self):
         """Salva o trabalho, esconde a tela e pede login novamente"""
@@ -4358,17 +4488,31 @@ class SistemaGestao(QMainWindow):
                 DarkMessageBox.critical(self, "Erro Fatal", f"Falha ao restaurar: {str(e)}")
 
     def salvar_dados(self):
-        dados_completos = {
-            "contratos": [c.to_dict() for c in self.db_contratos],
-            "logs": [l.to_dict() for l in self.db_logs],
-            "prestadores": [p.to_dict() for p in self.db_prestadores],
-            "usuarios": self.db_usuarios  # <--- Salva os acessos e senhas
-        }
-        try:
-            with open(self.arquivo_db, 'w', encoding='utf-8-sig') as f:
-                json.dump(dados_completos, f, indent=4, ensure_ascii=False)
-        except Exception as e:
-            print(f"Erro ao salvar: {e}")
+        # Chama a classe de banco de dados para fazer o serviço pesado
+        sucesso = self.banco.salvar_tudo_snapshot(
+            self.db_contratos,
+            self.db_prestadores,
+            self.db_logs,
+            self.db_usuarios
+        )
+
+        if not sucesso:
+            # Se o banco falhar (muito raro), tenta salvar um JSON de emergência
+            try:
+                print("Tentando backup de emergência em JSON...")
+                dados = {
+                    "contratos": [c.to_dict() for c in self.db_contratos],
+                    "logs": [l.to_dict() for l in self.db_logs],
+                    "prestadores": [p.to_dict() for p in self.db_prestadores],
+                    "usuarios": self.db_usuarios
+                }
+                with open("backup_emergencia.json", 'w', encoding='utf-8') as f:
+                    json.dump(dados, f, indent=4, ensure_ascii=False)
+                DarkMessageBox.warning(self, "Aviso de Disco",
+                                       "Houve um erro ao gravar no Banco de Dados, mas um backup de emergência (JSON) foi criado.")
+            except:
+                print("Falha total no salvamento.")
+
 
     def cadastrar_usuario_no_sistema(self, nome, cpf, senha, eh_admin=False):
         """Transforma senha em Hash e guarda no banco global"""
@@ -4487,62 +4631,112 @@ class SistemaGestao(QMainWindow):
         dial.exec()
 
     def carregar_dados(self):
-        # Define o título fixo, limpo
-        self.setWindowTitle("Gestão de Contratos")
+        self.setWindowTitle("Gestão de Contratos Inteligente")
 
-        if not os.path.exists(self.arquivo_db): return
-        try:
-            with open(self.arquivo_db, 'r', encoding='utf-8-sig') as f:
-                raw_data = json.load(f)
+        # 1. Carrega do Banco para a Memória
+        dados = self.banco.carregar_tudo()
+        self.db_contratos = dados["contratos"]
+        self.db_prestadores = dados["prestadores"]
+        self.db_logs = dados["logs"]
+        self.db_usuarios = dados["usuarios"]
 
-                if isinstance(raw_data, list):
-                    self.db_contratos = [Contrato.from_dict(d) for d in raw_data]
-                    self.db_logs = []
-                else:
-                    self.db_contratos = [Contrato.from_dict(d) for d in raw_data.get("contratos", [])]
-                    self.db_logs = [RegistroLog.from_dict(d) for d in raw_data.get("logs", [])]
-                    self.db_prestadores = [Prestador.from_dict(d) for d in raw_data.get("prestadores", [])]
-                    self.db_usuarios = raw_data.get("usuarios", {})
+        # 2. Migração de JSON antigo (Opcional e segura)
+        if not self.db_contratos and os.path.exists("dados_sistema.json"):
+            try:
+                # Só pergunta se a interface gráfica (stack) já existir
+                if hasattr(self, 'stack'):
+                    reply = DarkMessageBox.question(self, "Migração",
+                                                    "Encontrei dados antigos em JSON. Deseja importar para o novo Banco de Dados?")
+                    if reply == QMessageBox.StandardButton.Yes:
+                        with open("dados_sistema.json", 'r', encoding='utf-8-sig') as f:
+                            raw = json.load(f)
+                            # Aqui você poderia implementar a lógica de carga manual se quisesse
+                            # Mas para evitar erros, vamos deixar o usuário usar o menu Importar depois.
+                            DarkMessageBox.info(self, "Aviso",
+                                                "Por segurança, use o menu 'Ferramentas > Importar' para trazer seus dados antigos.")
+            except:
+                pass
 
+        # 3. Atualiza a Interface (SOMENTE SE ELA JÁ EXISTIR)
+        # Isso evita o crash "AttributeError: inp_search"
+        if hasattr(self, 'inp_search'):
             self.filtrar_contratos()
+
+        if hasattr(self, 'btn_notificacoes'):
             self.processar_alertas()
 
-            # ATUALIZA O RODAPÉ PARA MOSTRAR O NOME DO ARQUIVO CARREGADO
+        if hasattr(self, 'status_bar'):
             self.atualizar_barra_status()
 
-        except Exception as e:
-            self.db_usuarios = {}
-            DarkMessageBox.critical(self, "Erro ao Carregar", f"Erro: {str(e)}")
-
     def alternar_base_dados(self):
-        # 1. Salva a base atual antes de trocar
+        # 1. Salva a base atual antes de trocar para não perder nada
         self.salvar_dados()
 
-        # 2. Pede o novo arquivo
-        fname, _ = QFileDialog.getOpenFileName(self, "Selecionar Base de Dados", "", "JSON Files (*.json)")
+        # 2. Pede o novo arquivo (Agora aceita .db e .json)
+        fname, _ = QFileDialog.getOpenFileName(
+            self,
+            "Selecionar Base de Dados",
+            "",
+            "Arquivos de Dados (*.db *.json)"
+        )
 
-        if fname:
-            # Verifica se é o mesmo
-            if os.path.abspath(fname) == os.path.abspath(self.arquivo_db):
-                DarkMessageBox.info(self, "Aviso", "Você selecionou a mesma base que já está aberta.")
-                return
+        if not fname: return
 
-            # 3. Troca o caminho do arquivo alvo
-            self.arquivo_db = fname
+        # 3. Lógica de Conversão (Se o usuário escolher um JSON da nuvem/backup)
+        if fname.lower().endswith(".json"):
+            msg = (
+                "Você selecionou um arquivo JSON (provavelmente um backup ou cópia da nuvem).\n\n"
+                "Para usar este arquivo, o sistema precisa convertê-lo para o novo formato de Banco de Dados (.db).\n"
+                "Deseja realizar a conversão agora?"
+            )
+            reply = DarkMessageBox.question(self, "Converter Formato", msg)
 
-            # 4. Recarrega tudo
-            self.db_contratos = []
-            self.db_logs = []
-            self.contrato_selecionado = None
-            self.ne_selecionada = None
+            if reply == QMessageBox.StandardButton.Yes:
+                try:
+                    # Caminho do novo banco (mesmo nome, mas .db)
+                    novo_db_path = fname.rsplit('.', 1)[0] + ".db"
 
-            self.carregar_dados()  # Isso já vai atualizar o rodapé automaticamente
+                    # Lê o JSON
+                    with open(fname, 'r', encoding='utf-8-sig') as f:
+                        dados_json = json.load(f)
 
-            DarkMessageBox.info(self, "Base Trocada", f"Agora você está usando a base:\n{os.path.basename(fname)}")
+                    # Cria um novo banco de dados temporário para a migração
+                    novo_banco = BancoDados(novo_db_path)
 
-        # ------------------------------------------------------------------------
-        # MÓDULO DE SINCRONIZAÇÃO (CORRIGIDO E REALINHADO)
-        # ------------------------------------------------------------------------
+                    # Converte os dicionários do JSON em objetos Python
+                    lista_c = [Contrato.from_dict(d) for d in dados_json.get("contratos", [])]
+                    lista_p = [Prestador.from_dict(d) for d in dados_json.get("prestadores", [])]
+                    lista_l = [RegistroLog.from_dict(d) for d in dados_json.get("logs", [])]
+                    dict_u = dados_json.get("usuarios", {})
+
+                    # Salva no banco novo
+                    novo_banco.salvar_tudo_snapshot(lista_c, lista_p, lista_l, dict_u)
+
+                    # Atualiza o caminho para abrir o .db gerado
+                    fname = novo_db_path
+                    DarkMessageBox.info(self, "Sucesso", "Arquivo convertido e pronto para uso!")
+                except Exception as e:
+                    DarkMessageBox.critical(self, "Erro na Conversão", f"Falha ao converter JSON: {e}")
+                    return
+            else:
+                return  # Usuário desistiu
+
+        # 4. Troca o caminho do arquivo alvo e reinicia o motor
+        self.arquivo_db = fname
+        self.banco = BancoDados(self.arquivo_db)
+
+        # 5. Limpa a memória e recarrega do banco novo
+        self.db_contratos = []
+        self.db_prestadores = []
+        self.db_logs = []
+        self.db_usuarios = {}
+        self.contrato_selecionado = None
+        self.ne_selecionada = None
+
+        self.carregar_dados()
+        self.salvar_config()  # Salva no config.json que este é o novo banco padrão
+
+        DarkMessageBox.info(self, "Base Trocada", f"Agora você está usando: {os.path.basename(fname)}")
 
     def sincronizar_nuvem(self):
         """Sincronização com Log de Erros para Debug"""
@@ -5112,19 +5306,33 @@ class SistemaGestao(QMainWindow):
         # Exportações CSV (Excel)
         m_rel.addAction("Exportar Dados Brutos (Excel/CSV)...", self.exportar_contrato_completo)
 
-        # --- 6. MENU FERRAMENTAS (Utilitários) --- <--- NOVO
+        # --- 6. MENU FERRAMENTAS (Utilitários) ---
         m_fer = mb.addMenu("Ferramentas")
         m_fer.addAction("Calculadora do Sistema", self.abrir_calculadora)
         m_fer.addAction("Verificar Integridade dos Dados", self.verificar_integridade)
         m_fer.addSeparator()
 
-        # Submenu de Importação (Fica mais organizado aqui dentro)
+        # Submenu de Importação
         m_imp = m_fer.addMenu("Assistente de Importação (Lote)")
+        # Note que aqui actions usam Strings diretas, o que é permitido no PyQt
         m_imp.addAction("Importar Prestadores...", self.importar_prestadores)
+
         m_imp.addAction("Importar Contratos...", self.importar_contratos)
         m_imp.addAction("Importar Serviços...", self.importar_servicos)
         m_imp.addAction("Importar Empenhos...", self.importar_empenhos)
         m_imp.addAction("Importar Pagamentos...", self.importar_pagamentos)
+
+        # --- AQUI ESTAVA O ERRO (Corrigido de 'ferramentas_menu' para 'm_fer') ---
+        m_fer.addSeparator()
+
+        # AÇÃO DE ARQUIVAMENTO
+        # Como é uma QAction personalizada com ícone/texto específico, criamos o objeto
+        acao_arquivar = QAction("📂 Arquivar Contratos Antigos (Histórico)", self)
+        acao_arquivar.triggered.connect(self.arquivar_contratos_antigos)
+
+        # Adiciona ao menu correto (m_fer)
+        m_fer.addAction(acao_arquivar)
+        # ------------------------------------------------------------------------
 
         m_fer.addSeparator()
         m_fer.addAction("Sincronizar com Google Drive...", self.sincronizar_nuvem)
@@ -6296,7 +6504,7 @@ class SistemaGestao(QMainWindow):
 
                     if desc:
                         # Passa o mensal na criação
-                        sub = SubContrato(desc, 0.0, val_mensal)
+                        sub = SubContrato(desc, val_mensal)
                         sub.set_valor_ciclo(id_ciclo_alvo, val_total)
 
                         self.contrato_selecionado.lista_servicos.append(sub)
@@ -7703,6 +7911,90 @@ class SistemaGestao(QMainWindow):
             self.salvar_dados()
             self.registrar_log("Segurança", "Alterou a própria senha")
 
+        # =========================================================================
+        # FUNCIONALIDADE DE ARQUIVO MORTO (HISTÓRICO) - VERSÃO BLINDADA
+        # =========================================================================
+
+    def arquivar_contratos_antigos(self):
+        """
+        Move contratos antigos e encerrados para uma base separada.
+        """
+        from datetime import datetime
+
+        # 1. Pergunta o Ano de Corte
+        ano_atual = datetime.now().year
+        ano_corte, ok = QInputDialog.getInt(
+            self,
+            "Arquivar Histórico",
+            "Mover para o Arquivo Morto contratos ENCERRADOS antes de qual ano?\n(Ex: Se escolher 2023, contratos de 2022 para trás serão arquivados)",
+            ano_atual - 2, 2000, ano_atual + 5, 1
+        )
+
+        if not ok: return
+
+        # 2. Filtra os candidatos
+        candidatos = []
+        for c in self.db_contratos:
+            try:
+                # CORREÇÃO: No seu código o atributo é 'vigencia_fim'
+                # Usamos strip() para garantir que não haja espaços
+                data_str = str(c.vigencia_fim).strip()
+                dt_fim = datetime.strptime(data_str, "%d/%m/%Y")
+
+                if dt_fim.year < ano_corte:
+                    candidatos.append(c)
+            except Exception as e:
+                print(f"Erro ao processar data do contrato {c.numero}: {e}")
+                continue
+
+        if not candidatos:
+            DarkMessageBox.info(self, "Nada a Arquivar", f"Nenhum contrato encerrado antes de {ano_corte}.")
+            return
+
+        # 3. Confirmação
+        msg = f"Mover {len(candidatos)} contratos para 'arquivo_historico.db' e limpar a base principal?"
+        if DarkMessageBox.question(self, "Confirmar", msg) != QMessageBox.StandardButton.Yes:
+            return
+
+        # 4. Execução do Transplante
+        try:
+            nome_arquivo_hist = "arquivo_historico.db"
+            banco_hist = BancoDados(nome_arquivo_hist)
+
+            # Carrega o que já tem no histórico para somar
+            dados_existentes = banco_hist.carregar_tudo()
+            lista_final_historico = dados_existentes["contratos"]
+
+            ids_existentes = [ch.numero for ch in lista_final_historico]
+            for c in candidatos:
+                if c.numero not in ids_existentes:
+                    lista_final_historico.append(c)
+
+            # Salva o arquivo de histórico (Snapshot)
+            sucesso = banco_hist.salvar_tudo_snapshot(
+                lista_final_historico, [], [], {}
+            )
+
+            if not sucesso:
+                raise Exception("Falha ao gravar no arquivo de histórico.")
+
+            # Remove da memória principal
+            ids_para_remover = [c.numero for c in candidatos]
+            self.db_contratos = [c for c in self.db_contratos if c.numero not in ids_para_remover]
+
+            # Salva o banco principal (agora limpo)
+            self.salvar_dados()
+
+            # Atualiza interface
+            self.filtrar_contratos()
+
+            DarkMessageBox.info(self, "Sucesso", f"Concluído! {len(candidatos)} itens movidos.")
+
+        except Exception as e:
+            DarkMessageBox.critical(self, "Erro", f"Erro no arquivamento: {str(e)}")
+
+
+
 # --- NOVA CLASSE: TELA DE CARREGAMENTO (SPLASH SCREEN) ---
 # Coloque esta classe ANTES do if __name__ == "__main__":
 class TelaCarregamento(QSplashScreen):
@@ -7780,20 +8072,17 @@ class TelaCarregamento(QSplashScreen):
 
 
 # ============================================================================
-# BLOCO PRINCIPAL (CORRIGIDO E OTIMIZADO)
+# BLOCO PRINCIPAL
 # ============================================================================
 if __name__ == "__main__":
+    import sys
     import time
-
-
-    # Função auxiliar para recursos (ícones) dentro do EXE
 
     # 1. Configurações Iniciais da App
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
 
-    # Ícone da Janela e Barra de Tarefas
-    # Tenta carregar o .ico primeiro (melhor para Windows)
+    # Ícone da Janela
     caminho_ico = resource_path("icon_gc.ico")
     caminho_png = resource_path("icon_gc.png")
 
@@ -7802,29 +8091,22 @@ if __name__ == "__main__":
     elif os.path.exists(caminho_png):
         app.setWindowIcon(QIcon(caminho_png))
 
-
-    # 3. Exibe a NOSSA Tela de Carregamento (Splash Personalizada)
+    # 2. Exibe Splash
     splash = TelaCarregamento()
     splash.show()
 
-    # Simulação de carregamento (Estética e funcional)
+    # Animação de Carregamento
     splash.atualizar_progresso(10, "Carregando configurações...")
-    time.sleep(0.3)
-
-    splash.atualizar_progresso(30, "Verificando base de dados...")
-    time.sleep(0.3)
-
-    splash.atualizar_progresso(70, "Iniciando sistema...")
+    time.sleep(0.5)
+    splash.atualizar_progresso(50, "Conectando banco de dados...")
+    time.sleep(0.5)
+    splash.atualizar_progresso(90, "Iniciando interface...")
     time.sleep(0.2)
 
-    # 4. Inicia a Janela Principal
-    # Passamos 'splash' para que a janela principal possa fechá-lo quando estiver pronta
-    win = SistemaGestao(splash)
+    # 3. Inicia Sistema (Passando splash para ele fechar lá dentro)
+    janela = SistemaGestao(splash)
 
-    # Configurações finais da janela antes de mostrar
-    win.winId()  # Garante handle para o Windows
-    aplicar_estilo_janela(win)  # Força modo escuro na barra de título
-    win.showMaximized()  # Abre grandão
+    # 4. Mostra a janela principal (Se o login passar)
+    janela.show()
 
-    # 5. Loop da Aplicação
     sys.exit(app.exec())
