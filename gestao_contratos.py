@@ -38,7 +38,7 @@ else:
 # ------------------------------------------
 
 # --- CONFIGURAÇÃO DE ATUALIZAÇÃO ---
-VERSAO_ATUAL = 1.0
+VERSAO_ATUAL = 2.0
 
 # O sistema lerá este arquivo para saber se há novidades
 
@@ -46,7 +46,7 @@ URL_VERSAO_TXT = "https://raw.githubusercontent.com/cassiosouzza-dev/GC_GestaoCo
 
 # Se houver, ele baixará o EXE deste link (Redirecionamento automático do GitHub)
 URL_NOTAS_TXT = "https://raw.githubusercontent.com/cassiosouzza-dev/GC_GestaoContratos_moc/main/notas.txt"
-URL_NOVO_EXE = "https://github.com/cassiosouzza-dev/GC_GestaoContratos_moc/releases/latest/download/GC_Gestor_v1.exe"
+URL_NOVO_EXE = "https://github.com/cassiosouzza-dev/GC_GestaoContratos_moc/releases/latest/download/GC_Gestor_v2.0.exe"
 
 # --- CARREGAMENTO SEGURO DA CHAVE API (SEM CHAVE NO CÓDIGO) ---
 def obter_chave_api():
@@ -96,9 +96,11 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QDialog, QComboBox, QFormLayout, QDialogButtonBox,
                              QAbstractItemView, QDateEdit, QTabWidget, QMenu,
                              QCheckBox, QStackedWidget, QFrame, QFileDialog, QInputDialog,
-                             QSpinBox, QTextEdit, QListWidgetItem, QColorDialog, QSlider, QGroupBox)
+                             QSpinBox, QTextEdit, QListWidgetItem, QColorDialog, QSlider, 
+                             QGroupBox, QToolBar, QSizePolicy, QCompleter) # <--- ADICIONADO AQUI
 from PyQt6.QtWidgets import QSplashScreen, QProgressBar
-from PyQt6.QtCore import Qt, QDate, QEvent, QTimer, QThread, pyqtSignal
+from PyQt6.QtWidgets import QCompleter
+from PyQt6.QtCore import Qt, QDate, QEvent, QSize, QTimer, QThread, pyqtSignal
 from PyQt6.QtGui import QAction, QColor, QFont, QPalette, QIcon, QPixmap, QPainter
 
 
@@ -694,6 +696,182 @@ class Prestador:
 
 # --- 2. DIÁLOGOS ---
 
+# ============================================================================
+# CLASSE DE MONITORAMENTO DE VIGÊNCIAS (COM ORDENAÇÃO INTELIGENTE)
+# ============================================================================
+
+class ItemTempo(QTableWidgetItem):
+    """
+    Item personalizado para a tabela.
+    Ele exibe o Texto (ex: "2 meses"), mas ordena pelo Número (dias totais).
+    Isso corrige o bug de ordenação alfabética.
+    """
+    def __lt__(self, other):
+        return (self.data(Qt.ItemDataRole.UserRole) or 0) < (other.data(Qt.ItemDataRole.UserRole) or 0)
+
+# ============================================================================
+# CLASSE DE MONITORAMENTO DE VIGÊNCIAS (ATUALIZADA: CORES LÓGICAS)
+# ============================================================================
+
+class ItemTempo(QTableWidgetItem):
+    """
+    Item personalizado para a tabela.
+    Ele exibe o Texto, mas ordena pelo Número (dias totais).
+    """
+    def __lt__(self, other):
+        return (self.data(Qt.ItemDataRole.UserRole) or 0) < (other.data(Qt.ItemDataRole.UserRole) or 0)
+
+class DialogoMonitorVigencia(BaseDialog):
+    def __init__(self, lista_contratos, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Monitor de Vigências e Prazos")
+        self.resize(1100, 650)
+        
+        # Habilita botões de janela
+        self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowMaximizeButtonHint | Qt.WindowType.WindowCloseButtonHint)
+
+        self.lista_contratos = lista_contratos
+        layout = QVBoxLayout(self)
+
+        # Cabeçalho
+        lbl_titulo = QLabel("🚦 Monitoramento de Prazos Contratuais")
+        lbl_titulo.setStyleSheet("font-size: 18px; font-weight: bold; color: #2c3e50; margin-bottom: 10px;")
+        layout.addWidget(lbl_titulo)
+
+        # Instruções
+        layout.addWidget(QLabel("Clique no cabeçalho da coluna 'Status / Tempo Restante' para ordenar."))
+
+        # Tabela
+        self.tabela = TabelaExcel()
+        colunas = ["Contrato", "Prestador", "Início Vigência", "Fim Vigência (Atual)", "Status / Tempo Restante", "Dias (Ref)"]
+        self.tabela.setColumnCount(len(colunas))
+        self.tabela.setHorizontalHeaderLabels(colunas)
+        
+        # Configuração das Colunas
+        header = self.tabela.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents) # Num
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)          # Prestador
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents) # Datas
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)          # Barra de Tempo
+        
+        self.tabela.setColumnHidden(5, True) 
+        self.tabela.setSortingEnabled(True)
+
+        layout.addWidget(self.tabela)
+        
+        # --- LEGENDA ATUALIZADA ---
+        l_legenda = QHBoxLayout()
+        def criar_legenda(cor, texto):
+            lbl = QLabel(f"◼ {texto}  ")
+            lbl.setStyleSheet(f"color: {cor}; font-weight: bold;")
+            return lbl
+            
+        # Nova ordem de cores
+        l_legenda.addWidget(criar_legenda("#8e44ad", "VENCIDO"))
+        l_legenda.addWidget(criar_legenda("#c0392b", "🚨 CRÍTICO (< 90 dias)"))
+        l_legenda.addWidget(criar_legenda("#f39c12", "Atenção (< 180 dias)"))
+        l_legenda.addWidget(criar_legenda("#27ae60", "Vigente (> 180 dias)"))
+        l_legenda.addStretch()
+        
+        btn_fechar = QPushButton("Fechar")
+        btn_fechar.clicked.connect(self.accept)
+        l_legenda.addWidget(btn_fechar)
+        
+        layout.addLayout(l_legenda)
+
+        self.carregar_dados()
+        aplicar_estilo_janela(self)
+
+    def carregar_dados(self):
+        self.tabela.setSortingEnabled(False)
+        self.tabela.setRowCount(0)
+        
+        hoje = datetime.now()
+
+        for c in self.lista_contratos:
+            if getattr(c, 'anulado', False): continue 
+
+            # Calcula datas
+            try:
+                data_fim_str = c.get_vigencia_final_atual()
+                dt_fim = datetime.strptime(data_fim_str, "%d/%m/%Y")
+                
+                # Diferença
+                delta = dt_fim - hoje
+                dias_restantes = delta.days
+                
+            except:
+                dias_restantes = -99999 
+                data_fim_str = "Data Inválida"
+
+            row = self.tabela.rowCount()
+            self.tabela.insertRow(row)
+
+            self.tabela.setItem(row, 0, QTableWidgetItem(c.numero))
+            self.tabela.setItem(row, 1, QTableWidgetItem(c.prestador))
+            self.tabela.setItem(row, 2, QTableWidgetItem(c.vigencia_inicio))
+            
+            it_fim = QTableWidgetItem(data_fim_str)
+            it_fim.setFont(QFont("Arial", 10, QFont.Weight.Bold))
+            self.tabela.setItem(row, 3, it_fim)
+
+            # --- NOVA LÓGICA DE CORES ---
+            texto_status = ""
+            cor_fundo = None
+            cor_texto = "black"
+            
+            # Cálculo amigável do tempo (para usar nos textos)
+            anos = abs(dias_restantes) // 365
+            resto_ano = abs(dias_restantes) % 365
+            meses = resto_ano // 30
+            dias = resto_ano % 30
+            
+            partes = []
+            if anos > 0: partes.append(f"{anos} ano(s)")
+            if meses > 0: partes.append(f"{meses} mês(es)")
+            if dias > 0: partes.append(f"{dias} dia(s)")
+            texto_tempo = ", ".join(partes) if partes else f"{abs(dias_restantes)} dias"
+
+            # 1. JÁ VENCEU (Lilás/Roxo - "Sem ação")
+            if dias_restantes < 0:
+                texto_status = f"⌛ VENCIDO há {texto_tempo}"
+                cor_fundo = QColor("#f4ecf7") # Lilás claro (fundo)
+                cor_texto = "#8e44ad"         # Roxo (texto)
+
+            # 2. CRÍTICO - MENOS DE 90 DIAS (Vermelho - "Ação Imediata")
+            elif dias_restantes < 90:
+                prefixo = "⚠️ VENCE HOJE!" if dias_restantes == 0 else f"🚨 CRÍTICO: Vence em {texto_tempo}"
+                texto_status = f"{prefixo} ({dias_restantes} dias)"
+                cor_fundo = QColor("#fadbd8") # Vermelho claro
+                cor_texto = "#c0392b"         # Vermelho escuro
+
+            # 3. ATENÇÃO - MENOS DE 180 DIAS (Amarelo)
+            elif dias_restantes < 180:
+                texto_status = f"⚠️ Atenção: Vence em {texto_tempo}"
+                cor_fundo = QColor("#fef9e7") # Amarelo claro
+                cor_texto = "#f39c12"         # Laranja/Mostarda
+
+            # 4. TRANQUILO (Verde)
+            else:
+                texto_status = f"✅ Vigente ({texto_tempo})"
+                cor_fundo = QColor("#d5f5e3") # Verde claro
+                cor_texto = "#27ae60"         # Verde escuro
+
+            # Item Especial de Ordenação
+            item_status = ItemTempo(texto_status)
+            item_status.setData(Qt.ItemDataRole.UserRole, dias_restantes) 
+            
+            if cor_fundo: item_status.setBackground(cor_fundo)
+            item_status.setForeground(QColor(cor_texto))
+            item_status.setFont(QFont("Arial", 9, QFont.Weight.Bold))
+            
+            self.tabela.setItem(row, 4, item_status)
+            self.tabela.setItem(row, 5, QTableWidgetItem(str(dias_restantes)))
+
+        self.tabela.setSortingEnabled(True)
+
+
 class DialogoAjuda(BaseDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -721,74 +899,133 @@ class DialogoCriarContrato(BaseDialog):
     def __init__(self, lista_prestadores, contrato_editar=None, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Cadastro de Contrato")
-        self.resize(700, 650)
-        layout = QFormLayout(self)
+        
+        # AJUSTE FINO DE TAMANHO (Largura menor, Altura suficiente)
+        self.resize(550, 680) 
+        
+        # Garante que a janela não nasça gigante
+        self.setMinimumWidth(500)
+        
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(25, 25, 25, 20)
+        main_layout.setSpacing(15)
+        
+        # Título
+        lbl_titulo = QLabel("Dados do Instrumento Contratual")
+        lbl_titulo.setStyleSheet("font-size: 16px; font-weight: bold; color: #2c3e50; border-bottom: 2px solid #27ae60; padding-bottom: 5px;")
+        lbl_titulo.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        main_layout.addWidget(lbl_titulo)
 
-        self.inp_numero = QLineEdit();
+        # Formulário
+        layout = QFormLayout()
+        layout.setSpacing(12) # Espaço confortável entre linhas
+        layout.setLabelAlignment(Qt.AlignmentFlag.AlignRight) # Alinha labels à direita (fica mais elegante)
 
+        self.inp_numero = QLineEdit()
+        self.inp_numero.setPlaceholderText("Ex: 123/2024")
+
+        # --- CAMPO DE PRESTADOR COM PESQUISA ---
         self.combo_prestador = QComboBox()
-        self.combo_prestador.setEditable(False)
+        self.combo_prestador.setEditable(True)
+        self.combo_prestador.setInsertPolicy(QComboBox.InsertPolicy.NoInsert) 
+        self.combo_prestador.setStyleSheet("QComboBox { padding: 5px; font-size: 13px; }")
+        # Política de tamanho para não esticar demais
+        self.combo_prestador.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
         for p in lista_prestadores:
-            # --- CORREÇÃO AQUI: nome_fantasia em vez de nome_prestador ---
             texto = f"{p.nome_fantasia} ({p.razao_social})"
             self.combo_prestador.addItem(texto, p.nome_fantasia)
             self.combo_prestador.setItemData(self.combo_prestador.count() - 1, p.nome_fantasia)
 
-        if self.combo_prestador.count() == 0:
+        if self.combo_prestador.count() > 0:
+            completer = QCompleter(self.combo_prestador.model(), self)
+            completer.setFilterMode(Qt.MatchFlag.MatchContains) 
+            completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+            self.combo_prestador.setCompleter(completer)
+        else:
+            self.combo_prestador.setEditable(False)
             self.combo_prestador.addItem("Nenhum prestador cadastrado", "")
 
-        self.inp_desc = QLineEdit();
+        self.inp_desc = QLineEdit()
+        self.inp_desc.setPlaceholderText("Resumo do objeto (Ex: Locação de Veículos)")
+        
         self.inp_valor = CurrencyInput()
-        self.inp_licitacao = QLineEdit();
+        self.inp_licitacao = QLineEdit()
         self.inp_dispensa = QLineEdit()
-        self.date_vig_ini = QDateEdit(QDate.currentDate());
+        
+        self.date_vig_ini = QDateEdit(QDate.currentDate())
         self.date_vig_ini.setCalendarPopup(True)
-        self.date_vig_fim = QDateEdit(QDate.currentDate().addYears(1));
+        self.date_vig_fim = QDateEdit(QDate.currentDate().addYears(1))
         self.date_vig_fim.setCalendarPopup(True)
 
-        self.inp_comp_ini = QLineEdit(QDate.currentDate().toString("MM/yyyy"));
+        self.inp_comp_ini = QLineEdit(QDate.currentDate().toString("MM/yyyy"))
         self.inp_comp_ini.setInputMask("99/9999")
-        self.inp_comp_fim = QLineEdit(QDate.currentDate().addYears(1).toString("MM/yyyy"));
+        self.inp_comp_ini.setFixedWidth(100) # Campo pequeno para data
+
+        self.inp_comp_fim = QLineEdit(QDate.currentDate().addYears(1).toString("MM/yyyy"))
         self.inp_comp_fim.setInputMask("99/9999")
+        self.inp_comp_fim.setFixedWidth(100)
 
-        layout.addRow("Número Contrato:", self.inp_numero);
-        layout.addRow("Prestador (Vinculado):", self.combo_prestador)
-        layout.addRow("Objeto:", self.inp_desc);
-        layout.addRow("Valor Inicial (Ciclo 0):", self.inp_valor)
-        layout.addRow("Licitação/Edital:", self.inp_licitacao);
-        layout.addRow("Inexigibilidade/Disp:", self.inp_dispensa)
+        # Adicionando linhas ao FormLayout
+        layout.addRow("Número:", self.inp_numero)
+        layout.addRow("Prestador:", self.combo_prestador) 
+        layout.addRow("Objeto:", self.inp_desc)
+        layout.addRow("Valor Inicial:", self.inp_valor)
+        layout.addRow("Licitação:", self.inp_licitacao)
+        layout.addRow("Inexigibilidade:", self.inp_dispensa)
 
-        layout.addRow(QLabel(""))
-        layout.addRow(QLabel("<b>Vigência (Datas de Assinatura):</b>"))
-        layout.addRow("Início Vigência:", self.date_vig_ini);
-        layout.addRow("Fim Vigência:", self.date_vig_fim)
+        layout.addRow(QLabel("")) # Espaçador
+        layout.addRow(QLabel("<b>Vigência:</b>"))
+        layout.addRow("Início:", self.date_vig_ini)
+        layout.addRow("Fim:", self.date_vig_fim)
 
-        lbl_comp = QLabel("Competências de Execução (Obrigatório):")
-        lbl_comp.setStyleSheet("font-weight: bold; color: #c0392b; margin-top: 10px;")
+        lbl_comp = QLabel("Competências (MM/AAAA):")
+        lbl_comp.setStyleSheet("font-weight: bold; color: #c0392b; margin-top: 5px;")
         layout.addRow(lbl_comp)
-        layout.addRow("Comp. Inicial (MM/AAAA):", self.inp_comp_ini);
-        layout.addRow("Comp. Final (MM/AAAA):", self.inp_comp_fim)
+        
+        # Layout horizontal para as datas de competência (ficam na mesma linha)
+        h_datas = QHBoxLayout()
+        h_datas.addWidget(QLabel("De:"))
+        h_datas.addWidget(self.inp_comp_ini)
+        h_datas.addWidget(QLabel("Até:"))
+        h_datas.addWidget(self.inp_comp_fim)
+        h_datas.addStretch()
+        
+        layout.addRow("", h_datas) # Adiciona o layout horizontal no form
 
+        main_layout.addLayout(layout)
+
+        # Preenchimento na Edição
         if contrato_editar:
-            self.inp_numero.setText(contrato_editar.numero);
-            for i in range(self.combo_prestador.count()):
-                if self.combo_prestador.itemText(i).startswith(contrato_editar.prestador):
-                    self.combo_prestador.setCurrentIndex(i)
-                    break
-            self.inp_desc.setText(contrato_editar.descricao);
-            self.inp_valor.set_value(contrato_editar.valor_inicial);
-            self.inp_licitacao.setText(contrato_editar.licitacao);
+            self.inp_numero.setText(contrato_editar.numero)
+            index = self.combo_prestador.findText(contrato_editar.prestador, Qt.MatchFlag.MatchContains)
+            if index >= 0: self.combo_prestador.setCurrentIndex(index)
+            self.inp_desc.setText(contrato_editar.descricao)
+            self.inp_valor.set_value(contrato_editar.valor_inicial)
+            self.inp_licitacao.setText(contrato_editar.licitacao)
             self.inp_dispensa.setText(contrato_editar.dispensa)
-            self.date_vig_ini.setDate(str_to_date(contrato_editar.vigencia_inicio));
+            self.date_vig_ini.setDate(str_to_date(contrato_editar.vigencia_inicio))
             self.date_vig_fim.setDate(str_to_date(contrato_editar.vigencia_fim))
-            self.inp_comp_ini.setText(contrato_editar.comp_inicio);
+            self.inp_comp_ini.setText(contrato_editar.comp_inicio)
             self.inp_comp_fim.setText(contrato_editar.comp_fim)
 
+        main_layout.addStretch()
+
+        # Botões
         botoes = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         botoes.accepted.connect(self.validar_e_aceitar)
-        botoes.rejected.connect(self.reject);
-        layout.addWidget(botoes)
+        botoes.rejected.connect(self.reject)
+        
+        # Estilo dos botões
+        for btn in botoes.buttons():
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            if botoes.buttonRole(btn) == QDialogButtonBox.ButtonRole.AcceptRole:
+                btn.setStyleSheet("background-color: #27ae60; color: white; font-weight: bold; padding: 8px 20px; border-radius: 4px;")
+            else:
+                btn.setStyleSheet("padding: 8px 20px;")
+
+        main_layout.addWidget(botoes, 0, Qt.AlignmentFlag.AlignRight)
+
 
     def validar_e_aceitar(self):
         if not self.inp_numero.text().strip():
@@ -796,20 +1033,28 @@ class DialogoCriarContrato(BaseDialog):
             self.inp_numero.setFocus()
             return
 
+        # Validação de Prestador
+        idx = self.combo_prestador.findText(self.combo_prestador.currentText())
+        if idx == -1:
+            DarkMessageBox.warning(self, "Prestador Inválido", 
+                                 "O prestador digitado não foi encontrado na lista.\n"
+                                 "Por favor, selecione uma das sugestões ao digitar.")
+            self.combo_prestador.setFocus()
+            return
+
         c_ini = ''.join(filter(str.isdigit, self.inp_comp_ini.text()))
         c_fim = ''.join(filter(str.isdigit, self.inp_comp_fim.text()))
 
         if len(c_ini) < 6 or len(c_fim) < 6:
             DarkMessageBox.warning(self, "Dados Incompletos",
-                                   "As <b>Competências Inicial e Final</b> são obrigatórias.\n"
-                                   "Por favor, preencha no formato MM/AAAA.\n\n"
-                                   "Isso é essencial para calcular o Ciclo 0 corretamente.")
+                                   "As <b>Competências Inicial e Final</b> são obrigatórias.")
             self.inp_comp_ini.setFocus()
             return
         self.accept()
 
     def get_dados(self):
-        prestador_escolhido = self.combo_prestador.currentText().split(' (')[0]
+        texto_completo = self.combo_prestador.currentText()
+        prestador_escolhido = texto_completo.split(' (')[0]
         return (self.inp_numero.text(), prestador_escolhido, self.inp_desc.text(),
                 self.inp_valor.get_value(), self.date_vig_ini.text(), self.date_vig_fim.text(),
                 self.inp_comp_ini.text(), self.inp_comp_fim.text(), self.inp_licitacao.text(),
@@ -1906,14 +2151,13 @@ class DialogoGerenciarPrestadores(BaseDialog):
     def __init__(self, lista_prestadores, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Registro de Prestadores")
-        self.resize(900, 600)
+        self.resize(1000, 600)  # Aumentei a largura inicial para caber melhor
 
-        # --- NOVO: HABILITA OS BOTÕES DE MAXIMIZAR E MINIMIZAR ---
+        # Garante botões de janela
         self.setWindowFlags(self.windowFlags() |
                             Qt.WindowType.WindowMaximizeButtonHint |
                             Qt.WindowType.WindowMinimizeButtonHint |
                             Qt.WindowType.WindowCloseButtonHint)
-        # ---------------------------------------------------------
 
         self.lista_prestadores = lista_prestadores
         self.parent_window = parent
@@ -1929,7 +2173,7 @@ class DialogoGerenciarPrestadores(BaseDialog):
         btn_editar = QPushButton("Editar Selecionado")
         btn_editar.clicked.connect(self.editar_prestador)
 
-        btn_excluir = QPushButton("Excluir Selecionado")
+        btn_excluir = QPushButton("Excluir Selecionados") # Plural
         btn_excluir.clicked.connect(self.excluir_prestador)
         btn_excluir.setStyleSheet("color: #c0392b;")
 
@@ -1944,17 +2188,28 @@ class DialogoGerenciarPrestadores(BaseDialog):
         colunas = ["Razão Social", "Nome Fantasia", "CNPJ", "CNES", "Cód. CP"]
         self.tabela.setColumnCount(len(colunas))
         self.tabela.setHorizontalHeaderLabels(colunas)
-        self.tabela.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        
+        # --- AJUSTE DE COLUNAS PARA NÃO CORTAR TEXTO ---
+        header = self.tabela.horizontalHeader()
+        # Razão Social e Fantasia ganham espaço elástico
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch) 
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        # CNPJ, CNES e Cód CP ajustam ao conteúdo (ficam justinhos)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        
+        # --- HABILITAR SELEÇÃO MÚLTIPLA (Shift / Ctrl) ---
         self.tabela.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self.tabela.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.tabela.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection) # <--- O SEGREDO
+        # -------------------------------------------------
+
         self.tabela.cellDoubleClicked.connect(self.editar_prestador)
 
-        # --- ATIVAR MENU DE CONTEXTO (Botão Direito) ---
+        # Menu de Contexto
         self.tabela.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.tabela.customContextMenuRequested.connect(self.abrir_menu_contexto)
-        # -----------------------------------------------
 
-        # Ativa a ordenação (recurso que adicionamos antes)
         self.tabela.setSortingEnabled(True)
 
         layout.addWidget(self.tabela)
@@ -1964,11 +2219,9 @@ class DialogoGerenciarPrestadores(BaseDialog):
         btn_fechar.clicked.connect(self.accept)
         layout.addWidget(btn_fechar)
 
-        # Aplica o estilo escuro na janela (importante ao alterar flags)
         aplicar_estilo_janela(self)
 
     def atualizar_tabela(self):
-        # Desliga ordenação para não embaralhar inserção
         self.tabela.setSortingEnabled(False)
         self.tabela.setRowCount(0)
 
@@ -1976,81 +2229,85 @@ class DialogoGerenciarPrestadores(BaseDialog):
             row = self.tabela.rowCount()
             self.tabela.insertRow(row)
 
-            # Converte para string para ordenação funcionar bem
             self.tabela.setItem(row, 0, QTableWidgetItem(str(p.razao_social)))
             self.tabela.setItem(row, 1, QTableWidgetItem(str(p.nome_fantasia)))
             self.tabela.setItem(row, 2, QTableWidgetItem(str(p.cnpj)))
             self.tabela.setItem(row, 3, QTableWidgetItem(str(p.cnes)))
             self.tabela.setItem(row, 4, QTableWidgetItem(str(p.cod_cp)))
 
+            # Guarda o objeto na coluna 0
             self.tabela.item(row, 0).setData(Qt.ItemDataRole.UserRole, p)
 
-        # Religa ordenação
         self.tabela.setSortingEnabled(True)
 
     def novo_prestador(self):
         dial = DialogoCadastroPrestador(parent=self)
         if dial.exec():
-            # Obtém dados do formulário (Razão, Fantasia, CNPJ, CNES, Cod)
             dados = dial.get_dados()
-
-            # Cria o objeto PRESTADOR (e não Contrato)
             novo_p = Prestador(*dados)
-
-            # Adiciona na lista local
             self.lista_prestadores.append(novo_p)
-
-            # Atualiza a tabela visual
             self.atualizar_tabela()
-
-            # Salva no banco de dados principal
             if self.parent_window:
                 self.parent_window.registrar_log("Novo Prestador", f"Cadastrou: {novo_p.nome_fantasia}")
                 self.parent_window.salvar_dados()
 
     def abrir_menu_contexto(self, pos):
-        # Descobre em qual linha foi o clique
-        item = self.tabela.itemAt(pos)
-
-        if item:
-            # Garante que a linha clicada fique selecionada visualmente
-            self.tabela.selectRow(item.row())
-
+        # Se houver seleção, abre o menu
+        selecao = self.tabela.selectedItems()
+        if selecao:
             menu = QMenu(self)
+            
+            # Conta quantas linhas únicas estão selecionadas
+            rows = set(item.row() for item in selecao)
+            qtd = len(rows)
 
-            acao_editar = menu.addAction("Editar Prestador")
-            acao_editar.triggered.connect(self.editar_prestador)
-
-            menu.addSeparator()
-
-            acao_excluir = menu.addAction("Excluir Prestador")
+            if qtd == 1:
+                acao_editar = menu.addAction("Editar Prestador")
+                acao_editar.triggered.connect(self.editar_prestador)
+            
+            acao_excluir = menu.addAction(f"Excluir {qtd} Prestador(es)")
             acao_excluir.triggered.connect(self.excluir_prestador)
 
-            # Exibe o menu na posição do mouse
             menu.exec(self.tabela.mapToGlobal(pos))
 
     def editar_prestador(self):
+        # Edição só funciona para UM item. Pega o primeiro da seleção.
         row = self.tabela.currentRow()
         if row < 0: return
+        
+        # Pega o objeto da linha (coluna 0)
         p = self.tabela.item(row, 0).data(Qt.ItemDataRole.UserRole)
 
         dial = DialogoCadastroPrestador(prestador_editar=p, parent=self)
         if dial.exec():
-            # Atualiza objeto
             rs, nf, cj, cn, cd = dial.get_dados()
             p.razao_social = rs; p.nome_fantasia = nf; p.cnpj = cj; p.cnes = cn; p.cod_cp = cd
             self.atualizar_tabela()
             if self.parent_window: self.parent_window.salvar_dados()
 
     def excluir_prestador(self):
-        row = self.tabela.currentRow()
-        if row < 0: return
-        p = self.tabela.item(row, 0).data(Qt.ItemDataRole.UserRole)
+        # --- LÓGICA DE EXCLUSÃO MÚLTIPLA ---
+        selecao = self.tabela.selectedIndexes()
+        if not selecao: return
 
-        if DarkMessageBox.question(self, "Excluir", f"Tem certeza que deseja excluir '{p.nome_fantasia}'?") == QMessageBox.StandardButton.Yes:
-            self.lista_prestadores.remove(p)
+        # Pega as linhas únicas selecionadas
+        rows = sorted(list(set(index.row() for index in selecao)), reverse=True)
+        qtd = len(rows)
+
+        msg = f"Tem certeza que deseja excluir {qtd} prestador(es) selecionado(s)?"
+        if DarkMessageBox.question(self, "Excluir em Massa", msg) == QMessageBox.StandardButton.Yes:
+            
+            # Loop reverso para remover da lista sem quebrar índices
+            for r in rows:
+                p_alvo = self.tabela.item(r, 0).data(Qt.ItemDataRole.UserRole)
+                if p_alvo in self.lista_prestadores:
+                    self.lista_prestadores.remove(p_alvo)
+            
             self.atualizar_tabela()
-            if self.parent_window: self.parent_window.salvar_dados()
+            if self.parent_window: 
+                self.parent_window.registrar_log("Exclusão em Massa", f"Removeu {qtd} prestadores.")
+                self.parent_window.salvar_dados()
+
 
 class PainelDetalheGlobal(QWidget):
     def __init__(self, parent=None):
@@ -3819,8 +4076,11 @@ class DialogoLixeira(BaseDialog):
 # ============================================================================
 # CLASSE DE GERENCIAMENTO DE BANCO DE DADOS (SQLite)
 # ============================================================================
+# ============================================================================
+# CLASSE DE GERENCIAMENTO DE BANCO DE DADOS (SQLite) - VERSÃO CORRIGIDA
+# ============================================================================
 class BancoDados:
-    def __init__(self, nome_arquivo="dados_gc.db"):
+    def __init__(self, nome_arquivo="dados_sistema.db"):
         self.nome_arquivo = nome_arquivo
         self.inicializar_tabelas()
 
@@ -3828,11 +4088,27 @@ class BancoDados:
         return sqlite3.connect(self.nome_arquivo)
 
     def inicializar_tabelas(self):
-        """Cria a estrutura do banco se não existir"""
+        """Cria a estrutura do banco e corrige tabelas antigas se necessário"""
         with self.conectar() as conn:
             cursor = conn.cursor()
 
-            # 1. Tabela de Usuários (Relacional para segurança e login rápido)
+            # --- AUTOCORREÇÃO: Verifica se a tabela antiga (bugada) existe ---
+            precisa_recriar = False
+            try:
+                cursor.execute("PRAGMA table_info(prestadores)")
+                colunas = cursor.fetchall()
+                # Se a tabela existe e a coluna 0 for 'cnpj' (esquema antigo)
+                if colunas and colunas[0][1] == 'cnpj':
+                    precisa_recriar = True
+            except:
+                pass
+
+            if precisa_recriar:
+                print(">>> CORRIGINDO BANCO DE DADOS: Recriando tabela de prestadores...")
+                cursor.execute("DROP TABLE IF EXISTS prestadores")
+            # -----------------------------------------------------------------
+
+            # 1. Tabela de Usuários
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS usuarios (
                     cpf TEXT PRIMARY KEY,
@@ -3840,17 +4116,18 @@ class BancoDados:
                 )
             """)
 
-            # 2. Tabela de Prestadores
+            # 2. Tabela de Prestadores (AGORA COM ID PRÓPRIO)
+            # O 'id' será a chave única. O 'cnpj' vira um campo comum (pode repetir).
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS prestadores (
-                    cnpj TEXT PRIMARY KEY,
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    cnpj TEXT, 
                     nome_fantasia TEXT,
                     dados_json TEXT
                 )
             """)
 
-            # 3. Tabela de Contratos (O 'Coração' do sistema)
-            # Guardamos o JSON completo para manter a estrutura complexa (Ciclos, NEs, etc)
+            # 3. Tabela de Contratos
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS contratos (
                     numero TEXT PRIMARY KEY,
@@ -3874,14 +4151,13 @@ class BancoDados:
 
     def salvar_tudo_snapshot(self, contratos, prestadores, logs, usuarios_dict):
         """
-        Salva o estado atual da memória no banco.
-        Usa transação (atomicidade): ou salva tudo, ou não salva nada (segurança total).
+        Salva o estado atual da memória no banco com segurança.
         """
         try:
             with self.conectar() as conn:
                 cursor = conn.cursor()
 
-                # Limpa dados antigos (Estratégia de Snapshot seguro)
+                # Limpa dados antigos (Snapshot)
                 cursor.execute("DELETE FROM usuarios")
                 cursor.execute("DELETE FROM prestadores")
                 cursor.execute("DELETE FROM contratos")
@@ -3894,12 +4170,15 @@ class BancoDados:
                     lista_users.append((cpf, json_str))
                 cursor.executemany("INSERT INTO usuarios VALUES (?,?)", lista_users)
 
-                # 2. Salvar Prestadores
+                # 2. Salvar Prestadores (CORRIGIDO)
+                # Note que NÃO passamos o ID. O banco cria sozinho (AUTOINCREMENT).
                 lista_prest = []
                 for p in prestadores:
                     json_str = json.dumps(p.to_dict(), ensure_ascii=False)
                     lista_prest.append((p.cnpj, p.nome_fantasia, json_str))
-                cursor.executemany("INSERT INTO prestadores VALUES (?,?,?)", lista_prest)
+                
+                # A query agora especifica as colunas, ignorando o ID
+                cursor.executemany("INSERT INTO prestadores (cnpj, nome_fantasia, dados_json) VALUES (?,?,?)", lista_prest)
 
                 # 3. Salvar Contratos
                 lista_cont = []
@@ -3913,8 +4192,8 @@ class BancoDados:
                 for l in logs:
                     json_str = json.dumps(l.to_dict(), ensure_ascii=False)
                     lista_logs.append((l.data, l.nome, l.acao, l.detalhe, json_str))
-                cursor.executemany("INSERT INTO logs (data, usuario, acao, detalhe, dados_json) VALUES (?,?,?,?,?)",
-                                   lista_logs)
+                
+                cursor.executemany("INSERT INTO logs (data, usuario, acao, detalhe, dados_json) VALUES (?,?,?,?,?)", lista_logs)
 
                 conn.commit()
                 return True
@@ -3923,7 +4202,6 @@ class BancoDados:
             return False
 
     def carregar_tudo(self):
-        """Recupera os dados do banco e remonta os objetos Python"""
         dados_retorno = {
             "contratos": [],
             "prestadores": [],
@@ -3943,7 +4221,8 @@ class BancoDados:
                 for row in cursor.fetchall():
                     dados_retorno["usuarios"][row[0]] = json.loads(row[1])
 
-                # Carregar Prestadores
+                # Carregar Prestadores (CORRIGIDO)
+                # Selecionamos apenas o JSON, pois ele tem os dados completos
                 cursor.execute("SELECT dados_json FROM prestadores")
                 for row in cursor.fetchall():
                     p_dict = json.loads(row[0])
@@ -3965,6 +4244,7 @@ class BancoDados:
             print(f"Erro ao ler banco de dados: {e}")
 
         return dados_retorno
+
 
 # --- 3. SISTEMA PRINCIPAL ---
 
@@ -4262,6 +4542,15 @@ class SistemaGestao(QMainWindow):
         # Nota: O salvamento no disco acontece no salvar_dados() geral
 
 
+    def abrir_monitor_vigencia(self):
+        # Verifica se tem contratos carregados
+        if not self.db_contratos:
+            DarkMessageBox.warning(self, "Aviso", "Não há contratos cadastrados para monitorar.")
+            return
+
+        dial = DialogoMonitorVigencia(self.db_contratos, parent=self)
+        dial.exec()
+
     def abrir_lixeira(self):
         dial = DialogoLixeira(self.db_contratos, parent=self)
         if dial.exec():
@@ -4368,7 +4657,7 @@ class SistemaGestao(QMainWindow):
         else:
             exe_atual = sys.executable
             pasta_atual = os.path.dirname(os.path.abspath(__file__))
-            nome_exe = "GC_Gestor_v1.exe"
+            nome_exe = "GC_Gestor_v2.0.exe"
 
         caminho_novo = os.path.join(pasta_atual, "update_temp.exe")
         caminho_bat = os.path.join(pasta_atual, "updater.bat")
@@ -5262,10 +5551,13 @@ class SistemaGestao(QMainWindow):
             background-color: {c_header}; 
             color: {c_texto}; 
             padding: 6px; 
-            border: 1px solid {c_borda}; 
+            border: none; /* Remove a borda que causa conflito */
+            border-right: 1px solid {c_borda}; /* Mantém apenas a divisória vertical */
+            border-bottom: 1px solid {c_borda}; /* Mantém a divisória horizontal */
             font-weight: bold; 
             font-size: {s_font}; 
         }}
+        
         QTableCornerButton::section {{ background-color: {c_header}; border: 1px solid {c_borda}; }}
 
         QPushButton {{ background-color: {c_btn}; border: 1px solid {c_borda}; border-radius: 4px; padding: 8px 16px; color: {c_texto}; font-weight: bold; font-size: {s_font}; }}
@@ -5346,10 +5638,77 @@ class SistemaGestao(QMainWindow):
         if os.path.exists(caminho_icone):
             self.setWindowIcon(QIcon(caminho_icone))
 
-        self.setWindowTitle("Gestão de Contratos")
+        self.setWindowTitle("Gestor de Contratos v2.0")
         self.setGeometry(50, 50, 1300, 850)
 
         mb = self.menuBar()
+
+        # --- BARRA DE FERRAMENTAS (TURBINADA) ---
+        self.toolbar = self.addToolBar("Atalhos Rápidos")
+        self.toolbar.setIconSize(QSize(15, 15)) # Aumentei levemente para 22px
+        self.toolbar.setMovable(False) 
+        self.toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly) # Só ícones
+        
+        self.toolbar.setStyleSheet("""
+            QToolBar { background-color: #f9f9f9; border-bottom: 1px solid #e0e0e0; spacing: 6px; padding: 4px; }
+            QToolButton { border-radius: 3px; padding: 3px; }
+            QToolButton:hover { background-color: #e6f7ff; border: 1px solid #add8e6; }
+        """)
+
+        def add_btn(nome, icone_std, funcao, dica):
+            acao = QAction(self.style().standardIcon(icone_std), nome, self)
+            acao.setToolTip(f"<b>{nome}</b><br>{dica}") # Dica em HTML com negrito
+            acao.triggered.connect(funcao)
+            self.toolbar.addAction(acao)
+            return acao
+
+        add_btn("Início", QStyle.StandardPixmap.SP_ArrowBack, self.voltar_para_pesquisa, "Voltar para pesquisa")
+
+        self.toolbar.addSeparator()
+        
+        add_btn("Novo Contrato", QStyle.StandardPixmap.SP_FileIcon, self.abrir_novo_contrato, "Iniciar novo cadastro")
+        add_btn("Salvar Tudo", QStyle.StandardPixmap.SP_DialogSaveButton, self.salvar_dados, "Gravar alterações no disco")
+        add_btn("Backup Local", QStyle.StandardPixmap.SP_DriveFDIcon, self.fazer_backup_local, "Criar cópia .bak instantânea")
+        
+        self.toolbar.addSeparator()
+                        
+        add_btn("Prestadores", QStyle.StandardPixmap.SP_DirHomeIcon, self.abrir_gestao_prestadores, "Gerenciar empresas credoras")
+        add_btn("Prazos", QStyle.StandardPixmap.SP_FileDialogDetailedView, self.abrir_monitor_vigencia, "Monitor de vencimentos")
+        
+        self.toolbar.addSeparator()
+      
+        
+        add_btn("Sincronizar", QStyle.StandardPixmap.SP_BrowserReload, self.sincronizar_nuvem, "Enviar/Baixar dados do Google Drive")
+                  
+        add_btn("IA Gemini", QStyle.StandardPixmap.SP_ComputerIcon, self.abrir_chat_ia, "Assistente Virtual Inteligente")
+
+        self.toolbar.addSeparator()
+
+        add_btn("Calculadora", QStyle.StandardPixmap.SP_MessageBoxInformation, self.abrir_calculadora, "Ferramenta de cálculo")
+        add_btn("Lixeira", QStyle.StandardPixmap.SP_TrashIcon, self.abrir_lixeira, "Ver/Restaurar itens excluídos")
+
+        # --- Espaçador (Empurra o resto para a direita) ---
+        empty = QWidget(); empty.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        self.toolbar.addWidget(empty)
+
+        # --- BOTÃO DE NOTIFICAÇÕES (NOVO LOCAL) ---
+        # Criamos como widget para poder mudar o texto (ex: "🔔 5")
+        self.btn_notificacoes = QPushButton("🔔")
+        self.btn_notificacoes.setToolTip("Central de Notificações")
+        self.btn_notificacoes.setCursor(Qt.CursorShape.PointingHandCursor)
+        # Estilo inicial (sem alertas)
+        self.btn_notificacoes.setStyleSheet("""
+            QPushButton { border: none; background: transparent; color: #7f8c8d; font-weight: bold; font-size: 14px; padding: 0 10px; }
+            QPushButton:hover { background-color: #eaeaea; border-radius: 4px; }
+        """)
+        self.btn_notificacoes.clicked.connect(self.abrir_notificacoes)
+        self.toolbar.addWidget(self.btn_notificacoes)
+        
+        self.toolbar.addSeparator()
+
+        # Botão IA e Sair na direita
+        add_btn("IA Gemini", QStyle.StandardPixmap.SP_ComputerIcon, self.abrir_chat_ia, "Chat Inteligente")
+        
 
         # --- 1. MENU ARQUIVO (Gestão de Dados) ---
         m_arq = mb.addMenu("Arquivo")
@@ -5398,7 +5757,19 @@ class SistemaGestao(QMainWindow):
         # --- 3. MENU EXIBIR (Visual) ---
         m_exi = mb.addMenu("Exibir")
         m_exi.addAction("Painel de Pesquisa (Início)", self.voltar_para_pesquisa)
+        # --- NOVO: MONITOR DE VIGÊNCIAS ---
+        m_exi.addAction("🚦 Monitor de Vigências e Prazos...", self.abrir_monitor_vigencia)
+        # ----------------------------------
         m_exi.addSeparator()
+
+        # --- COMANDO PARA EXIBIR/ESCONDER A BARRA ---
+        # toggleViewAction() cria uma ação checkable (com ✔️) automaticamente
+        acao_barra = self.toolbar.toggleViewAction()
+        acao_barra.setText("Mostrar Barra de Atalhos") # Renomeia para ficar bonito
+        m_exi.addAction(acao_barra)
+        # --------------------------------------------
+
+
         '''m_exi.addAction("Alternar Tema (Claro/Escuro)", self.alternar_tema)'''
         m_exi.addAction("Personalizar Cores e Fontes...", self.abrir_aparencia)
         m_exi.addSeparator()
@@ -5468,7 +5839,7 @@ class SistemaGestao(QMainWindow):
         # --- 7. MENU AJUDA ---
         m_ajuda = mb.addMenu("Ajuda")
         # --- ADICIONE ESTE BLOCO AQUI ---
-        acao_config_ia = QAction("🔧 Configurar Conexões (IA / Nuvem)", self)
+        acao_config_ia = QAction("Configurar Conexões (IA / Nuvem)", self)
         acao_config_ia.triggered.connect(self.abrir_tutorial_ia)
         m_ajuda.addAction(acao_config_ia)
         m_ajuda.addSeparator()
@@ -5479,7 +5850,7 @@ class SistemaGestao(QMainWindow):
         m_ajuda.addAction("Verificar Atualizações...", self.verificar_updates)
 
         txt_sobre = (
-            "GC Gestor de Contratos - Versão 1.1\n"
+            "GC Gestor de Contratos - Versão 2.0\n"
             "Desenvolvido em Python/PyQt6\n\n"
             "Autor: Cássio de Souza Lopes, servo de Jesus Cristo ✝.\n"
             "Servidor da Secretaria Municipal de Saúde de Montes Claros(MG)\nMestre em Desenvolvimento Social (UNIMONTES)\nBacharel em Economia(UNIMONTES)\nGraduando em Análise e Desenvolvimento de Sistemas (UNINTER)\n"
@@ -5491,123 +5862,86 @@ class SistemaGestao(QMainWindow):
 
         self.stack = QStackedWidget()
         self.setCentralWidget(self.stack)
-        # ============================================================================
-        # SUBSTITUA O BLOCO DA "TOP BAR" NO SEU MÉTODO init_ui POR ESTE:
-        # ============================================================================
-
-        # --- PÁGINA 1: PESQUISA ---
+       
+        # --- PÁGINA 1: PESQUISA (CLEAN & FULL SCREEN) ---
         self.page_pesquisa = QWidget()
         layout_p = QVBoxLayout(self.page_pesquisa)
+        layout_p.setContentsMargins(40, 40, 40, 20) # Margens equilibradas
         layout_p.setAlignment(Qt.AlignmentFlag.AlignTop)
 
-        # 1. BARRA SUPERIOR (TOP BAR)
-        top_bar = QHBoxLayout()
-        # Empurra os botões iniciais para a esquerda se houver, ou cria espaço
-        top_bar.addStretch()
-
-        # --- Botões Existentes (IA e Notificações) ---
-        btn_chat = QPushButton("💬 IA")
-        btn_chat.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_chat.setToolTip("Perguntar à Inteligência Artificial")
-        btn_chat.setStyleSheet("""
-                    QPushButton { border: none; background: transparent; font-size: 14px; color: #7f8c8d; font-weight: bold; padding: 5px; }
-                    QPushButton:hover { color: #8e44ad; background-color: #f0f0f0; border-radius: 5px; }
-                """)
-        btn_chat.clicked.connect(self.abrir_chat_ia)
-
-        self.btn_notificacoes = QPushButton("🔔")
-        self.btn_notificacoes.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_notificacoes.setToolTip("Notificações e Alertas")
-        self.btn_notificacoes.clicked.connect(self.abrir_notificacoes)
-        self.btn_notificacoes.setStyleSheet("""
-                    QPushButton { border: none; background: transparent; font-size: 16px; color: #7f8c8d; padding: 5px; }
-                    QPushButton:hover { background-color: #f0f0f0; border-radius: 5px; }
-                """)
-
-        top_bar.addWidget(btn_chat)
-        top_bar.addSpacing(10)
-        top_bar.addWidget(self.btn_notificacoes)
-
-        # --- NOVO: LOGO ESMAECIDO NO CANTO SUPERIOR DIREITO ---
-        # Adiciona um espaçador grande para empurrar o logo para a extrema direita
-        top_bar.addSpacing(30)
-
-        self.lbl_watermark = QLabel()
-        # Tamanho médio fixo para o container do logo
-        self.lbl_watermark.setFixedSize(70, 70)
-        self.lbl_watermark.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-        # Caminho do ícone
-        caminho_script = os.path.dirname(os.path.abspath(__file__))
-        caminho_icone = os.path.join(caminho_script, "icon_gc.png")
-
-        if os.path.exists(caminho_icone):
-            # 1. Carrega a imagem original e redimensiona para tamanho médio (ex: 65x65)
-            src_pix = QPixmap(caminho_icone).scaled(65, 65,
-                                                    Qt.AspectRatioMode.KeepAspectRatio,
-                                                    Qt.TransformationMode.SmoothTransformation)
-
-            # 2. Cria um canvas transparente do mesmo tamanho
-            final_pix = QPixmap(src_pix.size())
-            final_pix.fill(Qt.GlobalColor.transparent)
-
-            # 3. Usa o QPainter para desenhar a imagem original com OPACIDADE reduzida
-            from PyQt6.QtGui import QPainter  # Certifique-se que QPainter está importado lá em cima
-            painter = QPainter(final_pix)
-            # Ajuste a opacidade aqui (0.0 = invisível, 1.0 = normal).
-            # 0.3 (30%) fica bem esmaecido, parecendo marca d'água.
-            painter.setOpacity(0.3)
-            painter.drawPixmap(0, 0, src_pix)
-            painter.end()
-
-            self.lbl_watermark.setPixmap(final_pix)
-        else:
-            # Fallback discreto se não tiver imagem
-            self.lbl_watermark.setText("GC")
-            self.lbl_watermark.setStyleSheet("color: rgba(150,150,150,80); font-size: 20px; font-weight: bold;")
-
-        # Adiciona o logo por último na barra horizontal
-        top_bar.addWidget(self.lbl_watermark)
-        # -------------------------------------------------------
-
-        layout_p.addLayout(top_bar)
-
-        # ============================================================================
-        # FIM DO BLOCO SUBSTITUÍDO
-        # ============================================================================
-
-        # 2. CONTAINER CENTRAL (LOGO + PESQUISA + TABELA)
+        # Container Central
         container = QFrame()
-        # container.setFixedWidth(900) # (Opcional: Descomente se quiser limitar a largura do meio)
         l_cont = QVBoxLayout(container)
+        l_cont.setSpacing(15) # Espaço entre Logo, Busca e Tabela
 
-        # Logo
-        self.lbl_logo = QLabel("Pesquisa de Contratos / Notas de Empenho / Prestadores")
+        # 1. Logo (Reduzi um pouco a margem superior para subir tudo)
+        self.lbl_logo = QLabel("Pesquisa de Contratos")
         self.lbl_logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.lbl_logo.setFont(QFont("Arial", 80, QFont.Weight.Bold))
-        self.lbl_logo.setStyleSheet("color: #010428; margin-bottom: 20px; margin-top: 10px")
+        # Fonte grande, mas sem exageros que empurrem tudo para baixo
+        self.lbl_logo.setFont(QFont("Segoe UI", 32, QFont.Weight.Bold)) 
+        self.lbl_logo.setStyleSheet("color: #2c3e50; margin-bottom: 10px;")
+        l_cont.addWidget(self.lbl_logo)
 
-        # Barra de Pesquisa
+        # 2. Barra de Pesquisa (Estilizada e Grande)
         self.inp_search = QLineEdit()
-        self.inp_search.setPlaceholderText("Digite para pesquisar (Contrato, Prestador, CNPJ, Objeto)...")
-        self.inp_search.setStyleSheet("font-size: 16px; padding: 10px; border: 1px solid #bdc3c7; border-radius: 5px;")
+        self.inp_search.setPlaceholderText("🔎 Digite para pesquisar (Número, Prestador, CNPJ, Objeto)...")
+        self.inp_search.setMinimumHeight(45) # Barra alta, fácil de clicar
+        self.inp_search.setStyleSheet("""
+            QLineEdit {
+                font-size: 16px;
+                padding: 0 15px;
+                border: 2px solid #ddd;
+                border-radius: 22px; /* Arredondada */
+                background-color: #ffffff;
+                selection-background-color: #2980b9;
+            }
+            QLineEdit:focus {
+                border: 2px solid #3498db;
+            }
+        """)
         self.inp_search.textChanged.connect(self.filtrar_contratos)
+        l_cont.addWidget(self.inp_search)
 
         # Tabela (Configuração das 8 colunas)
+        # Tabela (Configuração Otimizada para Leitura)
         self.tabela_resultados = QTableWidget()
+        self.tabela_resultados.setAlternatingRowColors(True) # Facilita leitura
+        self.tabela_resultados.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
+        
+        # --- MUDANÇA 1: FONTE MENOR E QUEBRA DE LINHA ---
+        self.tabela_resultados.setStyleSheet("font-size: 11px; padding: 2px;") 
+        self.tabela_resultados.setWordWrap(True) # Permite que o texto desça para a linha de baixo
+        # -----------------------------------------------
+        # --- LINHAS MÁGICAS PARA CORRIGIR ALTURA ---
+        v_header = self.tabela_resultados.verticalHeader()
+        v_header.setDefaultSectionSize(40) # Altura mínima padrão confortável
+        v_header.setSectionResizeMode(QHeaderView.ResizeMode.Fixed) # Trava para não encolher sozinho
+        # -------------------------------------------
+
         colunas = ["Contrato", "Prestador (Fantasia)", "Razão Social", "CNPJ", "CNES", "Cód. CP", "Objeto", "Status"]
         self.tabela_resultados.setColumnCount(len(colunas))
         self.tabela_resultados.setHorizontalHeaderLabels(colunas)
 
         header = self.tabela_resultados.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(4, QHeaderView.ResizeMode.Fixed); self.tabela_resultados.setColumnWidth(4, 80)
-        header.setSectionResizeMode(5, QHeaderView.ResizeMode.Fixed); self.tabela_resultados.setColumnWidth(5, 80)
-        header.setSectionResizeMode(6, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(7, QHeaderView.ResizeMode.Fixed); self.tabela_resultados.setColumnWidth(7, 90)
+        
+        # Configuração Inteligente de Largura:
+        # ResizeToContents: A coluna fica do tamanho exato do texto (bom para CNPJ, Cód)
+        # Stretch: A coluna estica para ocupar o espaço livre (bom para Nome e Objeto)
+        # Interactive: O usuário pode arrastar se quiser
+        
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents) # Contrato (Curto)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)      # Prestador (Arrastável)
+        self.tabela_resultados.setColumnWidth(1, 200)                           # Largura inicial boa
+        
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)      # Razão (Arrastável)
+        self.tabela_resultados.setColumnWidth(2, 150)
+
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents) # CNPJ
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents) # CNES
+        header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents) # Cod
+        
+        header.setSectionResizeMode(6, QHeaderView.ResizeMode.Stretch)          # Objeto (Ocupa o resto)
+        header.setSectionResizeMode(7, QHeaderView.ResizeMode.ResizeToContents) # Status
 
         self.tabela_resultados.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.tabela_resultados.cellDoubleClicked.connect(self.abrir_contrato_pesquisa)
@@ -5624,139 +5958,87 @@ class SistemaGestao(QMainWindow):
         # Finaliza layout da página
         layout_p.addWidget(container)
 
-        # --- PÁGINA 2: DETALHES ---
+        # --- PÁGINA 2: DETALHES (LAYOUT OTIMIZADO E LIMPO) ---
         self.page_detalhes = QWidget()
         self.layout_detalhes = QVBoxLayout(self.page_detalhes)
+        self.layout_detalhes.setContentsMargins(10, 10, 10, 5) 
+        self.layout_detalhes.setSpacing(5)
 
-        top_bar = QHBoxLayout()
+        # --- BARRA SUPERIOR UNIFICADA ---
+        top_bar_container = QFrame()
+        top_bar_container.setStyleSheet("background-color: #fcfcfc; border-bottom: 1px solid #e0e0e0;")
+        top_bar_container.setMaximumHeight(100) 
+        l_top = QHBoxLayout(top_bar_container)
+        l_top.setContentsMargins(10, 10, 10, 10)
 
-        # Botão Voltar
-        btn_voltar = QPushButton("◀")
-        btn_voltar.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_voltar.setStyleSheet("""
-            QPushButton { 
-                background-color: #00000000; 
-                color: #2c3e50; 
-                border: 1px solid #bdc3c7; 
-                border-radius: 5px; 
-                font-size: 20px; 
-                font-weight: bold;
-                padding: 5px 5px;
-                min-width: 15px;
-            }
-            QPushButton:hover { 
-                background-color: #ecf0f1; 
-                border: 1px solid #34495e;
-                color: #000000;
-            }
-        """)
-        btn_voltar.clicked.connect(self.voltar_para_pesquisa)
-        # Layout Vertical: Linha 1 (Nome + Dados), Linha 2 (Descrição Contrato)
-        header_main_layout = QVBoxLayout()
-        header_main_layout.setSpacing(2)
-        header_main_layout.setContentsMargins(0, 0, 0, 0)
+       
 
-        # --- LINHA 1: Nome do Prestador + Badges de Dados ---
-        line1_layout = QHBoxLayout()
-        line1_layout.setSpacing(12)
-        line1_layout.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        # 2. Informações do Contrato
+        v_info = QVBoxLayout()
+        v_info.setSpacing(2)
+        
+        # Linha A: Prestador + Badges
+        h_line_a = QHBoxLayout()
+        h_line_a.setSpacing(10)
+        
+        self.lbl_prestador = QLabel("PRESTADOR")
+        self.lbl_prestador.setStyleSheet("font-size: 16px; font-weight: bold; color: #2c3e50; border: none;")
+        
+        style_badge = "color: #555; font-size: 11px; padding: 2px 6px; border: 1px solid #bbb; border-radius: 4px; background-color: #f9f9f9;"
+        self.lbl_det_cnpj = QLabel("CNPJ: -"); self.lbl_det_cnpj.setStyleSheet(style_badge)
+        self.lbl_det_cnes = QLabel("CNES: -"); self.lbl_det_cnes.setStyleSheet(style_badge)
+        self.lbl_det_cod = QLabel("Cód: -"); self.lbl_det_cod.setStyleSheet(style_badge)
+        
+        h_line_a.addWidget(self.lbl_prestador)
+        h_line_a.addWidget(self.lbl_det_cnpj)
+        h_line_a.addWidget(self.lbl_det_cnes)
+        h_line_a.addWidget(self.lbl_det_cod)
+        h_line_a.addStretch()
+        
+        # Linha B: Descrição
+        self.lbl_titulo = QLabel("Dados do Contrato...")
+        self.lbl_titulo.setStyleSheet("font-size: 13px; color: #555; margin-top: 2px; border: none;")
+        
+        v_info.addLayout(h_line_a)
+        v_info.addWidget(self.lbl_titulo)
+        
+        l_top.addLayout(v_info, stretch=1)
 
-        self.lbl_prestador = QLabel("NOME DO PRESTADOR")
-        self.lbl_prestador.setFont(QFont("Arial", 16, QFont.Weight.Bold))
-        self.lbl_prestador.setStyleSheet("color: #2c3e50; border: none; background: transparent;")
-
-        # Badges (CNPJ, CNES, COD)
-        style_badge = "background-color: #f0f3f4; color: #555; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; border: 1px solid #bdc3c7;"
-
-        self.lbl_det_cnpj = QLabel("CNPJ: -");
-        self.lbl_det_cnpj.setStyleSheet(style_badge)
-        self.lbl_det_cnes = QLabel("CNES: -");
-        self.lbl_det_cnes.setStyleSheet(style_badge)
-        self.lbl_det_cod = QLabel("Cód: -");
-        self.lbl_det_cod.setStyleSheet(style_badge)
-
-        line1_layout.addWidget(self.lbl_prestador)
-        line1_layout.addWidget(self.lbl_det_cnpj)
-        line1_layout.addWidget(self.lbl_det_cnes)
-        line1_layout.addWidget(self.lbl_det_cod)
-        line1_layout.addStretch()
-
-        # --- LINHA 2: Título/Descrição do Contrato ---
-        self.lbl_titulo = QLabel("Contrato nº ...")
-        self.lbl_titulo.setFont(QFont("Arial", 12))
-        self.lbl_titulo.setStyleSheet("color: #7f8c8d; margin-top: 2px;")
-
-        header_main_layout.addLayout(line1_layout)
-        header_main_layout.addWidget(self.lbl_titulo)
-
-        # Adiciona elementos à barra
-        top_bar.addWidget(btn_voltar)
-        top_bar.addSpacing(15)
-        top_bar.addLayout(header_main_layout)
-
-        # Empurra tudo para a esquerda para abrir espaço na direita
-        top_bar.addStretch()
-
-        # --- NOVO: LOGO ESMAECIDO NA TELA DE DETALHES ---
-        self.lbl_watermark_det = QLabel()
-        self.lbl_watermark_det.setFixedSize(70, 70)
-        self.lbl_watermark_det.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-        # Caminho do ícone (recalcula ou usa variável se já tiver no escopo)
-        caminho_script = os.path.dirname(os.path.abspath(__file__))
-        caminho_icone = os.path.join(caminho_script, "icon_gc.png")
-
-        if os.path.exists(caminho_icone):
-            src_pix = QPixmap(caminho_icone).scaled(65, 65, Qt.AspectRatioMode.KeepAspectRatio,
-                                                    Qt.TransformationMode.SmoothTransformation)
-            final_pix = QPixmap(src_pix.size())
-            final_pix.fill(Qt.GlobalColor.transparent)
-
-            painter = QPainter(final_pix)
-            painter.setOpacity(0.3)  # 30% de opacidade
-            painter.drawPixmap(0, 0, src_pix)
-            painter.end()
-
-            self.lbl_watermark_det.setPixmap(final_pix)
-        else:
-            self.lbl_watermark_det.setText("GC")  # Fallback
-            self.lbl_watermark_det.setStyleSheet("color: rgba(150,150,150,80); font-size: 20px; font-weight: bold;")
-
-        top_bar.addWidget(self.lbl_watermark_det)
-        # ------------------------------------------------
-
-        self.layout_detalhes.addLayout(top_bar)
-
-        # --- FILTRO DE CICLO (Restaurado) ---
-        layout_filtro = QHBoxLayout()
-        layout_filtro.setContentsMargins(0, 10, 0, 0)
-        lbl_filtro = QLabel("Visualizar dados do Ciclo:")
-        lbl_filtro.setFont(QFont("Arial", 10, QFont.Weight.Bold))
+        # 3. Seletor de Ciclo
+        v_ciclo = QVBoxLayout()
+        v_ciclo.setSpacing(2)
+        lbl_c = QLabel("VISUALIZAR CICLO:")
+        lbl_c.setStyleSheet("font-size: 10px; color: #888; font-weight: bold;")
+        
         self.combo_ciclo_visualizacao = QComboBox()
-        self.combo_ciclo_visualizacao.setFixedWidth(300)
+        self.combo_ciclo_visualizacao.setFixedWidth(200)
         self.combo_ciclo_visualizacao.currentIndexChanged.connect(self.atualizar_painel_detalhes)
         self.combo_ciclo_visualizacao.currentIndexChanged.connect(self.salvar_ciclo_atual)
+        
+        v_ciclo.addWidget(lbl_c)
+        v_ciclo.addWidget(self.combo_ciclo_visualizacao)
+        l_top.addLayout(v_ciclo)
 
-        layout_filtro.addWidget(lbl_filtro)
-        layout_filtro.addWidget(self.combo_ciclo_visualizacao)
-        layout_filtro.addStretch()
-        self.layout_detalhes.addLayout(layout_filtro)
+        self.layout_detalhes.addWidget(top_bar_container)
 
         # --- CRIAÇÃO DAS ABAS ---
         self.abas = QTabWidget()
-
-        # --- CORREÇÃO: Atualiza a tela toda vez que o usuário troca de aba ---
         self.abas.currentChanged.connect(lambda: self.atualizar_painel_detalhes())
-        # ---------------------------------------------------------------------
-
         self.layout_detalhes.addWidget(self.abas)
 
         # ABA 1: DADOS
-        self.tab_dados = QWidget();
+        self.tab_dados = QWidget()
         l_dados = QFormLayout(self.tab_dados)
-        self.lbl_d_licitacao = QLabel("-");
+        l_dados.setSpacing(12) # Mais respiro entre linhas
+        
+        # Labels de dados
+        self.lbl_d_objeto = QLabel("-")
+        self.lbl_d_objeto.setWordWrap(True) # Objeto pode ser grande
+        self.lbl_d_objeto.setStyleSheet("font-weight: bold; color: #2c3e50; font-size: 12px;")
+        
+        self.lbl_d_licitacao = QLabel("-")
         self.lbl_d_dispensa = QLabel("-")
-        self.lbl_d_vigencia = QLabel("-");
+        self.lbl_d_vigencia = QLabel("-")
         self.lbl_d_comp = QLabel("-")
 
         self.tab_ciclos_resumo = TabelaExcel()
@@ -5766,54 +6048,41 @@ class SistemaGestao(QMainWindow):
         self.tab_ciclos_resumo.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.tab_ciclos_resumo.setMinimumHeight(150)
 
-        l_dados.addRow("Licitação:", self.lbl_d_licitacao);
+        # Adicionando ao layout (Objeto em destaque no topo)
+        l_dados.addRow("Objeto do Contrato:", self.lbl_d_objeto) 
+        l_dados.addRow("Licitação:", self.lbl_d_licitacao)
         l_dados.addRow("Dispensa:", self.lbl_d_dispensa)
-        l_dados.addRow("Vigência:", self.lbl_d_vigencia);
+        l_dados.addRow("Vigência:", self.lbl_d_vigencia)
         l_dados.addRow("Competências de Pagamento:", self.lbl_d_comp)
+        l_dados.addRow(QLabel("")) # Espaçador
         l_dados.addRow("Resumo Financeiro:", self.tab_ciclos_resumo)
+        
         self.abas.addTab(self.tab_dados, "Dados")
 
         # ABA 2: FINANCEIRO
-        tab_fin = QWidget();
+        tab_fin = QWidget()
         l_fin = QVBoxLayout(tab_fin)
+        l_fin.setContentsMargins(10, 10, 10, 10)
 
-        from PyQt6.QtWidgets import QGroupBox, QGridLayout
-        self.grp_detalhes_ne = QGroupBox("Detalhes da Nota de Empenho Selecionada")
-        self.grp_detalhes_ne.setMaximumHeight(130)  # Aumentei um pouco a altura
-        layout_det_ne = QGridLayout(self.grp_detalhes_ne)
+        # --- ÁREA DE DETALHES DA NE (MINIMALISTA) ---
+        self.frame_ne_info = QFrame()
+        self.frame_ne_info.setStyleSheet("background-color: #f9f9f9; border: 1px solid #e0e0e0; border-radius: 4px;")
+        self.frame_ne_info.setMaximumHeight(50) # Altura fixa pequena
+        l_ne_info = QHBoxLayout(self.frame_ne_info)
+        l_ne_info.setContentsMargins(10, 5, 10, 5)
 
-        # Labels existentes
-        self.lbl_ne_ciclo = QLabel("Ciclo: -")
-        self.lbl_ne_emissao = QLabel("Emissão: -")
-        self.lbl_ne_aditivo = QLabel("Aditivo: -")
+        # Ícone visual
+        lbl_ico_ne = QLabel("📝") 
+        lbl_ico_ne.setFont(QFont("Arial", 14))
+        l_ne_info.addWidget(lbl_ico_ne)
 
-        # --- NOVOS LABELS ---
-        self.lbl_ne_fonte = QLabel("Fonte: -")
-        self.lbl_ne_servico = QLabel("Serviço: -")
-        # --------------------
-
-        self.lbl_ne_desc = QLabel("Descrição: -")
-        self.lbl_ne_desc.setWordWrap(True)
-
-        font_bold = QFont("Arial", 9, QFont.Weight.Bold)
-        for l in [self.lbl_ne_ciclo, self.lbl_ne_emissao, self.lbl_ne_aditivo,
-                  self.lbl_ne_desc, self.lbl_ne_fonte, self.lbl_ne_servico]:
-            l.setFont(font_bold)
-
-        # --- REORGANIZAÇÃO DO GRID (3 Linhas) ---
-        # Linha 0: Ciclo | Emissão | Fonte
-        layout_det_ne.addWidget(self.lbl_ne_ciclo, 0, 0)
-        layout_det_ne.addWidget(self.lbl_ne_emissao, 0, 1)
-        layout_det_ne.addWidget(self.lbl_ne_fonte, 0, 2)
-
-        # Linha 1: Serviço (ocupa 2 colunas) | Aditivo
-        layout_det_ne.addWidget(self.lbl_ne_servico, 1, 0, 1, 2)
-        layout_det_ne.addWidget(self.lbl_ne_aditivo, 1, 2)
-
-        # Linha 2: Descrição (ocupa tudo)
-        layout_det_ne.addWidget(self.lbl_ne_desc, 2, 0, 1, 3)
-
-        l_fin.addWidget(self.grp_detalhes_ne)
+        # O Label único que receberá todo o texto
+        self.lbl_ne_resumo = QLabel("Selecione uma Nota de Empenho na tabela para ver os detalhes...")
+        self.lbl_ne_resumo.setWordWrap(True)
+        self.lbl_ne_resumo.setStyleSheet("font-size: 11px; color: #444; border: none;") 
+        
+        l_ne_info.addWidget(self.lbl_ne_resumo, stretch=1)
+        l_fin.addWidget(self.frame_ne_info)
 
         # --- NOVO: BARRA DE BUSCA FINANCEIRO ---
         hl_busca_fin = QHBoxLayout()
@@ -6041,6 +6310,7 @@ class SistemaGestao(QMainWindow):
                         # Adiciona a NE como uma linha independente vinculada a este contrato
                         self._inserir_linha_na_tabela_pesquisa(c, ne, p_obj)
 
+        
         self.tabela_resultados.setSortingEnabled(True)
 
     def _inserir_linha_na_tabela_pesquisa(self, contrato, ne, p_obj):
@@ -6162,25 +6432,59 @@ class SistemaGestao(QMainWindow):
                     break
 
 
+
+
     def menu_pesquisa(self, pos):
-        item = self.tabela_resultados.itemAt(pos)
-        if item:
-            data = self.tabela_resultados.item(item.row(), 0).data(Qt.ItemDataRole.UserRole)
+        # Verifica quantos itens estão selecionados
+        selecao = self.tabela_resultados.selectedItems()
+        if not selecao: return
 
-            menu = QMenu(self)
+        # Filtra apenas as linhas únicas (pois a seleção pega todas as colunas)
+        rows = sorted(list(set(item.row() for item in selecao)))
+        qtd = len(rows)
 
-            # Ação de abrir funciona para ambos
-            menu.addAction("Abrir Detalhes", lambda: self.abrir_contrato_pesquisa(item.row(), 0))
+        # Pega os dados do primeiro item para verificar o tipo (se é contrato ou NE)
+        primeiro_item = self.tabela_resultados.item(rows[0], 0)
+        if not primeiro_item: return
+        data = primeiro_item.data(Qt.ItemDataRole.UserRole)
+        
+        menu = QMenu(self)
 
-            # Edição/Exclusão só permitimos se for CONTRATO (para evitar confusão)
+        # --- AÇÕES PARA UM ÚNICO ITEM ---
+        if qtd == 1:
+            menu.addAction("Abrir Detalhes", lambda: self.abrir_contrato_pesquisa(rows[0], 0))
+            
             if data["tipo"] == "CONTRATO":
                 c = data["obj"]
                 menu.addSeparator()
-
                 menu.addAction("Editar Contrato", lambda: self.editar_contrato_externo(c))
-                menu.addAction("Excluir Contrato", lambda: self.excluir_contrato_externo(c))
 
-            menu.exec(self.tabela_resultados.mapToGlobal(pos))
+        # --- AÇÕES EM MASSA (MÚLTIPLOS ITENS) ---
+        # Só permite ações em massa se forem CONTRATOS (não misturar com NEs na busca)
+        todos_sao_contratos = True
+        lista_contratos_alvo = []
+
+        for r in rows:
+            d = self.tabela_resultados.item(r, 0).data(Qt.ItemDataRole.UserRole)
+            if d["tipo"] != "CONTRATO":
+                todos_sao_contratos = False
+                break
+            lista_contratos_alvo.append(d["obj"])
+
+        if todos_sao_contratos and lista_contratos_alvo:
+            menu.addSeparator()
+            
+            # Ação de Excluir (Lixeira)
+            txt_del = f"Excluir {qtd} Contrato(s)" if qtd > 1 else "Excluir Contrato"
+            acao_del = menu.addAction(txt_del)
+            acao_del.triggered.connect(lambda: self.excluir_multiplos_contratos(lista_contratos_alvo))
+            
+            # Ação de Arquivar (Histórico)
+            txt_arq = f"Arquivar {qtd} Contrato(s) (Mover p/ Histórico)"
+            acao_arq = menu.addAction(txt_arq)
+            acao_arq.triggered.connect(lambda: self.arquivar_contratos_selecionados_manual(lista_contratos_alvo))
+
+        menu.exec(self.tabela_resultados.mapToGlobal(pos))
 
     def abrir_novo_contrato(self):
         # CORREÇÃO: Passamos self.db_prestadores como primeiro argumento
@@ -6237,8 +6541,31 @@ class SistemaGestao(QMainWindow):
             self.processar_alertas()  # <--- NOVA LINHA: Recalcula se o contrato deixou de estar vencido
             self.salvar_dados()
 
+    def excluir_multiplos_contratos(self, lista_alvo):
+        """Move múltiplos contratos para a lixeira (Soft Delete)"""
+        qtd = len(lista_alvo)
+        msg = f"Tem certeza que deseja enviar {qtd} contratos para a Lixeira?\n\nEles deixarão de aparecer na pesquisa, mas poderão ser restaurados."
+        
+        if DarkMessageBox.question(self, "Exclusão em Massa", msg) == QMessageBox.StandardButton.Yes:
+            self.criar_ponto_restauracao() # Segurança
+            
+            sucessos = 0
+            for c in lista_alvo:
+                if not getattr(c, 'anulado', False): # Só anula se já não estiver
+                    c.anulado = True
+                    c.usuario_exclusao = self.usuario_nome
+                    c.data_exclusao = datetime.now().strftime("%d/%m/%Y %H:%M")
+                    sucessos += 1
+            
+            self.registrar_log("EXCLUSÃO EM MASSA", f"Enviou {sucessos} contratos para a lixeira.")
+            self.salvar_dados()
+            self.filtrar_contratos() # Atualiza a tela
+            self.processar_alertas() # Remove alertas dos excluídos
+            
+            DarkMessageBox.info(self, "Sucesso", f"{sucessos} contratos movidos para a Lixeira.")
+
     def excluir_contrato_externo(self, c):
-        msg = f"Deseja realmente EXCLUIR o contrato {c.numero}?\n\nEle sairá da lista principal mas ficará arquivado na base JSON e na nuvem caso tenha feito o upload do registro."
+        msg = f"Deseja realmente EXCLUIR o contrato {c.numero}?\n\nEle sairá da lista principal mas ficará arquivado na base SQLite e na nuvem caso tenha feito o upload do registro."
         if DarkMessageBox.question(self, "Confirmar", msg) == QMessageBox.StandardButton.Yes:
             c.anulado = True
             c.usuario_exclusao = self.usuario_nome
@@ -6826,19 +7153,32 @@ class SistemaGestao(QMainWindow):
             if 0 <= ne.subcontrato_idx < len(c.lista_servicos):
                 nome_servico = c.lista_servicos[ne.subcontrato_idx].descricao
 
-            # --- ATUALIZA OS LABELS NA TELA ---
-            self.lbl_ne_ciclo.setText(f"Ciclo: {nome_ciclo}")
-            self.lbl_ne_emissao.setText(f"Emissão: {ne.data_emissao}")
-            self.lbl_ne_fonte.setText(f"Fonte: {ne.fonte_recurso}")  # <--- AQUI
-            self.lbl_ne_servico.setText(f"Serviço: {nome_servico}")  # <--- AQUI
-            self.lbl_ne_aditivo.setText(f"Aditivo: {info_aditivo}")
-            self.lbl_ne_desc.setText(f"Descrição: {ne.descricao}")
+            # ... (código anterior de buscar nomes permanece igual) ...
+            
+            # --- ATUALIZAÇÃO DO PAINEL COMPACTO ---
+            # Montamos uma string HTML para formatar tudo em uma linha só (ou duas se quebrar)
+            
+            status_icon = "🔒 BLOQUEADA" if ne.bloqueada else "🟢 ATIVA"
+            cor_status = "#95a5a6" if ne.bloqueada else "#27ae60"
 
-            # Atualiza o título verde do histórico
+            texto_html = (
+                f"<b>NE {ne.numero}</b> &nbsp;|&nbsp; "
+                f"Emissão: {ne.data_emissao} &nbsp;|&nbsp; "
+                f"Fonte: {ne.fonte_recurso} &nbsp;|&nbsp; "
+                f"Serviço: {nome_servico} &nbsp;|&nbsp; "
+                f"Aditivo: {info_aditivo} &nbsp;|&nbsp; "
+                f"<span style='color:{cor_status}'><b>{status_icon}</b></span><br>"
+                f"<span style='color:#666'>Descrição: {ne.descricao}</span>"
+            )
+            
+            # Atualiza o label único que criamos
+            if hasattr(self, 'lbl_ne_resumo'):
+                self.lbl_ne_resumo.setText(texto_html)
+
+            # Atualiza o título verde do histórico (mantém igual)
             if hasattr(self, 'lbl_hist'):
                 saldo = ne.saldo_disponivel
-                info_nota = (f"NE {ne.numero} | {ne.descricao} | "
-                             f"Valor: {fmt_br(ne.valor_inicial)} | "
+                info_nota = (f"NE {ne.numero} | Valor: {fmt_br(ne.valor_inicial)} | "
                              f"<span style='color: #27ae60; font-weight: bold;'>Saldo: {fmt_br(saldo)}</span>")
                 self.lbl_hist.setText(f"Histórico Financeiro: {info_nota}")
 
@@ -7393,6 +7733,11 @@ class SistemaGestao(QMainWindow):
         # --- ATUALIZAÇÃO DOS CAMPOS DE TEXTO ---
         self.lbl_prestador.setText(c.prestador)
         self.lbl_titulo.setText(f"{c.numero} - {c.descricao}")
+        
+        # --- NOVA LINHA AQUI ---
+        self.lbl_d_objeto.setText(c.descricao) 
+        # -----------------------
+        
         self.lbl_d_licitacao.setText(c.licitacao)
         self.lbl_d_dispensa.setText(c.dispensa)
         self.lbl_d_vigencia.setText(f"{c.vigencia_inicio} a {c.get_vigencia_final_atual()}")
@@ -7591,10 +7936,11 @@ class SistemaGestao(QMainWindow):
         self.tab_empenhos.setSortingEnabled(False)
         self.tab_empenhos.setRowCount(0);
         self.tab_mov.setRowCount(0)
-        self.lbl_ne_ciclo.setText("Ciclo: -");
-        self.lbl_ne_emissao.setText("Emissão: -");
-        self.lbl_ne_aditivo.setText("Aditivo: -");
-        self.lbl_ne_desc.setText("Selecione uma NE...")
+        
+        # Limpa o novo painel compacto
+        if hasattr(self, 'lbl_ne_resumo'):
+            self.lbl_ne_resumo.setText("Selecione uma Nota de Empenho na tabela para ver os detalhes...")
+
         if hasattr(self, 'lbl_hist'): self.lbl_hist.setText("Histórico Financeiro:")
 
         for row, ne in enumerate(c.lista_notas_empenho):
@@ -8257,6 +8603,59 @@ class SistemaGestao(QMainWindow):
         except Exception as e:
             DarkMessageBox.critical(self, "Erro", f"Erro no arquivamento: {str(e)}")
 
+    def arquivar_contratos_selecionados_manual(self, lista_alvo):
+        """Move contratos selecionados manualmente para o arquivo_historico.db"""
+        qtd = len(lista_alvo)
+        msg = (f"Confirma o arquivamento definitivo de {qtd} contratos?\n\n"
+               "Eles serão MOVIDOS para o banco de histórico ('arquivo_historico.db') "
+               "e sairão desta base principal.\n\n"
+               "Use isso para contratos encerrados/antigos.")
+               
+        if DarkMessageBox.question(self, "Arquivar Selecionados", msg) != QMessageBox.StandardButton.Yes:
+            return
+
+        try:
+            self.criar_ponto_restauracao() # Segurança máxima
+            
+            nome_arquivo_hist = "arquivo_historico.db"
+            banco_hist = BancoDados(nome_arquivo_hist)
+
+            # 1. Carrega histórico existente
+            dados_existentes = banco_hist.carregar_tudo()
+            lista_final_historico = dados_existentes["contratos"]
+            ids_existentes = [ch.numero for ch in lista_final_historico]
+
+            # 2. Adiciona os novos (evitando duplicatas se já existirem lá)
+            movidos_count = 0
+            ids_para_remover_daqui = []
+            
+            for c in lista_alvo:
+                if c.numero not in ids_existentes:
+                    lista_final_historico.append(c)
+                    movidos_count += 1
+                ids_para_remover_daqui.append(c.numero)
+
+            # 3. Salva no histórico
+            sucesso = banco_hist.salvar_tudo_snapshot(lista_final_historico, [], [], {})
+            
+            if not sucesso:
+                raise Exception("Falha ao gravar no arquivo de histórico. Operação cancelada.")
+
+            # 4. Remove da base principal (aqui)
+            self.db_contratos = [c for c in self.db_contratos if c.numero not in ids_para_remover_daqui]
+
+            # 5. Salva a base principal limpa
+            self.salvar_dados()
+            self.filtrar_contratos()
+            self.processar_alertas()
+
+            self.registrar_log("ARQUIVAMENTO MANUAL", f"Moveu {movidos_count} contratos para histórico.")
+            DarkMessageBox.info(self, "Sucesso", f"{movidos_count} contratos arquivados com sucesso!")
+
+        except Exception as e:
+            DarkMessageBox.critical(self, "Erro no Arquivamento", str(e))
+
+
 
 # --- NOVA CLASSE: TELA DE CARREGAMENTO (SPLASH SCREEN) ---
 class TelaCarregamento(QSplashScreen):
@@ -8344,6 +8743,7 @@ if __name__ == "__main__":
     # 1. Configurações Iniciais da App
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
+    app.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
 
     # Ícone da Janela
     caminho_ico = resource_path("icon_gc.ico")
