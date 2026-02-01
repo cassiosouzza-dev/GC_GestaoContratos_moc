@@ -37,15 +37,15 @@ else:
 # ------------------------------------------
 
 # --- CONFIGURAÇÃO DE ATUALIZAÇÃO ---
-VERSAO_ATUAL = 1.1
+VERSAO_ATUAL = 1.0
 
 # O sistema lerá este arquivo para saber se há novidades
 
-URL_VERSAO_TXT = "https://raw.githubusercontent.com/cassiosouzza-dev/Controller/main/versao.txt"
+URL_VERSAO_TXT = "https://raw.githubusercontent.com/cassiosouzza-dev/GC_GestaoContratos_moc/main/versao.txt"
 
 # Se houver, ele baixará o EXE deste link (Redirecionamento automático do GitHub)
-URL_NOTAS_TXT = "https://raw.githubusercontent.com/cassiosouzza-dev/Controller/main/notas.txt"
-URL_NOVO_EXE = "https://github.com/cassiosouzza-dev/Controller/releases/latest/download/GC_Gestor_v1.exe"
+URL_NOTAS_TXT = "https://raw.githubusercontent.com/cassiosouzza-dev/GC_GestaoContratos_moc/main/notas.txt"
+URL_NOVO_EXE = "https://github.com/cassiosouzza-dev/GC_GestaoContratos_moc/releases/latest/download/GC_Gestor_v1.exe"
 
 # --- CARREGAMENTO SEGURO DA CHAVE API (SEM CHAVE NO CÓDIGO) ---
 def obter_chave_api():
@@ -1615,7 +1615,7 @@ class DialogoDetalheServico(BaseDialog):
         # BOTÕES DE RODAPÉ (AGORA COM O BOTÃO COPIAR RESTAURADO)
         # =================================================================
         btns = QHBoxLayout()
-        btn_ia = QPushButton("🤖 Analisar Este Serviço")
+        btn_ia = QPushButton("Analise (IA)")
         btn_ia.setStyleSheet("background-color: #22b1b3; color: white; font-weight: bold; padding: 8px 15px;")
         btn_ia.clicked.connect(self.chamar_analise_ia)
 
@@ -4634,10 +4634,10 @@ class SistemaGestao(QMainWindow):
             layout.addSpacing(10)
             return btn
 
-        btn_sync = adicionar_opcao("⬇️⬆️ Sincronizar Tudo", "Baixa novidades e envia suas alterações.", "#2980b9")
-        btn_importar = adicionar_opcao("⬇️ Apenas Importar", "Baixa dados da nuvem para seu PC (Não envia nada).",
+        btn_sync = adicionar_opcao("Sincronizar Tudo", "Baixa novidades e envia suas alterações.", "#2980b9")
+        btn_importar = adicionar_opcao("Apenas Importar", "Baixa dados da nuvem para seu PC (Não envia nada).",
                                        "#27ae60")
-        btn_subir = adicionar_opcao("⬆️ Apenas Subir", "Envia seus dados para a nuvem (Pode sobrescrever).",
+        btn_subir = adicionar_opcao("Apenas Subir", "Envia seus dados para a nuvem (Pode sobrescrever).",
                                     "#8e44ad")
         btn_baixar = adicionar_opcao("💾 Baixar Arquivo", "Salva uma cópia do JSON da nuvem no seu computador.",
                                      "#7f8c8d")
@@ -5295,7 +5295,7 @@ class SistemaGestao(QMainWindow):
         top_bar = QHBoxLayout()
 
         # Botão Voltar
-        btn_voltar = QPushButton("◀️")
+        btn_voltar = QPushButton("◀")
         btn_voltar.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_voltar.setStyleSheet("""
             QPushButton { 
@@ -5505,7 +5505,7 @@ class SistemaGestao(QMainWindow):
         b_anular.clicked.connect(self.abrir_anulacao)
 
         # --- NOVO BOTÃO DE BLOQUEIO ---
-        b_bloq = QPushButton("🔒 Bloquear/Desbloq.")
+        b_bloq = QPushButton("🔒")
         b_bloq.setToolTip("Impede novos pagamentos e remove o saldo desta NE da soma total.")
         b_bloq.clicked.connect(self.alternar_bloqueio_ne)
         # ------------------------------
@@ -7436,7 +7436,7 @@ class SistemaGestao(QMainWindow):
             {conteudo_body}
 
             <div class="footer">
-                Documento gerado automaticamente pelo Sistema GC Gestor em {datetime.now().strftime('%d/%m/%Y às %H:%M')}.
+                Documento gerado automaticamente pelo Sistema GC Gestão de Contratos em {datetime.now().strftime('%d/%m/%Y às %H:%M')}.
             </div>
             <script>window.print();</script>
         </body>
@@ -7787,13 +7787,6 @@ if __name__ == "__main__":
 
 
     # Função auxiliar para recursos (ícones) dentro do EXE
-    def resource_path(relative_path):
-        try:
-            base_path = sys._MEIPASS
-        except Exception:
-            base_path = os.path.abspath(".")
-        return os.path.join(base_path, relative_path)
-
 
     # 1. Configurações Iniciais da App
     app = QApplication(sys.argv)
@@ -7808,8 +7801,6 @@ if __name__ == "__main__":
         app.setWindowIcon(QIcon(caminho_ico))
     elif os.path.exists(caminho_png):
         app.setWindowIcon(QIcon(caminho_png))
-
-    #2. excluído*
 
 
     # 3. Exibe a NOSSA Tela de Carregamento (Splash Personalizada)
