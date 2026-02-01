@@ -1,6 +1,3 @@
-# ARQUIVO: manual_texto.py
-# Documentação Técnica Operacional - GC Gestor v1.0
-
 HTML_MANUAL = """
 <!DOCTYPE html>
 <html lang="pt-br">
