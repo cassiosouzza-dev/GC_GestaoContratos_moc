@@ -2583,22 +2583,26 @@ class DialogoLogin(BaseDialog):
         layout_header.setSpacing(10)
         layout_header.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
+        # --- CORREÇÃO DO ÍCONE NO LOGIN ---
         self.lbl_icon = QLabel()
         self.lbl_icon.setFixedSize(80, 80)
         self.lbl_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        base_path = os.path.dirname(os.path.abspath(__file__)) if not getattr(sys, 'frozen',
-                                                                              False) else os.path.dirname(
-            sys.executable)
-        path_icon = os.path.join(base_path, "icon_gc.png")
+        # USA A FUNÇÃO QUE JÁ SABE ACHAR A PASTA TEMPORÁRIA
+        caminho_png = resource_path("icon_gc.png")
+        caminho_ico = resource_path("icon_gc.ico")
 
-        if os.path.exists(path_icon):
-            pix = QPixmap(path_icon)
-            self.lbl_icon.setPixmap(
-                pix.scaled(80, 80, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+        if os.path.exists(caminho_png):
+            pix = QPixmap(caminho_png)
+            self.lbl_icon.setPixmap(pix.scaled(80, 80, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+        elif os.path.exists(caminho_ico):
+            pix = QPixmap(caminho_ico)
+            self.lbl_icon.setPixmap(pix.scaled(80, 80, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
         else:
-            self.lbl_icon.setText("📊")
-            self.lbl_icon.setStyleSheet("font-size: 50px;")
+            # Fallback se não achar nada (Debug visual)
+            self.lbl_icon.setText("❌")
+            self.lbl_icon.setStyleSheet("font-size: 50px; color: red;")
+            # Dica: Se aparecer o X vermelho, o arquivo não foi empacotado.
 
         lbl_titulo = QLabel("GESTÃO DE CONTRATOS")
         lbl_titulo.setFont(QFont("Segoe UI", 16, QFont.Weight.Bold))
@@ -8675,18 +8679,29 @@ class TelaCarregamento(QSplashScreen):
 
         # 1. Ícone do Programa
         lbl_icon = QLabel()
-        caminho_script = os.path.dirname(os.path.abspath(__file__))
-        caminho_icone = os.path.join(caminho_script, "icon_gc.png")
-        if os.path.exists(caminho_icone):
-            pix = QPixmap(caminho_icone).scaled(90, 90, Qt.AspectRatioMode.KeepAspectRatio,
+        
+        # Define os dois caminhos possíveis
+        caminho_png = resource_path("icon_gc.png")
+        caminho_ico = resource_path("icon_gc.ico")
+        
+        # Lógica de Prioridade: Tenta PNG -> Tenta ICO -> Usa Texto
+        if os.path.exists(caminho_png):
+            pix = QPixmap(caminho_png).scaled(90, 90, Qt.AspectRatioMode.KeepAspectRatio,
+                                                Qt.TransformationMode.SmoothTransformation)
+            lbl_icon.setPixmap(pix)
+        elif os.path.exists(caminho_ico):
+            pix = QPixmap(caminho_ico).scaled(90, 90, Qt.AspectRatioMode.KeepAspectRatio,
                                                 Qt.TransformationMode.SmoothTransformation)
             lbl_icon.setPixmap(pix)
         else:
+            # Fallback se não achar imagem nenhuma
             lbl_icon.setText("📊")
             lbl_icon.setStyleSheet("font-size: 70px;")
+            
         lbl_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(lbl_icon)
 
+        
         layout.addSpacing(15)
 
         # 2. Título

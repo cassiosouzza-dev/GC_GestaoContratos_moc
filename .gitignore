@@ -29,6 +29,7 @@ python-3.12*/
 build/
 dist/
 *.spec
+dist v1/
 
 # --- Arquivos de Configuração e Segredos (CRÍTICO: NÃO REMOVA ISSO) ---
 # Impede que suas senhas e chaves subam para o GitHub
