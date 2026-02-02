@@ -46,7 +46,7 @@ URL_VERSAO_TXT = "https://raw.githubusercontent.com/cassiosouzza-dev/GC_GestaoCo
 
 # Se houver, ele baixará o EXE deste link (Redirecionamento automático do GitHub)
 URL_NOTAS_TXT = "https://raw.githubusercontent.com/cassiosouzza-dev/GC_GestaoContratos_moc/main/notas.txt"
-URL_NOVO_EXE = "https://github.com/cassiosouzza-dev/GC_GestaoContratos_moc/releases/latest/download/GC_Gestor_v2.0.exe"
+URL_NOVO_EXE = "https://github.com/cassiosouzza-dev/GC_GestaoContratos_moc/releases/latest/download/GC_Gestor.exe"
 
 # --- CARREGAMENTO SEGURO DA CHAVE API (SEM CHAVE NO CÓDIGO) ---
 def obter_chave_api():
@@ -522,7 +522,7 @@ class CicloFinanceiro:
 
 class Contrato:
     def __init__(self, numero, prestador, descricao, valor_inicial, vig_inicio, vig_fim, comp_inicio, comp_fim,
-                 licitacao, dispensa, ultima_modificacao=None):
+                 licitacao, dispensa, ultima_modificacao=None, sequencial_inicio=0): 
         self.numero = numero
         self.prestador = prestador
         self.descricao = descricao
@@ -533,15 +533,15 @@ class Contrato:
         self.comp_fim = comp_fim
         self.licitacao = licitacao
         self.dispensa = dispensa
+        self.sequencial_inicio = sequencial_inicio 
         self.anulado = False
-        self.usuario_exclusao = None
-        self.data_exclusao = None
-
-        self.ultimo_ciclo_id = 0
         self.ultima_modificacao = ultima_modificacao if ultima_modificacao else datetime.now().isoformat()
-
+        
         self.ciclos = []
-        self.ciclos.append(CicloFinanceiro(0, "Contrato Inicial", valor_inicial))
+        # Nomeia o primeiro ciclo dinamicamente
+        nome_inicial = "Contrato Inicial" if sequencial_inicio == 0 else f"{sequencial_inicio}º Termo Aditivo"
+        self.ciclos.append(CicloFinanceiro(0, nome_inicial, valor_inicial))
+
         self.lista_notas_empenho = []
         self.lista_aditivos = []
         self.lista_servicos = []
@@ -560,18 +560,24 @@ class Contrato:
         adt.id_aditivo = self._contador_aditivos
         self.lista_aditivos.append(adt)
 
+        # ADICIONE ESTAS DUAS LINHAS DE CONTADORES ABAIXO:
         qtd_prazos = len([a for a in self.lista_aditivos if a.tipo == "Prazo"])
         qtd_valores = len([a for a in self.lista_aditivos if a.tipo == "Valor"])
 
         if adt.tipo == "Prazo" and adt.renovacao_valor:
-            id_ciclo_anterior = len(self.ciclos) - 1
+            # --- DEFINA A VARIÁVEL AQUI ---
+            id_ciclo_anterior = len(self.ciclos) - 1 
+            # ------------------------------
+            
+            num_atual = len(self.ciclos) + self.sequencial_inicio
+            nome_ciclo = f"{num_atual}º Termo Aditivo"
+            
             novo_id = len(self.ciclos)
-            nome_ciclo = f"{qtd_prazos}º TA Prazo/Valor"
-
             novo_ciclo = CicloFinanceiro(novo_id, nome_ciclo, adt.valor)
             self.ciclos.append(novo_ciclo)
             adt.ciclo_pertencente_id = novo_id
 
+            # Replica os valores dos serviços para o novo ciclo
             for serv in self.lista_servicos:
                 valor_antigo = serv.get_valor_ciclo(id_ciclo_anterior)
                 serv.set_valor_ciclo(novo_id, valor_antigo)
@@ -589,7 +595,8 @@ class Contrato:
 
             ciclo_atual.aditivos_valor.append(adt)
             adt.ciclo_pertencente_id = ciclo_atual.id_ciclo
-            adt.descricao = f"{qtd_valores}º TA Valor - " + adt.descricao
+            # Usa a variável qtd_valores que definimos acima
+            adt.descricao = f"{qtd_valores}º TA Valor - " + adt.descricao 
 
             if adt.servico_idx >= 0 and adt.servico_idx < len(self.lista_servicos):
                 serv = self.lista_servicos[adt.servico_idx]
@@ -950,6 +957,12 @@ class DialogoCriarContrato(BaseDialog):
         self.inp_desc.setPlaceholderText("Resumo do objeto (Ex: Locação de Veículos)")
         
         self.inp_valor = CurrencyInput()
+        # ------
+        self.inp_sequencial = QSpinBox()
+        self.inp_sequencial.setRange(0, 100)
+        self.inp_sequencial.setValue(0)
+        self.inp_sequencial.setToolTip("0 = Começar como Contrato Inicial. 5 = Começar já como 5º Aditivo.")
+        # -------------------------------
         self.inp_licitacao = QLineEdit()
         self.inp_dispensa = QLineEdit()
         
@@ -971,6 +984,7 @@ class DialogoCriarContrato(BaseDialog):
         layout.addRow("Prestador:", self.combo_prestador) 
         layout.addRow("Objeto:", self.inp_desc)
         layout.addRow("Valor Inicial:", self.inp_valor)
+        layout.addRow("Iniciar no Aditivo nº:", self.inp_sequencial)
         layout.addRow("Licitação:", self.inp_licitacao)
         layout.addRow("Inexigibilidade:", self.inp_dispensa)
 
@@ -1058,7 +1072,8 @@ class DialogoCriarContrato(BaseDialog):
         return (self.inp_numero.text(), prestador_escolhido, self.inp_desc.text(),
                 self.inp_valor.get_value(), self.date_vig_ini.text(), self.date_vig_fim.text(),
                 self.inp_comp_ini.text(), self.inp_comp_fim.text(), self.inp_licitacao.text(),
-                self.inp_dispensa.text())
+                self.inp_dispensa.text(), self.inp_sequencial.value()) # <--- ADICIONADO O VALUE AQUI
+
 
 class DialogoNovoEmpenho(BaseDialog):
     def __init__(self, contrato, ne_editar=None, parent=None):
@@ -6490,31 +6505,21 @@ class SistemaGestao(QMainWindow):
 
         menu.exec(self.tabela_resultados.mapToGlobal(pos))
 
+
     def abrir_novo_contrato(self):
-        # CORREÇÃO: Passamos self.db_prestadores como primeiro argumento
         dial = DialogoCriarContrato(self.db_prestadores, parent=self)
-
-        # --- LÓGICA DO TUTORIAL (CORRIGIDA) ---
-        if self.em_tutorial:
-            dial.inp_numero.setText("999/2025")
-
-            # PROCURA A EMPRESA DO TUTORIAL E SELECIONA ELA
-            # O findData busca pelo valor oculto (Nome Fantasia)
-            idx_tut = dial.combo_prestador.findData("Empresa Tutorial Ltda")
-            if idx_tut >= 0:
-                dial.combo_prestador.setCurrentIndex(idx_tut)
-
-            dial.inp_desc.setText("Contrato de Exemplo para Aprendizado")
-            dial.inp_valor.set_value(12000.00)
-            dial.inp_licitacao.setText("Pregão 01/25")
-            dial.setWindowTitle("Cadastro de Contrato (MODO TUTORIAL)")
-        # --------------------------
-
         if dial.exec():
-            dados = dial.get_dados()
-            novo_c = Contrato(*dados)
+            dados = dial.get_dados() # Agora retorna 11 itens
+            
+            # --- CORREÇÃO AQUI: Captura os 10 primeiros e o último separado ---
+            dados_base = dados[:10]   # Os 10 campos originais
+            seq_ini = dados[10]       # O número do aditivo
+            
+            novo_c = Contrato(*dados_base, sequencial_inicio=seq_ini)
+            # ------------------------------------------------------------------
+            
             self.db_contratos.append(novo_c)
-            self.registrar_log("Criar Contrato", f"Novo contrato criado: {novo_c.numero}")
+            self.registrar_log("Criar Contrato", f"Novo contrato criado: {novo_c.numero} (Início: {seq_ini})")
             self.filtrar_contratos()
             self.salvar_dados()
 
@@ -6857,30 +6862,62 @@ class SistemaGestao(QMainWindow):
         DarkMessageBox.info(self, "Integridade", msg)
 
     def importar_contratos(self):
-        instrucao = "CSV (ponto e vírgula):\nNum;Prest;Obj;Valor;VigIni;VigFim;CompIni;CompFim;Lic;Disp"
-        DarkMessageBox.info(self, "Instruções", instrucao)
-        fname, _ = QFileDialog.getOpenFileName(self, "CSV Contratos", "", "CSV (*.csv)")
-        if not fname: return
-        try:
-            with open(fname, 'r', encoding='utf-8-sig') as f:
-                reader = csv.reader(f, delimiter=';');
-                next(reader, None)
-                self.criar_ponto_restauracao()
-                for row in reader:
-                    if len(row) < 10: continue
-                    novo_c = Contrato(
-                        row[0], row[1], row[2], parse_float_br(row[3]),
-                        row[4], row[5], row[6], row[7], row[8], row[9]
-                    )
-                    # Garante o preenchimento do nome identificado no código
-                    novo_c.vigencia_fim = row[5].strip()
-                    self.db_contratos.append(novo_c)
+        # Instrução visual para o usuário não errar a ordem
+        instrucao = (
+            "O arquivo CSV deve usar ponto e vírgula (;) e ter as colunas:\n\n"
+            "1. Número; 2. Prestador; 3. Objeto; 4. Valor; 5. Vig.Início; 6. Vig.Fim;\n"
+            "7. Comp.Início; 8. Comp.Fim; 9. Licitação; 10. Processo; 11. Num.Aditivo\n\n"
+            "Dica: No campo 'Num.Aditivo', use 0 para Contrato Inicial ou o número do aditivo atual (ex: 5)."
+        )
+        DarkMessageBox.info(self, "Formato de Importação", instrucao)
 
-            self.filtrar_contratos();
-            self.salvar_dados();
-            DarkMessageBox.info(self, "Sucesso", "Importado!")
+        path, _ = QFileDialog.getOpenFileName(self, "Importar Contratos", "", "CSV (*.csv)")
+        if not path:
+            return
+
+        try:
+            with open(path, 'r', encoding='utf-8-sig') as f:
+                reader = csv.reader(f, delimiter=';')
+                count = 0
+                for row in reader:
+                    # Verifica se tem pelo menos as 10 colunas básicas
+                    if len(row) < 10:
+                        continue
+                    
+                    try:
+                        # Lógica da 11ª coluna (Sequencial)
+                        seq_ini = 0
+                        if len(row) >= 11:
+                            val_seq = row[10].strip()
+                            seq_ini = int(val_seq) if val_seq.isdigit() else 0
+
+                        # Cria o objeto contrato com o novo parâmetro
+                        novo_c = Contrato(
+                            numero=row[0].strip(),
+                            prestador=row[1].strip(),
+                            descricao=row[2].strip(),
+                            valor_inicial=parse_float_br(row[3]),
+                            vig_inicio=row[4].strip(),
+                            vig_fim=row[5].strip(),
+                            comp_inicio=row[6].strip(),
+                            comp_fim=row[7].strip(),
+                            licitacao=row[8].strip(),
+                            dispensa=row[9].strip(),
+                            sequencial_inicio=seq_ini # <--- A mágica acontece aqui
+                        )
+                        
+                        self.db_contratos.append(novo_c)
+                        count += 1
+                    except Exception as e:
+                        print(f"Erro ao processar linha {row}: {e}")
+                        continue
+                
+                DarkMessageBox.success(self, "Sucesso", f"{count} contratos importados com sucesso!")
+                self.atualizar_tabela_contratos()
+                self.salvar_dados()
         except Exception as e:
-            DarkMessageBox.critical(self, "Erro", str(e))
+            DarkMessageBox.error(self, "Erro", f"Falha ao ler arquivo: {e}")
+
 
     def importar_empenhos(self):
         if not self.contrato_selecionado:

@@ -70,7 +70,7 @@ HTML_MANUAL = """
     .box-success {
         background-color: #d4edda;
         border-left: 5px solid #28a745;
-        padding: 15px;
+        padding: 15px; 
         color: #155724;
     }
 
@@ -232,6 +232,14 @@ HTML_MANUAL = """
     <ul>
         <li><strong>Busca de Prestador:</strong> O campo agora é uma caixa de combinação editável. Digite "Lab" para filtrar todos os laboratórios. Ao selecionar, o sistema vincula internamente o CNPJ.</li>
         <li><strong>Ciclo 0 (Inicial):</strong> O valor inserido no cadastro cria automaticamente o primeiro ciclo financeiro.</li>
+        
+        <li><strong>Iniciar no Aditivo nº (Legado):</strong> Use este campo numérico para contratos que já estão em andamento.
+            <ul>
+                <li>Deixe <strong>0</strong> se for um contrato novo.</li>
+                <li>Coloque <strong>5</strong> (por exemplo) se você estiver importando um contrato que já está no 5º Termo Aditivo. O sistema criará o primeiro ciclo já com esse nome ("5º TA") e continuará a contagem automaticamente (6º, 7º...) nas próximas renovações.</li>
+            </ul>
+        </li>
+        
         <li><strong>Vigência e Competências:</strong> Definem o período de validade. O campo "Competências" (ex: 01/2024) é vital para o cálculo de médias mensais.</li>
     </ul>
 
@@ -274,7 +282,8 @@ HTML_MANUAL = """
     <p>Altera o teto financeiro do <strong>ciclo atual</strong>. Pode ser acréscimo (+) ou supressão (-). O saldo é imediatamente atualizado na tela principal.</p>
 
     <h3>Aditivo de Prazo (Prorrogação)</h3>
-    <p>Estende a data final. Se a opção <strong>"Haverá Renovação de Valor?"</strong> for marcada, o sistema cria um <strong>NOVO CICLO</strong>. As NEs antigas ficam no ciclo anterior, e o contrato ganha um "saldo virgem" para o novo período.</p>
+    <p>Estende a data final. Se a opção <strong>"Haverá Renovação de Valor?"</strong> for marcada, o sistema cria um <strong>NOVO CICLO</strong>.</p> 
+    <p><em>Nota sobre Automação:</em> O sistema verifica o número do ciclo atual (definido no cadastro inicial ou acumulado) e gera o próximo nome automaticamente (Ex: de "5º TA" para "6º TA").</p>
 
     <h1>7. Monitoramento de Vigências (Semáforo)</h1>
     <p>O sistema classifica os contratos por cores baseadas na urgência de ação. A lógica da versão 2.0 separa "o que já passou" do que "precisa de ação urgente".</p>
