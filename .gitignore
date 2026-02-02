@@ -18,6 +18,10 @@ build/
 dist/
 *.spec
 
+backup_emergencia.json
+dados_sistema.db
+erro_pagamento.txt
+
 # --- Arquivos de Configuração e Segredos (CRÍTICO: NÃO REMOVA ISSO) ---
 # Impede que suas senhas e chaves subam para o GitHub
 chave_api.txt
