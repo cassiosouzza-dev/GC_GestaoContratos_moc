@@ -38,15 +38,18 @@ else:
 # ------------------------------------------
 
 # --- CONFIGURAÇÃO DE ATUALIZAÇÃO ---
-VERSAO_ATUAL = 2.0
+VERSAO_ATUAL = 2.1
 
-# O sistema lerá este arquivo para saber se há novidades
+# 1. URL do arquivo de versão (Deve ser RAW e apontar para a branch correta, geralmente 'main')
+URL_VERSAO_TXT = "https://raw.githubusercontent.com/cassiosouzza-dev/GC_GestaoContratos_moc/main/versao.txt"
 
-URL_VERSAO_TXT = "https://github.com/cassiosouzza-dev/GC_GestaoContratos_moc/blob/master/versao.txt"
+# 2. URL das notas (Também deve ser RAW)
+URL_NOTAS_TXT = "https://raw.githubusercontent.com/cassiosouzza-dev/GC_GestaoContratos_moc/main/notas.txt"
 
-# Se houver, ele baixará o EXE deste link (Redirecionamento automático do GitHub)
-URL_NOTAS_TXT = "https://github.com/cassiosouzza-dev/GC_GestaoContratos_moc/blob/master/notas.txt"
+# 3. URL do executável (Este fica na RELEASE, não no código fonte)
+# Use o link 'latest' para que ele sempre pegue a última versão lançada
 URL_NOVO_EXE = "https://github.com/cassiosouzza-dev/GC_GestaoContratos_moc/releases/latest/download/GC_Gestor.exe"
+
 
 # --- CARREGAMENTO SEGURO DA CHAVE API (SEM CHAVE NO CÓDIGO) ---
 def obter_chave_api():
@@ -4581,7 +4584,7 @@ class SistemaGestao(QMainWindow):
     # ------------------------------------------------------------------------
 
     def verificar_updates(self, silencioso=False):
-        """Verifica se há atualizações e avisa que o sistema precisará ser fechado."""
+        """Verifica se há atualizações com proteção contra erros de conexão/HTML"""
         if not silencioso:
             self.status_bar.showMessage("Buscando atualizações...")
         QApplication.processEvents()
@@ -4592,9 +4595,23 @@ class SistemaGestao(QMainWindow):
             ctx.check_hostname = False
             ctx.verify_mode = ssl.CERT_NONE
 
-            with urllib.request.urlopen(URL_VERSAO_TXT, context=ctx) as response:
-                versao_remota = float(response.read().decode('utf-8-sig').strip())
+            # 1. TENTA BAIXAR A VERSÃO
+            try:
+                with urllib.request.urlopen(URL_VERSAO_TXT, context=ctx) as response:
+                    conteudo = response.read().decode('utf-8-sig').strip()
+                    
+                    # --- PROTEÇÃO CONTRA HTML (O ERRO QUE VOCÊ TEVE) ---
+                    if "<html" in conteudo.lower() or "<!doctype" in conteudo.lower():
+                        raise ValueError("O link da versão retornou uma página Web, não o número bruto.")
+                    
+                    versao_remota = float(conteudo)
+            except ValueError as ve:
+                if not silencioso:
+                    DarkMessageBox.warning(self, "Erro de Configuração", 
+                                         f"Não foi possível ler a versão remota.\nProvavelmente o repositório é Privado ou o link está quebrado.\n\nDetalhe: {ve}")
+                return
 
+            # 2. SE CONSEGUIU LER O NÚMERO, SEGUE O FLUXO...
             if versao_remota > VERSAO_ATUAL:
                 self.status_bar.showMessage(f"Nova versão {versao_remota} encontrada!")
 
@@ -4602,11 +4619,13 @@ class SistemaGestao(QMainWindow):
                 novidades = "Atualização disponível."
                 try:
                     with urllib.request.urlopen(URL_NOTAS_TXT, context=ctx) as r:
-                        novidades = r.read().decode('utf-8-sig')
+                        notas_raw = r.read().decode('utf-8-sig')
+                        if "<html" not in notas_raw.lower(): # Protege notas também
+                            novidades = notas_raw
                 except:
                     pass
 
-                # MENSAGEM CLARA DE QUE VAI FECHAR
+                # MENSAGEM DE ATUALIZAÇÃO
                 msg_html = (
                     f"<h3>🚀 Nova Versão {versao_remota} Disponível!</h3>"
                     f"<p>Sua versão: <b>{VERSAO_ATUAL}</b></p>"
