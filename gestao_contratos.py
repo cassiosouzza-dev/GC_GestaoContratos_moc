@@ -42,10 +42,10 @@ VERSAO_ATUAL = 2.0
 
 # O sistema lerá este arquivo para saber se há novidades
 
-URL_VERSAO_TXT = "https://raw.githubusercontent.com/cassiosouzza-dev/GC_GestaoContratos_moc/main/versao.txt"
+URL_VERSAO_TXT = "https://github.com/cassiosouzza-dev/GC_GestaoContratos_moc/blob/master/versao.txt"
 
 # Se houver, ele baixará o EXE deste link (Redirecionamento automático do GitHub)
-URL_NOTAS_TXT = "https://raw.githubusercontent.com/cassiosouzza-dev/GC_GestaoContratos_moc/main/notas.txt"
+URL_NOTAS_TXT = "https://github.com/cassiosouzza-dev/GC_GestaoContratos_moc/blob/master/notas.txt"
 URL_NOVO_EXE = "https://github.com/cassiosouzza-dev/GC_GestaoContratos_moc/releases/latest/download/GC_Gestor.exe"
 
 # --- CARREGAMENTO SEGURO DA CHAVE API (SEM CHAVE NO CÓDIGO) ---

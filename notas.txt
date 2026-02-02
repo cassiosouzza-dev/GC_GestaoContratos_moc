@@ -1,0 +1,5 @@
+Lançamento Oficial v2.0
+- Novo Banco de Dados Seguro (SQLite).
+- Integração com Inteligência Artificial.
+- Backup Automático.
+- Correção de bugs.

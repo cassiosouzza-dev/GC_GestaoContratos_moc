@@ -6,7 +6,7 @@ __pycache__/
 exe teste/
 debug_nuvem.txt
 gerar_exe.bat
-notas.txt
+
 temp_upload_sync.json
 arquivo_historico.db
 backup_emergencia.json
@@ -30,6 +30,7 @@ build/
 dist/
 *.spec
 dist v1/
+dist 2.0/
 
 # --- Arquivos de Configuração e Segredos (CRÍTICO: NÃO REMOVA ISSO) ---
 # Impede que suas senhas e chaves subam para o GitHub
