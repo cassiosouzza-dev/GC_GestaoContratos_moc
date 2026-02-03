@@ -3708,43 +3708,39 @@ class ConsultorIA:
         return txt
 
     def analisar_risco_contrato(self, contrato, ciclo_id):
-        # SECURITY CHECK: If self.ativo is False or self.model is None, returns immediately
-        if not self.ativo or not self.model: return "IA Unavailable at the moment."
+        if not self.ativo or not self.model: return "IA indisponível no momento."
 
         try:
             ciclo = next((c for c in contrato.ciclos if c.id_ciclo == ciclo_id), None)
-            nome_ciclo = ciclo.nome if ciclo else "General"
+            nome_ciclo = ciclo.nome if ciclo else "Geral"
 
             prompt = f"""
-            Act as a Tax Auditor. Analyze this contract and point out RISKS.
-            Be brief.
+            Atue como um Auditor Fiscal de Contratos. Analise este contrato e aponte RISCOS.
+            Seja breve e direto. Responda obrigatoriamente em Português do Brasil.
 
-            CONTRACT: {contrato.numero} - {contrato.prestador}
-            OBJECT: {contrato.descricao}
-            CYCLE: {nome_ciclo}
-            FINAL VALIDITY: {contrato.get_vigencia_final_atual()}
+            CONTRATO: {contrato.numero} - {contrato.prestador}
+            OBJETO: {contrato.descricao}
+            CICLO FINANCEIRO: {nome_ciclo}
+            VIGÊNCIA FINAL: {contrato.get_vigencia_final_atual()}
 
-            FINANCIAL DETAILS:
+            DETALHES FINANCEIROS DO CICLO:
             """
             for sub in contrato.lista_servicos:
                 val_ciclo = sub.get_valor_ciclo(ciclo_id)
                 gasto_emp = sum(n.valor_inicial for n in contrato.lista_notas_empenho if
                                 n.subcontrato_idx == contrato.lista_servicos.index(sub) and n.ciclo_id == ciclo_id)
-                gasto_pag = 0.0
-                for n in contrato.lista_notas_empenho:
-                    if n.subcontrato_idx == contrato.lista_servicos.index(sub) and n.ciclo_id == ciclo_id:
-                        gasto_pag += n.total_pago
+                gasto_pag = sum(n.total_pago for n in contrato.lista_notas_empenho if
+                                n.subcontrato_idx == contrato.lista_servicos.index(sub) and n.ciclo_id == ciclo_id)
 
                 saldo = val_ciclo - gasto_pag
-                prompt += f"\n- Service '{sub.descricao}': Budget R$ {val_ciclo:.2f} | Committed R$ {gasto_emp:.2f} | Paid R$ {gasto_pag:.2f} | Balance R$ {saldo:.2f}"
+                prompt += f"\n- Serviço '{sub.descricao}': Orçamento R$ {val_ciclo:.2f} | Empenhado R$ {gasto_emp:.2f} | Pago R$ {gasto_pag:.2f} | Saldo R$ {saldo:.2f}"
 
-            prompt += "\n\nAnswer in Topics: 1. Execution, 2. Deadlines, 3. Risk (High/Medium/Low)."
+            prompt += "\n\nResponda em Tópicos: 1. Execução Financeira, 2. Prazos e Vigência, 3. Nível de Risco (Alto/Médio/Baixo)."
 
             response = self.model.generate_content(prompt)
             return response.text
         except Exception as e:
-            print(f"Error in IA generation: {e}")
-            return f"Error consulting IA: {str(e)}"
+            return f"Erro ao consultar IA: {str(e)}"
 
     def perguntar_aos_dados(self, pergunta_usuario):
         if not self.ativo or not self.model: return "IA Unavailable."
@@ -3764,13 +3760,10 @@ class ConsultorIA:
             return f"Error consulting IA: {str(e)}"
 
     def analisar_servico_especifico(self, servico, lista_nes, ciclo_id):
-        """Analyzes only ONE service in isolation"""
-        if not self.ativo or not self.model: return "IA Unavailable."
+        if not self.ativo or not self.model: return "IA Indisponível."
 
         try:
             valor_ciclo = servico.get_valor_ciclo(ciclo_id)
-
-            # Calculates totals
             total_pago = 0.0
             historico_txt = ""
 
@@ -3784,25 +3777,25 @@ class ConsultorIA:
             perc_exec = (total_pago / valor_ciclo * 100) if valor_ciclo > 0 else 0
 
             prompt = f"""
-            Act as a Financial Controller. Analyze the execution of this SPECIFIC SERVICE of a contract.
+            Atue como um Controlador Financeiro. Analise a execução deste SERVIÇO ESPECÍFICO de um contrato.
+            Responda obrigatoriamente em Português do Brasil.
 
-            SERVICE: {servico.descricao}
-            TOTAL BUDGET: R$ {valor_ciclo:.2f}
-            EXECUTED SO FAR: R$ {total_pago:.2f} ({perc_exec:.1f}%)
-            REMAINING BALANCE: R$ {saldo:.2f}
+            SERVIÇO: {servico.descricao}
+            ORÇAMENTO TOTAL DO CICLO: R$ {valor_ciclo:.2f}
+            EXECUTADO ATÉ AGORA (PAGO): R$ {total_pago:.2f} ({perc_exec:.1f}%)
+            SALDO RESTANTE: R$ {saldo:.2f}
 
-            PAYMENT HISTORY:
+            HISTÓRICO DE PAGAMENTOS:
             {historico_txt}
 
-            QUESTION: Based on the pace of these payments, is the balance sufficient? Is there any abnormal pattern (spikes or sharp drops)?
-            Be direct and short.
+            QUESTÃO: Com base no ritmo desses pagamentos, o saldo é suficiente? Existe algum padrão anormal?
+            Seja direto e conciso.
             """
 
             response = self.model.generate_content(prompt)
             return response.text
         except Exception as e:
-            print(f"Error in IA generation: {e}")
-            return f"Error consulting IA: {str(e)}"
+            return f"Erro ao consultar IA: {str(e)}"
 
 class WorkerIA(QThread):
     """Executa chamadas pesadas da IA em segundo plano para não travar a janela"""
@@ -5096,11 +5089,13 @@ del "%~f0"
             self.voltar_para_pesquisa()
 
     def processar_alertas(self):
-        """Varredura automática de riscos"""
+        """Varredura automática de riscos focada em execução financeira real"""
         self.lista_alertas = []
         hoje = datetime.now()
 
         for c in self.db_contratos:
+            if getattr(c, 'anulado', False): continue
+
             # 1. Alerta de Vencimento (Prazos)
             try:
                 dt_fim = str_to_date(c.get_vigencia_final_atual())
@@ -5111,67 +5106,51 @@ del "%~f0"
                         "tipo": "VENCIDO", "gravidade": "CRÍTICO",
                         "mensagem": f"Contrato {c.numero} ({c.prestador}) venceu há {abs(dias_restantes)} dias!"
                     })
-                elif dias_restantes <= 45:  # Avisa com 45 dias
+                elif dias_restantes <= 45:
                     self.lista_alertas.append({
                         "tipo": "VENCIMENTO", "gravidade": "ALTA",
-                        "mensagem": f"Contrato {c.numero} vence em {dias_restantes} dias. Renove já!"
+                        "mensagem": f"Contrato {c.numero} vence em {dias_restantes} dias."
                     })
             except:
                 pass
 
-            # 2. Alerta de Saldo (Financeiro) - Olha o último ciclo ativo
-            ciclo = c.ciclos[-1] if c.ciclos else None
-            if ciclo and "(CANCELADO)" not in ciclo.nome:
-                for sub in c.lista_servicos:
+            # 2. Alerta de Saldo Financeiro (Execução de Pagamentos)
+            ciclo = next((ci for ci in reversed(c.ciclos) if "(CANCELADO)" not in ci.nome), None)
+            if ciclo:
+                for idx, sub in enumerate(c.lista_servicos):
                     orcamento = sub.get_valor_ciclo(ciclo.id_ciclo)
-                    # Calcula gasto
-                    gasto = sum(ne.valor_inicial for ne in c.lista_notas_empenho
-                                if ne.subcontrato_idx == c.lista_servicos.index(sub)
-                                and ne.ciclo_id == ciclo.id_ciclo)
-                    saldo = orcamento - gasto
+                    if orcamento <= 0: continue
 
-                    if orcamento > 0:
-                        perc = (saldo / orcamento) * 100
-                        if saldo < 0:
-                            self.lista_alertas.append({
-                                "tipo": "DÉFICIT", "gravidade": "CRÍTICO",
-                                "mensagem": f"Contrato {c.numero}: '{sub.descricao}' estourou em {fmt_br(abs(saldo))}!"
-                            })
-                        elif perc < 15:  # Menos de 15% de saldo
-                            self.lista_alertas.append({
-                                "tipo": "SALDO BAIXO", "gravidade": "MÉDIA",
-                                "mensagem": f"Contrato {c.numero}: '{sub.descricao}' tem apenas {perc:.1f}% de saldo."
-                            })
+                    # Calcula quanto já foi PAGO (não empenhado)
+                    gasto_real_pago = sum(ne.total_pago for ne in c.lista_notas_empenho
+                                          if ne.subcontrato_idx == idx and ne.ciclo_id == ciclo.id_ciclo)
+
+                    saldo_real = orcamento - gasto_real_pago
+                    perc_disponivel = (saldo_real / orcamento) * 100
+
+                    # Só avisa se o dinheiro para PAGAR estiver acabando (menos de 10%)
+                    if saldo_real < 0:
+                        self.lista_alertas.append({
+                            "tipo": "DÉFICIT", "gravidade": "CRÍTICO",
+                            "mensagem": f"Contrato {c.numero}: '{sub.descricao}' extrapolou o orçamento em {fmt_br(abs(saldo_real))}!"
+                        })
+                    elif perc_disponivel < 10:  # Ajuste este número conforme sua necessidade
+                        self.lista_alertas.append({
+                            "tipo": "SALDO BAIXO", "gravidade": "ALTA",
+                            "mensagem": f"Contrato {c.numero}: Serviço '{sub.descricao}' tem apenas {perc_disponivel:.1f}% de saldo para pagamentos."
+                        })
 
         # Atualiza o botão visualmente
-        # ATUALIZA O BOTÃO VISUALMENTE (ESTILO MINIMALISTA)
         if hasattr(self, 'btn_notificacoes'):
             qtd = len(self.lista_alertas)
             if qtd > 0:
                 self.btn_notificacoes.setText(f"🔔 {qtd}")
-                # Fica Vermelho, mas sem fundo (apenas texto)
-                self.btn_notificacoes.setStyleSheet("""
-                    QPushButton { 
-                        border: none; 
-                        background: transparent; 
-                        font-size: 14px; 
-                        color: #e74c3c; /* Vermelho Alerta */
-                        font-weight: bold; 
-                    }
-                    QPushButton:hover { background-color: #ffe6e6; border-radius: 5px; }
-                """)
+                self.btn_notificacoes.setStyleSheet(
+                    "QPushButton { border: none; background: transparent; font-size: 14px; color: #e74c3c; font-weight: bold; }")
             else:
                 self.btn_notificacoes.setText("🔔")
-                # Fica Cinza discreto
-                self.btn_notificacoes.setStyleSheet("""
-                    QPushButton { 
-                        border: none; 
-                        background: transparent; 
-                        font-size: 16px; 
-                        color: #7f8c8d; /* Cinza */
-                    }
-                    QPushButton:hover { background-color: #f0f0f0; border-radius: 5px; }
-                """)
+                self.btn_notificacoes.setStyleSheet(
+                    "QPushButton { border: none; background: transparent; font-size: 16px; color: #7f8c8d; }")
 
     def abrir_notificacoes(self):
         self.processar_alertas()  # Recalcula ao abrir
@@ -7046,71 +7025,129 @@ del "%~f0"
         DarkMessageBox.info(self, "Integridade", msg)
 
     def importar_contratos(self):
-        # Instrução visual para o usuário não errar a ordem
-        instrucao = (
-            "O arquivo CSV deve usar ponto e vírgula (;) e ter as colunas:\n\n"
-            "1. Número; 2. Prestador; 3. Objeto; 4. Valor; 5. Vig.Início; 6. Vig.Fim;\n"
-            "7. Comp.Início; 8. Comp.Fim; 9. Licitação; 10. Processo; 11. Num.Aditivo\n\n"
-            "Dica: No campo 'Num.Aditivo', use 0 para Contrato Inicial ou o número do aditivo atual (ex: 5)."
-        )
-        DarkMessageBox.info(self, "Formato de Importação", instrucao)
+        # 1. Função de Log de Emergência (Salva na pasta do EXE)
+        def log_debug(msg):
+            try:
+                with open("debug_importacao.txt", "a", encoding="utf-8") as f:
+                    f.write(f"{datetime.now().strftime('%H:%M:%S')} - {msg}\n")
+            except:
+                pass
+
+        log_debug("--- INICIANDO IMPORTAÇÃO ---")
 
         path, _ = QFileDialog.getOpenFileName(self, "Importar Contratos", "", "CSV (*.csv)")
-        if not path:
-            return
+        if not path: return
 
-        try:
-            with open(path, 'r', encoding='utf-8-sig') as f:
-                reader = csv.reader(f, delimiter=';')
+        # 2. Loop de Tentativa de Codificação (Resolve o problema dos acentos)
+        encodings_para_tentar = ['latin-1', 'utf-8-sig', 'cp1252']
+
+        for enc in encodings_para_tentar:
+            try:
+                log_debug(f"Tentando abrir com codificação: {enc}")
+
+                with open(path, 'r', encoding=enc) as f:
+                    # Lê tudo para a memória para evitar erro de leitura no meio do loop
+                    linhas = f.readlines()
+
+                # Se leu sem erro, prossegue
+                log_debug(f"Arquivo lido com sucesso. Total linhas: {len(linhas)}")
+
+                # Prepara o leitor de CSV
+                import csv
+                reader = csv.reader(linhas, delimiter=';')
+                cabecalho = next(reader, None)  # Pula a linha "1. Número; 2. Prestador..."
+
                 count = 0
-                for row in reader:
-                    # Verifica se tem pelo menos as 10 colunas básicas
-                    if len(row) < 10:
+                self.criar_ponto_restauracao()  # Backup antes de mexer
+
+                for i, row in enumerate(reader):
+                    # Pula linhas vazias
+                    if not row or len(row) < 10:
                         continue
 
                     try:
-                        # Lógica da 11ª coluna (Sequencial)
+                        # --- CORREÇÃO CRÍTICA DO ADITIVO (35.0 -> 35) ---
                         seq_ini = 0
-                        if len(row) >= 11:
-                            val_seq = row[10].strip()
-                            seq_ini = int(val_seq) if val_seq.isdigit() else 0
+                        if len(row) >= 11 and row[10].strip():
+                            # Limpa espaços e substitui vírgula por ponto se houver
+                            val_str = row[10].strip().replace(',', '.')
+                            # Converte para float primeiro (35.0) e depois para int (35)
+                            try:
+                                seq_ini = int(float(val_str))
+                            except:
+                                seq_ini = 0
+                        # ------------------------------------------------
 
-                        # Cria o objeto contrato com o novo parâmetro
+                        # --- CORREÇÃO DO VALOR MONETÁRIO ---
+                        valor_limpo = 0.0
+                        if row[3]:
+                            # Remove R$, espaços e pontos de milhar
+                            # Mantém apenas dígitos e a vírgula decimal
+                            v_str = row[3].upper().replace("R$", "").replace(" ", "").strip()
+                            # Tenta converter
+                            valor_limpo = parse_float_br(v_str)
+
+                        # Criação do Objeto
                         novo_c = Contrato(
-                            numero=row[0].strip(),
-                            prestador=row[1].strip(),
-                            descricao=row[2].strip(),
-                            valor_inicial=parse_float_br(row[3]),
-                            vig_inicio=row[4].strip(),
-                            vig_fim=row[5].strip(),
-                            comp_inicio=row[6].strip(),
-                            comp_fim=row[7].strip(),
-                            licitacao=row[8].strip(),
-                            dispensa=row[9].strip(),
-                            sequencial_inicio=seq_ini  # <--- A mágica acontece aqui
+                            numero=str(row[0]).strip(),
+                            prestador=str(row[1]).strip(),  # Pega o Nome Fantasia (Coluna 2)
+                            descricao=str(row[2]).strip(),
+                            valor_inicial=valor_limpo,
+                            vig_inicio=str(row[4]).strip(),
+                            vig_fim=str(row[5]).strip(),
+                            comp_inicio=str(row[6]).strip(),
+                            comp_fim=str(row[7]).strip(),
+                            licitacao=str(row[8]).strip(),
+                            dispensa=str(row[9]).strip(),
+                            sequencial_inicio=seq_ini
                         )
+
+                        # Evita duplicidade (compara número)
+                        if any(c.numero == novo_c.numero for c in self.db_contratos):
+                            log_debug(f"Linha {i}: Contrato {novo_c.numero} já existe. Pulando.")
+                            continue
 
                         self.db_contratos.append(novo_c)
                         count += 1
-                    except Exception as e:
-                        print(f"Erro ao processar linha {row}: {e}")
-                        continue
 
-                DarkMessageBox.success(self, "Sucesso", f"{count} contratos importados com sucesso!")
-                self.atualizar_tabela_contratos()
-                self.salvar_dados()
-        except Exception as e:
-            DarkMessageBox.error(self, "Erro", f"Falha ao ler arquivo: {e}")
+                    except Exception as e_linha:
+                        log_debug(f"ERRO NA LINHA {i + 2}: {e_linha}")
+                        continue  # Não para a importação por causa de uma linha ruim
+
+                # Se chegou aqui, salvamos
+                if count > 0:
+                    self.salvar_dados()
+                    self.filtrar_contratos()
+                    log_debug(f"Sucesso! {count} importados.")
+                    DarkMessageBox.info(self, "Sucesso", f"{count} contratos importados com sucesso!")
+                else:
+                    log_debug("Nenhum contrato importado (todos duplicados ou vazios).")
+                    DarkMessageBox.warning(self, "Aviso",
+                                           "Nenhum contrato novo foi importado.\nVerifique 'debug_importacao.txt'.")
+
+                return  # Sai da função (e do loop de encoding) pois deu certo
+
+            except UnicodeDecodeError:
+                log_debug(f"Falha com {enc}. Tentando próxima...")
+                continue  # Tenta o próximo da lista
+
+            except Exception as e_geral:
+                msg_erro = f"ERRO CRÍTICO: {str(e_geral)}"
+                log_debug(msg_erro)
+                import traceback
+                log_debug(traceback.format_exc())
+                DarkMessageBox.critical(self, "Erro Fatal",
+                                        f"Falha ao processar arquivo.\nVeja 'debug_importacao.txt'.")
+                return
 
     def importar_empenhos(self):
         if not self.contrato_selecionado:
             DarkMessageBox.warning(self, "Aviso", "Selecione e abra um contrato primeiro na tela de pesquisa.")
             return
 
-        # --- NOVA LÓGICA DE SELEÇÃO DE CICLO ---
-        # Lista os nomes dos ciclos disponíveis (excluindo os cancelados)
+        # --- SELEÇÃO DE CICLO ---
         lista_nomes_ciclos = [c.nome for c in self.contrato_selecionado.ciclos if "(CANCELADO)" not in c.nome]
-        idx_padrao = len(lista_nomes_ciclos) - 1  # Sugere o último ciclo por padrão
+        idx_padrao = len(lista_nomes_ciclos) - 1
 
         nome_ciclo, ok = QInputDialog.getItem(
             self,
@@ -7123,103 +7160,123 @@ del "%~f0"
 
         if not ok: return
 
-        # Recupera o ID real do ciclo com base no nome selecionado
+        # Recupera o ID real do ciclo
         id_ciclo_alvo = 0
         for c in self.contrato_selecionado.ciclos:
             if c.nome == nome_ciclo:
                 id_ciclo_alvo = c.id_ciclo
                 break
-        # ----------------------------------------
 
+        # --- ATUALIZAÇÃO NAS INSTRUÇÕES ---
         instrucao = (
             f"IMPORTANDO PARA O CICLO: {nome_ciclo}\n\n"
             "ESTRUTURA DO CSV (Separador: ';')\n"
-            "O sistema vinculará as NEs ao ciclo selecionado e tentará\n"
-            "encontrar o serviço pelo nome exato.\n\n"
+            "Agora com suporte a COMPETÊNCIAS na 7ª coluna.\n\n"
             "Colunas (Ordem exata):\n"
             "1. Número da NE\n"
             "2. Valor Original (R$)\n"
             "3. Descrição / Histórico\n"
-            "4. Nome do Serviço (Deve ser idêntico ao cadastrado)\n"
+            "4. Nome do Serviço\n"
             "5. Fonte de Recurso\n"
-            "6. Data de Emissão (DD/MM/AAAA)\n"
+            "6. Data de Emissão\n"
+            "7. Competências (Opcional) -> Ex: '01/2026, 02/2026'\n"
         )
         DarkMessageBox.info(self, "Instruções", instrucao)
 
         fname, _ = QFileDialog.getOpenFileName(self, "CSV Empenhos", "", "CSV (*.csv)")
         if not fname: return
 
-        sucesso = 0
-        erros_servico = []
+        # --- LOOP DE TENTATIVA DE CODIFICAÇÃO ---
+        encodings = ['utf-8-sig', 'latin-1', 'cp1252']
 
-        try:
-            # Usando utf-8-sig para evitar erro de caracteres do Excel
-            with open(fname, 'r', encoding='utf-8-sig') as f:
-                reader = csv.reader(f, delimiter=';')
-                next(reader, None)  # Pula cabeçalho
+        for enc in encodings:
+            try:
+                with open(fname, 'r', encoding=enc) as f:
+                    reader = csv.reader(f, delimiter=';')
+                    next(reader, None)  # Pula cabeçalho
 
-                self.criar_ponto_restauracao()  # Ponto de segurança antes de alterar dados
+                    self.criar_ponto_restauracao()
 
-                for row in reader:
-                    if len(row) < 6: continue
+                    sucesso = 0
+                    erros_servico = []
 
-                    # Busca o índice do serviço pelo nome fornecido no CSV
-                    idx_serv = -1
-                    for idx, s in enumerate(self.contrato_selecionado.lista_servicos):
-                        if s.descricao.lower() == row[3].strip().lower():
-                            idx_serv = idx
-                            break
+                    for row in reader:
+                        if len(row) < 6: continue
 
-                    if idx_serv == -1:
-                        erros_servico.append(row[3].strip())
-                        continue
+                        # Busca o índice do serviço
+                        idx_serv = -1
+                        nome_csv = row[3].strip().lower()
 
-                    # Cria a Nota de Empenho com o id_ciclo_alvo selecionado pelo usuário
-                    # Ordem: numero, valor, desc, sub_idx, fonte, data, ciclo_id, adt_id, competências
-                    ne = NotaEmpenho(
-                        row[0].strip(),  # Número
-                        parse_float_br(row[1]),  # Valor
-                        row[2].strip(),  # Descrição
-                        idx_serv,  # Índice do Serviço
-                        row[4].strip(),  # Fonte
-                        row[5].strip(),  # Data Emissão
-                        id_ciclo_alvo,  # ID DO CICLO SELECIONADO (Melhoria)
-                        None,  # Aditivo Vinculado
-                        ""  # Competências (inicia vazio)
-                    )
+                        for idx, s in enumerate(self.contrato_selecionado.lista_servicos):
+                            if s.descricao.strip().lower() == nome_csv:
+                                idx_serv = idx
+                                break
 
-                    ok, msg = self.contrato_selecionado.adicionar_nota_empenho(ne)
-                    if ok:
-                        sucesso += 1
+                        if idx_serv == -1:
+                            erros_servico.append(row[3].strip())
+                            continue
 
-            # Atualiza interface e persiste no banco SQLite
-            self.atualizar_painel_detalhes()
-            self.salvar_dados()  # Salva permanentemente no .db
+                        # --- LEITURA DA COMPETÊNCIA (NOVO) ---
+                        competencias_str = ""
+                        if len(row) >= 7:
+                            # Pega a coluna 7 e limpa espaços extras
+                            raw_comp = row[6].strip()
+                            # Opcional: Validar formato aqui se quiser, mas string direta funciona
+                            competencias_str = raw_comp
+                        # -------------------------------------
 
-            # Relatório final para o usuário
-            resumo = f"Sucesso! {sucesso} Notas de Empenho importadas para o {nome_ciclo}."
-            if erros_servico:
-                resumo += f"\n\n⚠️ {len(erros_servico)} empenhos foram ignorados por não encontrar o serviço exato: " + ", ".join(
-                    set(erros_servico))
+                        # Cria a Nota de Empenho
+                        ne = NotaEmpenho(
+                            str(row[0]).strip(),  # Número
+                            parse_float_br(row[1]),  # Valor
+                            str(row[2]).strip(),  # Descrição
+                            idx_serv,  # Índice do Serviço
+                            str(row[4]).strip(),  # Fonte
+                            str(row[5]).strip(),  # Data Emissão
+                            id_ciclo_alvo,
+                            None,
+                            competencias_str  # <--- Passa a string lida do CSV
+                        )
 
-            DarkMessageBox.info(self, "Resultado da Importação", resumo)
-            self.registrar_log("IMPORTAÇÃO", f"Importou {sucesso} NEs via CSV para {nome_ciclo}.")
+                        ok_ne, msg = self.contrato_selecionado.adicionar_nota_empenho(ne)
+                        if ok_ne:
+                            sucesso += 1
 
-        except Exception as e:
-            DarkMessageBox.critical(self, "Erro", f"Falha ao ler o arquivo: {str(e)}")
+                    # Finalização
+                    self.atualizar_painel_detalhes()
+                    self.salvar_dados()
+
+                    resumo = f"Sucesso! {sucesso} Notas de Empenho importadas para o {nome_ciclo}."
+                    if erros_servico:
+                        resumo += f"\n\n⚠️ {len(erros_servico)} ignorados (Serviço não encontrado): " + ", ".join(
+                            set(erros_servico))
+
+                    DarkMessageBox.info(self, "Resultado da Importação", resumo)
+                    self.registrar_log("IMPORTAÇÃO", f"Importou {sucesso} NEs via CSV para {nome_ciclo}.")
+
+                    return
+
+            except UnicodeDecodeError:
+                continue
+
+            except Exception as e:
+                import traceback
+                print(traceback.format_exc())
+                DarkMessageBox.critical(self, "Erro", f"Falha ao ler o arquivo: {str(e)}")
+                return
 
     def importar_servicos(self):
         if not self.contrato_selecionado:
             DarkMessageBox.warning(self, "Aviso", "Selecione (abra) um contrato primeiro na tela de pesquisa.")
             return
 
-        lista_ciclos = [c.nome for c in self.contrato_selecionado.ciclos]
+        # 1. Seleção do Ciclo
+        lista_ciclos = [c.nome for c in self.contrato_selecionado.ciclos if "(CANCELADO)" not in c.nome]
         idx_padrao = len(lista_ciclos) - 1
 
         nome_ciclo, ok = QInputDialog.getItem(self, "Selecionar Ciclo",
                                               "Para qual ciclo financeiro estes valores pertencem?",
                                               lista_ciclos, idx_padrao, False)
-
         if not ok: return
 
         id_ciclo_alvo = 0
@@ -7230,53 +7287,73 @@ del "%~f0"
 
         instrucao = (
             f"IMPORTANDO PARA O CICLO: {nome_ciclo}\n\n"
-            "ESTRUTURA DO CSV (Separador: ponto e vírgula ';')\n"
-            "Colunas necessárias:\n"
-            "1. Descrição do Serviço (Obrigatório)\n"
-            "2. Valor Total no Ciclo (Obrigatório)\n"
-            "3. Valor da Parcela Mensal (Opcional - Se vazio, será 0)\n\n"
-            "Exemplo:\n"
-            "Vigilância Armada; 120000,00; 10000,00"
+            "O arquivo deve ter cabeçalho e usar ponto e vírgula (;).\n"
+            "Colunas esperadas:\n"
+            "1. Descrição\n"
+            "2. Valor Total\n"
+            "3. Valor Mensal\n"
         )
         DarkMessageBox.info(self, "Instruções", instrucao)
 
         fname, _ = QFileDialog.getOpenFileName(self, "Selecionar CSV Serviços", "", "Arquivos CSV (*.csv)")
         if not fname: return
 
-        sucesso = 0
-        try:
-            with open(fname, 'r', encoding='utf-8-sig') as f:
-                reader = csv.reader(f, delimiter=';')
-                next(reader, None)
-                self.criar_ponto_restauracao()
-                for row in reader:
-                    if len(row) < 2: continue
+        # --- LOOP DE PROTEÇÃO DE CODIFICAÇÃO ---
+        encodings = ['utf-8-sig', 'latin-1', 'cp1252']
 
-                    desc = row[0].strip()
-                    val_total = parse_float_br(row[1])
+        for enc in encodings:
+            try:
+                with open(fname, 'r', encoding=enc) as f:
+                    reader = csv.reader(f, delimiter=';')
+                    next(reader, None)  # Pula cabeçalho
 
-                    # Tenta ler a 3ª coluna (Mensal), se não existir usa 0.0
-                    val_mensal = 0.0
-                    if len(row) > 2:
-                        val_mensal = parse_float_br(row[2])
+                    self.criar_ponto_restauracao()
+                    sucesso = 0
 
-                    if desc:
-                        # Passa o mensal na criação
+                    for row in reader:
+                        # Pula linhas vazias ou muito curtas
+                        if not row or len(row) < 2: continue
+
+                        # Limpa espaços extras
+                        desc = row[0].strip()
+                        if not desc: continue  # Pula se não tiver descrição
+
+                        # Lê valores (coluna 1 e 2)
+                        val_total = parse_float_br(row[1])
+
+                        val_mensal = 0.0
+                        if len(row) > 2:
+                            val_mensal = parse_float_br(row[2])
+
+                        # Cria o Serviço
                         sub = SubContrato(desc, val_mensal)
                         sub.set_valor_ciclo(id_ciclo_alvo, val_total)
 
                         self.contrato_selecionado.lista_servicos.append(sub)
                         sucesso += 1
 
-            idx_combo = self.combo_ciclo_visualizacao.findData(id_ciclo_alvo)
-            if idx_combo >= 0: self.combo_ciclo_visualizacao.setCurrentIndex(idx_combo)
+                    # Se chegou aqui, funcionou!
+                    # Atualiza a interface
+                    idx_combo = self.combo_ciclo_visualizacao.findData(id_ciclo_alvo)
+                    if idx_combo >= 0: self.combo_ciclo_visualizacao.setCurrentIndex(idx_combo)
 
-            self.atualizar_painel_detalhes()
-            self.salvar_dados()
-            DarkMessageBox.info(self, "Concluído", f"{sucesso} serviços importados para o ciclo '{nome_ciclo}'!")
+                    self.atualizar_painel_detalhes()
+                    self.salvar_dados()
 
-        except Exception as e:
-            DarkMessageBox.critical(self, "Erro", f"Erro na importação: {str(e)}")
+                    msg_extra = ""
+                    if sucesso == 0:
+                        msg_extra = "\n(Nenhum serviço encontrado ou formato inválido)."
+
+                    DarkMessageBox.info(self, "Concluído",
+                                        f"{sucesso} serviços importados para '{nome_ciclo}'!{msg_extra}")
+                    return  # Sai da função e do loop
+
+            except UnicodeDecodeError:
+                continue  # Tenta o próximo encoding (Latin-1)
+
+            except Exception as e:
+                DarkMessageBox.critical(self, "Erro", f"Erro na importação: {str(e)}")
+                return
 
     def importar_pagamentos(self):
         if not self.contrato_selecionado:
@@ -7299,52 +7376,68 @@ del "%~f0"
         fname, _ = QFileDialog.getOpenFileName(self, "Selecionar CSV Pagamentos", "", "Arquivos CSV (*.csv)")
         if not fname: return
 
-        sucesso = 0
-        erros = []
+        # Loop de decodificação para evitar erros de acentuação (Latin-1 vs UTF-8)
+        encodings = ['utf-8-sig', 'latin-1', 'cp1252']
 
-        try:
-            with open(fname, 'r', encoding='utf-8-sig') as f:
-                reader = csv.reader(f, delimiter=';')
-                next(reader, None)  # Pula cabeçalho
-                for i, row in enumerate(reader):
-                    if len(row) < 3: continue
+        for enc in encodings:
+            try:
+                with open(fname, 'r', encoding=enc) as f:
+                    reader = csv.reader(f, delimiter=';')
+                    next(reader, None)  # Pula o cabeçalho
 
-                    num_ne = row[0].strip()
-                    valor_pg = parse_float_br(row[1])
-                    competencia = row[2].strip()
-                    obs = row[3].strip() if len(row) > 3 else ""
+                    sucesso = 0
+                    erros = []
+                    self.criar_ponto_restauracao()  # Segurança para desfazer se necessário
 
-                    # 1. Encontrar a NE
-                    ne_alvo = None
-                    for ne in self.contrato_selecionado.lista_notas_empenho:
-                        if ne.numero.strip() == num_ne:
-                            ne_alvo = ne
-                            break
+                    for i, row in enumerate(reader):
+                        # Pula linhas vazias ou com menos de 3 colunas
+                        if not row or len(row) < 3: continue
 
-                    if not ne_alvo:
-                        erros.append(f"Linha {i + 2}: NE '{num_ne}' não encontrada.")
-                        continue
+                        num_ne = str(row[0]).strip()
+                        # Usa o parse_float_br que limpa R$ e espaços
+                        valor_pg = parse_float_br(row[1])
+                        competencia = str(row[2]).strip()
+                        obs = str(row[3]).strip() if len(row) > 3 else ""
 
-                    # 2. Realizar Pagamento
-                    ok, msg = ne_alvo.realizar_pagamento(valor_pg, competencia)
-                    if ok:
-                        sucesso += 1
-                    else:
-                        erros.append(f"Linha {i + 2} (NE {num_ne}): {msg}")
+                        # 1. Encontrar a NE (Busca em todas as NEs do contrato)
+                        ne_alvo = None
+                        for ne in self.contrato_selecionado.lista_notas_empenho:
+                            if ne.numero.strip() == num_ne:
+                                ne_alvo = ne
+                                break
 
-            self.atualizar_painel_detalhes()
-            self.atualizar_movimentos()  # Caso esteja visualizando a NE importada
-            self.salvar_dados()
+                        if not ne_alvo:
+                            erros.append(f"Linha {i + 2}: NE '{num_ne}' não encontrada neste contrato.")
+                            continue
 
-            resumo = f"Importação de Pagamentos Concluída.\nSucessos: {sucesso}"
-            if erros:
-                resumo += f"\nErros: {len(erros)}\n\n" + "\n".join(erros[:5])
-                if len(erros) > 5: resumo += "\n..."
+                        # 2. Realizar Pagamento na memória
+                        # O método realizar_pagamento já verifica saldo disponível
+                        ok, msg = ne_alvo.realizar_pagamento(valor_pg, competencia, obs)
 
-            DarkMessageBox.info(self, "Relatório", resumo)
+                        if ok:
+                            sucesso += 1
+                        else:
+                            erros.append(f"Linha {i + 2} (NE {num_ne}): {msg}")
 
-        except Exception as e:
-            DarkMessageBox.critical(self, "Erro", f"Erro na importação: {str(e)}")
+                # Se a leitura do arquivo chegou ao fim sem erro de encoding:
+                self.atualizar_painel_detalhes()
+                self.atualizar_movimentos()
+                self.processar_alertas()
+                self.salvar_dados()
+
+                resumo = f"Importação de Pagamentos Concluída.\n\n✅ Sucessos: {sucesso}"
+                if erros:
+                    resumo += f"\n❌ Erros: {len(erros)}\n\nPrincipais problemas:\n" + "\n".join(erros[:5])
+                    if len(erros) > 5: resumo += "\n..."
+
+                DarkMessageBox.info(self, "Relatório de Importação", resumo)
+                return  # Sai da função após o sucesso
+
+            except UnicodeDecodeError:
+                continue  # Tenta o próximo formato de texto
+            except Exception as e:
+                DarkMessageBox.critical(self, "Erro Fatal", f"Erro crítico na importação: {str(e)}")
+                return
 
     # --- MENUS CONTEXTO E AUXILIARES ---
 
