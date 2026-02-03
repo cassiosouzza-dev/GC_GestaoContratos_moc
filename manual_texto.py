@@ -1,18 +1,21 @@
 # ARQUIVO: manual_texto.py
-# Documentação Técnica Operacional - GC Gestor v1.0
+# Documentação Técnica Operacional - GC Gestor v2.2
+# Atualizado conforme código-fonte da versão 2.2
 
 HTML_MANUAL = """
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
-    <title>Manual Técnico Operacional - GC Gestor</title>
+    <title>Manual Técnico Operacional - GC Gestor v2.2</title>
     <style>
         :root {
             --primary-color: #0078d7; /* Azul Corporativo */
             --secondary-color: #2c3e50; /* Cinza Escuro */
             --accent-color: #27ae60; /* Verde Sucesso */
             --danger-color: #c0392b; /* Vermelho Alerta */
+            --warning-color: #f39c12; /* Laranja */
+            --purple-color: #8e44ad; /* Roxo */
             --bg-color: #f4f6f7;
             --text-color: #333;
             --border-color: #dcdcdc;
@@ -169,38 +172,19 @@ HTML_MANUAL = """
 
         .box-warning {
             background-color: #fef5e7;
-            border-left: 5px solid var(--danger-color);
+            border-left: 5px solid var(--warning-color);
             padding: 15px;
             margin: 20px 0;
-            color: #bf360c;
+            color: #d35400;
         }
 
-        .box-code {
-            background-color: #2d3436;
-            color: #dfe6e9;
-            padding: 15px;
-            font-family: 'Consolas', monospace;
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
             border-radius: 4px;
-            font-size: 0.9em;
-            overflow-x: auto;
-            margin: 15px 0;
-        }
-
-        /* Elementos de Interface */
-        code {
-            background-color: #f0f0f0;
-            padding: 2px 5px;
-            border-radius: 3px;
-            font-family: monospace;
-            color: #d63031;
-        }
-
-        .breadcrumbs {
             font-size: 0.85em;
-            color: #7f8c8d;
-            text-transform: uppercase;
-            margin-bottom: 10px;
-            letter-spacing: 0.5px;
+            font-weight: bold;
+            color: white;
         }
 
         .footer {
@@ -215,228 +199,172 @@ HTML_MANUAL = """
 </head>
 <body>
 
-    <h1>MANUAL TÉCNICO OPERACIONAL<br><small style="font-size: 0.4em; color: #7f8c8d;">GC GESTOR DE CONTRATOS E CONVÊNIOS</small></h1>
+    <h1>MANUAL TÉCNICO OPERACIONAL<br><small style="font-size: 0.4em; color: #7f8c8d;">GC GESTOR DE CONTRATOS E CONVÊNIOS - v2.2</small></h1>
 
     <div class="box-info">
-        <strong>Objetivo do Documento:</strong><br>
-        Este manual descreve as funcionalidades, regras de negócio e procedimentos operacionais do sistema GC Gestor, destinado ao controle financeiro e administrativo de contratos públicos.
+        <strong>Versão Atualizada:</strong><br>
+        Este documento reflete as funcionalidades da versão 2.2, incluindo novos módulos de Rateio de Pagamentos, Bloqueio de NE, Monitoramento de Vigências e Integração com IA.
     </div>
 
-    <h2>1. ESTRUTURA E CONCEITOS DO SISTEMA</h2>
+    <h2>1. ACESSO E SEGURANÇA</h2>
 
     <details open>
-        <summary>1.1. Hierarquia de Dados</summary>
+        <summary>1.1. Login e Autenticação</summary>
         <div class="content">
-            <p>O sistema opera sob uma lógica relacional estrita para garantir a integridade da execução orçamentária. A hierarquia de dependência é:</p>
+            <p>O sistema utiliza controle de acesso local baseado em CPF e Senha criptografada (Hash SHA-256).</p>
+            <ul>
+                <li><b>Primeiro Acesso:</b> Caso não existam usuários cadastrados, o sistema permitirá entrada como "Administrador" para configuração inicial.</li>
+                <li><b>Cadastro de Usuário:</b> Na tela de login, utilize a opção "Criar Nova Conta". É obrigatório definir uma <b>Palavra Secreta</b> para recuperação de senha.</li>
+                <li><b>Recuperação de Senha:</b> Caso esqueça sua senha, utilize a opção "Esqueci minha senha" e informe seu CPF e a Palavra Secreta cadastrada.</li>
+            </ul>
+        </div>
+    </details>
+
+    <details>
+        <summary>1.2. Integridade de Dados</summary>
+        <div class="content">
+            <p>O GC Gestor implementa camadas robustas de proteção:</p>
+            <ul>
+                <li><b>Ponto de Restauração (Undo):</b> Antes de ações críticas (Exclusão em massa, Importação, Rateio), o sistema cria um backup temporário. Utilize o menu <i>Editar > Desfazer</i> ou <code>Ctrl+Alt+Z</code> para reverter.</li>
+                <li><b>Soft Delete (Lixeira):</b> Contratos excluídos não somem do banco de dados imediatamente. Eles são marcados como "Anulados" e podem ser restaurados via <i>Ferramentas > Lixeira</i>.</li>
+                <li><b>Auditoria (Logs):</b> Todas as ações são registradas com Data, Hora, Usuário e CPF. Acesse em <i>Cadastros > Auditoria</i>.</li>
+            </ul>
+        </div>
+    </details>
+
+    <h2>2. ESTRUTURA ORÇAMENTÁRIA (Conceitos Chave)</h2>
+
+    <details>
+        <summary>2.1. Hierarquia do Contrato</summary>
+        <div class="content">
+            <p>Para garantir a execução financeira correta, o sistema segue esta estrutura rígida:</p>
             <ol>
-                <li><b>Prestador (Entidade):</b> O cadastro base (CNPJ, Razão Social). Nenhum contrato pode ser criado sem um prestador previamente cadastrado.</li>
-                <li><b>Contrato:</b> O instrumento legal. Define o objeto, valor inicial e vigência.</li>
-                <li><b>Ciclo Financeiro:</b> A divisão temporal do orçamento (ex: Exercício 2025, Exercício 2026).
+                <li><b>Prestador:</b> Entidade jurídica (CNPJ) credora. Deve ser cadastrado <i>antes</i> do contrato.</li>
+                <li><b>Contrato:</b> O instrumento legal base.</li>
+                <li><b>Ciclo Financeiro:</b> O "balde" orçamentário.
                     <ul>
-                        <li><b>Ciclo 0 (Contrato Inicial):</b> Período original de vigência.</li>
-                        <li><b>Ciclos Subsequentes:</b> Criados automaticamente mediante Aditivos de Prazo com Renovação de Valor (Prorrogações).</li>
+                        <li><i>Contrato Inicial:</i> Primeiro ciclo.</li>
+                        <li><i>Termos Aditivos:</i> Novos ciclos criados apenas quando há renovação de prazo <b>com</b> renovação de valor.</li>
                     </ul>
                 </li>
-                <li><b>Serviço (Subcontrato):</b> A categorização da despesa (ex: "Manutenção", "Insumos"). O orçamento é alocado por serviço dentro de cada ciclo.</li>
-                <li><b>Nota de Empenho (NE):</b> A reserva orçamentária. Vincula-se obrigatoriamente a um Ciclo e a um Serviço.</li>
-                <li><b>Movimentação Financeira:</b> A execução real da despesa (Pagamentos ou Anulações de empenho).</li>
+                <li><b>Serviço (Subcontrato):</b> A categorização da despesa (Item de orçamento). Possui saldo independente dentro de cada ciclo.</li>
+                <li><b>Nota de Empenho (NE):</b> A reserva de recurso vinculada a um Serviço e a um Ciclo.</li>
             </ol>
         </div>
     </details>
 
     <details>
-        <summary>1.2. Tipos de Termos Aditivos (TA)</summary>
+        <summary>2.2. Tipos de Termos Aditivos</summary>
         <div class="content">
             <p>O sistema diferencia o impacto financeiro dos aditivos:</p>
             <ul>
-                <li><b>Aditivo de Valor (Acréscimo/Supressão):</b> Altera o teto financeiro do <i>Ciclo Vigente</i>. Não altera a vigência final do contrato, apenas o saldo disponível.</li>
+                <li><b>Aditivo de Valor (Acréscimo/Supressão):</b> Altera o teto financeiro do <i>Ciclo Vigente</i> (soma ou subtrai do saldo atual).</li>
                 <li><b>Aditivo de Prazo (Prorrogação Simples):</b> Estende a data de vigência sem aporte de novos recursos.</li>
-                <li><b>Aditivo de Prazo com Renovação de Valor:</b> Estende a vigência e aporta novo orçamento. 
-                    <br><i>Ação do Sistema:</i> Encerra o ciclo atual e gera um <b>Novo Ciclo Financeiro</b> (ex: 1º TA, 2º TA), zerando os saldos comprometidos e iniciando um novo período contábil.</li>
+                <li><b>Aditivo de Prazo com Renovação de Valor:</b> Ação crítica. O sistema encerra o ciclo atual e gera um <b>Novo Ciclo Financeiro</b> (ex: 2º TA), zerando os saldos anteriores e iniciando um novo orçamento.</li>
             </ul>
+            <div class="box-warning">
+                <b>Atenção:</b> Ao criar aditivos de renovação, é obrigatório informar as Competências (MM/AAAA) Inicial e Final para que os relatórios mensais funcionem corretamente.
+            </div>
         </div>
     </details>
 
-    <h2>2. INTERFACE E NAVEGAÇÃO</h2>
+    <h2>3. FUNCIONALIDADES OPERACIONAIS</h2>
 
     <details>
-        <summary>2.1. Barra de Menus (Superior)</summary>
+        <summary>3.1. Monitor de Vigências e Prazos</summary>
         <div class="content">
-            <p>Funcionalidades acessíveis através do menu principal:</p>
-
-            <h3>Arquivo</h3>
+            <p>Acessível via menu <i>Exibir > Monitor de Vigências</i> ou botão "Prazos" na barra de ferramentas. Utiliza código de cores para priorização:</p>
             <ul>
-                <li><b>Novo Contrato:</b> Inicia o assistente de cadastro.</li>
-                <li><b>Trocar Base de Dados:</b> Permite alternar entre diferentes arquivos <code>.json</code> (ex: bases de setores diferentes).</li>
-                <li><b>Fazer Backup de Segurança (.bak):</b> Gera uma cópia imediata da base atual com carimbo de data/hora na pasta do sistema.</li>
-                <li><b>Alterar Minha Senha:</b> Redefinição de credenciais do usuário logado.</li>
-                <li><b>Trocar Usuário (Logout):</b> Retorna à tela de login.</li>
-            </ul>
-
-            <h3>Editar</h3>
-            <ul>
-                <li><b>Desfazer (Undo):</b> Reverte a última ação crítica (exclusão, importação em lote). O sistema mantém um ponto de restauração automático.</li>
-                <li><b>Recortar/Copiar/Colar:</b> Operações padrão de texto.</li>
-            </ul>
-
-            <h3>Exibir</h3>
-            <ul>
-                <li><b>Painel de Pesquisa:</b> Retorna à tela inicial.</li>
-                <li><b>Personalizar Cores e Fontes:</b> Ajustes de acessibilidade e tema (Modo Escuro, Alto Contraste).</li>
-                <li><b>Contratos Excluídos (Lixeira):</b> Acesso a registros ocultos (Soft Delete) com opção de restauração.</li>
-            </ul>
-
-            <h3>Cadastros</h3>
-            <ul>
-                <li><b>Gerenciar Prestadores:</b> Cadastro, edição e remoção de empresas/entidades.</li>
-                <li><b>Auditoria (Logs):</b> Visualização do rastro de atividades (quem fez o quê e quando).</li>
-            </ul>
-
-            <h3>Ferramentas</h3>
-            <ul>
-                <li><b>Assistente de Importação:</b> Importação em lote de dados via arquivos CSV (Contratos, Serviços, NEs, Pagamentos).</li>
-                <li><b>Sincronizar com Google Drive:</b> Módulo de integração em nuvem para trabalho colaborativo.</li>
-                <li><b>Verificar Integridade:</b> Diagnóstico técnico da estrutura do banco de dados.</li>
+                <li><span class="badge" style="background-color: #8e44ad;">ROXO</span> <b>Vencido:</b> Contrato já expirado.</li>
+                <li><span class="badge" style="background-color: #c0392b;">VERMELHO</span> <b>Crítico:</b> Vence em menos de 90 dias. Ação imediata necessária.</li>
+                <li><span class="badge" style="background-color: #f39c12;">AMARELO</span> <b>Atenção:</b> Vence em menos de 180 dias. Planejamento necessário.</li>
+                <li><span class="badge" style="background-color: #27ae60;">VERDE</span> <b>Vigente:</b> Mais de 180 dias de prazo. Situação confortável.</li>
             </ul>
         </div>
     </details>
 
     <details>
-        <summary>2.2. Painel de Pesquisa (Tela Inicial)</summary>
+        <summary>3.2. Execução Financeira (Empenhos e Pagamentos)</summary>
         <div class="content">
-            <p>A tela principal apresenta uma barra de busca global ("Omni-search"). A filtragem ocorre em tempo real nos seguintes campos:</p>
+            <p>Localizado na aba "Financeiro" dentro dos detalhes do contrato.</p>
+
+            <h4>Funcionalidades Principais:</h4>
             <ul>
-                <li>Número do Contrato.</li>
-                <li>Número da Nota de Empenho (NE).</li>
-                <li>Razão Social ou Nome Fantasia do Prestador.</li>
-                <li>CNPJ.</li>
-                <li>Descrição do Objeto.</li>
-            </ul>
-            <p><b>Observação:</b> Ao digitar o número de uma NE, o sistema exibirá o contrato correspondente. O duplo clique no resultado abrirá diretamente o detalhe do contrato ou focará na NE pesquisada.</p>
-        </div>
-    </details>
-
-    <h2>3. MÓDULOS OPERACIONAIS</h2>
-
-    <details>
-        <summary>3.1. Gestão de Contratos (Aba Dados)</summary>
-        <div class="content">
-            <div class="breadcrumbs">Localização: Tela de Detalhes > Aba "Dados"</div>
-            <p>Esta aba apresenta a "Linha do Tempo" financeira do contrato.</p>
-
-            <h4>Tabela de Resumo Financeiro</h4>
-            <p>Exibe cronologicamente todos os eventos (Contrato Inicial e Aditivos). Colunas:</p>
-            <ul>
-                <li><b>Evento/Referência:</b> Identificação do ato (ex: Contrato Inicial, 1º Termo Aditivo).</li>
-                <li><b>Vigência e Competência:</b> Período legal e meses de competência abrangidos.</li>
-                <li><b>Valor do Ato:</b> O impacto financeiro específico daquele evento (Acréscimo ou Decréscimo).</li>
-                <li><b>Teto (Ref.):</b> O limite orçamentário acumulado ou específico do ciclo.</li>
-                <li><b>Saldo de Pagamentos:</b> Valor disponível em caixa (Teto - Pagamentos Realizados).</li>
-                <li><b>Não Empenhado:</b> Valor disponível para emissão de novas NEs (Teto - Empenhos Emitidos).</li>
+                <li><b>[+ NE]:</b> Emite nova Nota de Empenho. Exige vínculo com um Serviço.</li>
+                <li><b>[Pagar]:</b> Registra liquidação. O valor é abatido do saldo da NE.</li>
+                <li><b>[Ratear Pagamento]:</b> <i>(Novo)</i> Divide um valor total de fatura entre várias NEs automaticamente, priorizando as mais antigas ou permitindo ajuste manual.</li>
+                <li><b>[Bloquear 🔒]:</b> Congela a NE. O saldo restante deixa de ser considerado "Disponível" para o serviço. Útil para Restos a Pagar não processados.</li>
+                <li><b>[Anular]:</b> Estorno de valor (devolução de saldo para a NE).</li>
+                <li><b>Maximizar Histórico:</b> Abre uma janela dedicada para visualizar toda a movimentação da NE selecionada.</li>
             </ul>
         </div>
     </details>
 
     <details>
-        <summary>3.2. Execução Financeira (Aba Financeiro)</summary>
+        <summary>3.3. Assistente de Importação (Lote)</summary>
         <div class="content">
-            <div class="breadcrumbs">Localização: Tela de Detalhes > Aba "Financeiro"</div>
-            <p>Módulo responsável pela emissão de empenhos e liquidação de despesas.</p>
-
-            <h4>Tabela de Notas de Empenho (Superior)</h4>
-            <p>Lista as NEs do ciclo selecionado. Ícones e cores indicam o status:</p>
-            <ul>
-                <li><b>Texto Preto:</b> NE ativa normal.</li>
-                <li><b>Texto Cinza + Ícone Cadeado (🔒):</b> NE Bloqueada. O saldo desta nota não é computado como disponível e não permite novos pagamentos.</li>
-            </ul>
-
-            <h4>Funcionalidades (Botões):</h4>
-            <ul>
-                <li><b>[+ NE]:</b> Emite nova nota. Exige a definição das competências (meses) que a nota cobre para fins de rateio em relatórios.</li>
-                <li><b>[Pagar]:</b> Registra liquidação. O usuário deve selecionar as competências a que se refere o pagamento na lista de meses.</li>
-                <li><b>[Anular]:</b> Realiza o estorno de valor (devolução de saldo para a NE).</li>
-                <li><b>[Bloquear/Desbloq.]:</b> Congela a NE. Útil para restos a pagar não processados ou notas encerradas administrativamente.</li>
-                <li><b>[Analisar Risco (IA)]:</b> Solicita uma análise preditiva do módulo de Inteligência Artificial sobre a execução financeira.</li>
-            </ul>
-        </div>
-    </details>
-
-    <details>
-        <summary>3.3. Serviços e Orçamento (Aba Serviços)</summary>
-        <div class="content">
-            <p>Define a distribuição analítica do orçamento. Cada serviço (item de despesa) possui seu próprio controle de saldo.</p>
-            <p>Ao cadastrar um serviço, define-se um "Valor Mensal Estimado". O sistema projeta o valor total para o ciclo vigente. O controle de saldo impede a emissão de NEs se o serviço não possuir dotação suficiente, mesmo que o contrato global possua saldo.</p>
-        </div>
-    </details>
-
-    <details>
-        <summary>3.4. Gestão de Aditivos (Aba Aditivos)</summary>
-        <div class="content">
-            <p>Permite o registro de alterações contratuais. O sistema valida a integridade das datas:</p>
-            <ul>
-                <li><b>Validação de Competência:</b> Para aditivos de renovação, é <b>obrigatório</b> informar as competências inicial e final (formato MM/AAAA) para correta geração dos relatórios mensais.</li>
-                <li><b>Reordenação Automática:</b> Caso um aditivo seja excluído, o sistema renomeia automaticamente a sequência dos ciclos financeiros subsequentes para manter a consistência (ex: o antigo 3º TA torna-se o 2º TA).</li>
-            </ul>
-        </div>
-    </details>
-
-    <details>
-        <summary>3.5. Painel Detalhe Contrato/Ciclo (Aba Global)</summary>
-        <div class="content">
-            <p>Oferece uma visão matricial ("Cross-tab") da execução mensal. Exibe, mês a mês:</p>
-            <ul>
-                <li>Meta Mensal (Previsão).</li>
-                <li>Valor Executado (Pago).</li>
-                <li>Saldo Mensal (Superávit/Déficit).</li>
-                <li>Percentual de Execução.</li>
-            </ul>
-            <p>Permite identificar rapidamente meses descobertos ou com execução acima do teto.</p>
+            <p>Permite carregar grandes volumes de dados via arquivos CSV (separados por ponto e vírgula). O sistema possui proteção contra erros de codificação (UTF-8 / Latin-1).</p>
+            <p><b>Ordem Recomendada de Importação:</b></p>
+            <ol>
+                <li><b>Prestadores:</b> <code>Razao; Fantasia; CNPJ; CNES; CodCP</code></li>
+                <li><b>Contratos:</b> Requer estrutura específica de 11 colunas (ver modelo no sistema).</li>
+                <li><b>Serviços:</b> Requer contrato aberto. <code>Descrição; Valor Total; Valor Mensal</code>.</li>
+                <li><b>Empenhos:</b> <code>Numero; Valor; Descricao; Servico; Fonte; Data; Competencias</code>.</li>
+                <li><b>Pagamentos:</b> Vincula por número da NE. <code>NumeroNE; Valor; Competencia; Obs</code>.</li>
+            </ol>
         </div>
     </details>
 
     <h2>4. FERRAMENTAS AVANÇADAS</h2>
 
     <details>
-        <summary>4.1. Sincronização Híbrida (Google Drive)</summary>
+        <summary>4.1. Sincronização em Nuvem (Google Drive)</summary>
         <div class="content">
-            <p>O módulo de sincronização permite o trabalho colaborativo através de arquivo JSON compartilhado. O sistema oferece modos distintos de operação para evitar conflitos:</p>
-            <ol>
-                <li><b>Sincronizar Tudo (Bidirecional):</b> Baixa alterações da nuvem, mescla com os dados locais e envia o resultado consolidado.</li>
-                <li><b>Apenas Importar:</b> Atualiza o sistema local com dados da nuvem, mas <b>não envia</b> as alterações locais. Ideal para consulta.</li>
-                <li><b>Apenas Subir:</b> Força o envio dos dados locais, sobrescrevendo a nuvem (com preservação de registros inexistentes localmente).</li>
-            </ol>
-        </div>
-    </details>
-
-    <details>
-        <summary>4.2. Módulo de Inteligência Artificial</summary>
-        <div class="content">
-            <p>O sistema integra-se à API Google Gemini para fornecer:</p>
+            <p>Módulo para trabalho colaborativo ou backup remoto. Requer arquivo <code>credentials.json</code> na pasta do sistema.</p>
             <ul>
-                <li><b>Chat com Dados:</b> Interface de linguagem natural para consultas complexas (ex: "Quais contratos vencem em março?").</li>
-                <li><b>Análise de Risco:</b> Avaliação automática da saúde financeira do contrato, identificando padrões de execução anômalos.</li>
-                <li><b>Interpretação de Alertas:</b> Sugestão de planos de ação para notificações críticas (ex: saldo insuficiente).</li>
+                <li><b>Sincronizar Tudo:</b> Baixa alterações da nuvem (fusão inteligente) e envia suas modificações locais.</li>
+                <li><b>Apenas Importar:</b> Atualiza seu sistema com dados da nuvem sem enviar nada.</li>
+                <li><b>Apenas Subir:</b> Força o envio dos seus dados para a nuvem.</li>
+                <li><b>Baixar Arquivo:</b> Salva uma cópia do JSON da nuvem no seu computador para análise.</li>
             </ul>
         </div>
     </details>
 
-    <h2>5. SEGURANÇA DA INFORMAÇÃO</h2>
+    <details>
+        <summary>4.2. Inteligência Artificial (Gemini)</summary>
+        <div class="content">
+            <p>O sistema integra-se à API do Google para análise de dados. Requer arquivo <code>chave_api.txt</code>.</p>
+            <ul>
+                <li><b>Análise de Risco:</b> Avalia a execução financeira do contrato e aponta tendências de déficit ou superávit.</li>
+                <li><b>Chat com Dados:</b> Interface de conversação natural. Ex: "Qual contrato vence em março?" ou "Quanto pagamos para a empresa X?".</li>
+                <li><b>Interpretação de Alertas:</b> Sugere planos de ação para notificações críticas de saldo.</li>
+            </ul>
+        </div>
+    </details>
 
     <details>
-        <summary>5.1. Mecanismos de Proteção</summary>
+        <summary>4.3. Personalização e Aparência</summary>
         <div class="content">
-            <p>O GC Gestor implementa camadas de segurança para integridade dos dados:</p>
+            <p>Acesse via menu <i>Exibir > Personalizar Cores e Fontes</i>.</p>
             <ul>
-                <li><b>Ponto de Restauração (Undo):</b> Antes de qualquer operação destrutiva (Exclusão, Importação), o sistema salva um snapshot do estado anterior, permitindo reversão via <i>Ctrl+Alt+Z</i>.</li>
-                <li><b>Soft Delete:</b> Contratos excluídos não são apagados fisicamente, mas movidos para a "Lixeira" (acessível no menu Exibir), mantendo o histórico de auditoria.</li>
-                <li><b>Auditoria (Logs):</b> Todas as ações de alteração de dados são registradas com Carimbo de Tempo, Usuário e CPF.</li>
+                <li><b>Temas Prontos:</b> Escuro (Dark), Claro (Light), Dracula, Ocean, Matrix, Alto Contraste.</li>
+                <li><b>Ajuste Manual:</b> Permite definir cores específicas para Fundo, Seleção, Tabelas e Cabeçalhos.</li>
+                <li><b>Tamanho da Fonte:</b> Ajuste global de legibilidade (12px a 18px).</li>
             </ul>
+        </div>
+    </details>
+
+    <details>
+        <summary>4.4. Arquivamento Histórico</summary>
+        <div class="content">
+            <p>Para manter o sistema leve, contratos antigos podem ser movidos para uma base secundária.</p>
+            <p>Acesse <i>Ferramentas > Arquivar Contratos Antigos</i>. O sistema moverá contratos encerrados antes do ano selecionado para o arquivo <code>arquivo_historico.db</code>, limpando a visualização principal.</p>
         </div>
     </details>
 
     <br><br>
     <div class="footer">
-        GC Gestor de Contratos e Convênios &copy; 2025<br>
+        GC Gestor de Contratos e Convênios &copy; 2026<br>
         Documentação Técnica Gerada Automaticamente pelo Sistema.
     </div>
 
