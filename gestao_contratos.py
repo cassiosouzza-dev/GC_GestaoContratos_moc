@@ -41,7 +41,7 @@ else:
 # ------------------------------------------
 
 # --- CONFIGURAÇÃO DE ATUALIZAÇÃO ---
-VERSAO_ATUAL = 2.2
+VERSAO_ATUAL = 2.1
 
 # 1. URL do arquivo de versão (Deve ser RAW e apontar para a branch correta, geralmente 'main')
 URL_VERSAO_TXT = "https://raw.githubusercontent.com/cassiosouzza-dev/GC_GestaoContratos_moc/master/versao.txt"
@@ -5730,7 +5730,7 @@ del "%~f0"
         if os.path.exists(caminho_icone):
             self.setWindowIcon(QIcon(caminho_icone))
 
-        self.setWindowTitle("Gestor de Contratos v2.2")
+        self.setWindowTitle("Gestor de Contratos v2.1")
         self.setGeometry(50, 50, 1300, 850)
 
         mb = self.menuBar()
@@ -5945,7 +5945,7 @@ del "%~f0"
         m_ajuda.addAction("Verificar Atualizações...", self.verificar_updates)
 
         txt_sobre = (
-            "GC Gestor de Contratos - Versão 2.2\n"
+            "GC Gestor de Contratos - Versão 2.1\n"
             "Desenvolvido em Python/PyQt6\n\n"
             "Autor: Cássio de Souza Lopes, servo de Jesus Cristo ✝.\n"
             "Servidor da Secretaria Municipal de Saúde de Montes Claros(MG)\nMestre em Desenvolvimento Social (UNIMONTES)\nBacharel em Economia(UNIMONTES)\nGraduando em Análise e Desenvolvimento de Sistemas (UNINTER)\n"
@@ -7437,7 +7437,7 @@ del "%~f0"
                 continue  # Tenta o próximo formato de texto
             except Exception as e:
                 DarkMessageBox.critical(self, "Erro Fatal", f"Erro crítico na importação: {str(e)}")
-                returngit revert HEAD
+                return
 
     # --- MENUS CONTEXTO E AUXILIARES ---
 
