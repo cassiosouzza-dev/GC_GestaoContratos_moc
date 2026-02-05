@@ -64,3 +64,8 @@ temp_undo_point.json
 # --- Sistema Operacional ---
 Thumbs.db
 Desktop.ini
+token.json
+
+dist/
+
+build/
