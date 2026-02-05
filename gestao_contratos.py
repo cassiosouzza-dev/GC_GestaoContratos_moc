@@ -41,7 +41,7 @@ else:
 # ------------------------------------------
 
 # --- CONFIGURAÇÃO DE ATUALIZAÇÃO ---
-VERSAO_ATUAL = 2.3
+VERSAO_ATUAL = 3.0
 
 # 1. URL do arquivo de versão (Deve ser RAW e apontar para a branch correta, geralmente 'main')
 URL_VERSAO_TXT = "https://raw.githubusercontent.com/cassiosouzza-dev/GC_GestaoContratos_moc/master/versao.txt"
@@ -95,19 +95,19 @@ if CHAVE_API_GEMINI:
 # ----------------------------------------
 
 from ctypes import wintypes
-from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
-                             QHBoxLayout, QLabel, QLineEdit, QPushButton,
-                             QTableWidget, QTableWidgetItem, QMessageBox,
-                             QHeaderView, QListWidget, QSplitter,
-                             QDialog, QComboBox, QFormLayout, QDialogButtonBox,
-                             QAbstractItemView, QDateEdit, QTabWidget, QMenu,
-                             QCheckBox, QStackedWidget, QFrame, QFileDialog, QInputDialog,
-                             QSpinBox, QTextEdit, QListWidgetItem, QColorDialog, QSlider,
-                             QGroupBox, QToolBar, QSizePolicy, QCompleter)  # <--- ADICIONADO AQUI
+from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+    QLabel, QLineEdit, QPushButton, QTableWidget, QTableWidgetItem,
+    QMessageBox, QHeaderView, QListWidget, QSplitter, QDialog,
+    QComboBox, QFormLayout, QDialogButtonBox, QAbstractItemView, # <--- Importante para seleção
+    QDateEdit, QTabWidget, QMenu, QCheckBox, QStackedWidget,
+    QFrame, QFileDialog, QInputDialog, QSpinBox, QTextEdit,
+    QListWidgetItem, QColorDialog, QSlider, QGroupBox, QToolBar,
+    QSizePolicy, QCompleter, QSplashScreen, QProgressBar,
+    QStyle, QSystemTrayIcon, QScrollArea)
 from PyQt6.QtWidgets import QSplashScreen, QProgressBar
 from PyQt6.QtWidgets import QCompleter
 from PyQt6.QtCore import Qt, QDate, QEvent, QSize, QTimer, QThread, pyqtSignal
-from PyQt6.QtGui import QAction, QColor, QFont, QPalette, QIcon, QPixmap, QPainter
+from PyQt6.QtGui import (QAction, QColor, QFont, QPalette, QIcon, QPixmap, QPainter, QBrush, QKeySequence, QDesktopServices)
 
 
 # --- FUNÇÃO GLOBAL PARA ESTILIZAR JANELAS (CORRIGE O BUG DOS DIÁLOGOS) ---
@@ -600,63 +600,174 @@ class Contrato:
         adt.id_aditivo = self._contador_aditivos
         self.lista_aditivos.append(adt)
 
-        # --- NOVA MATEMÁTICA (CONTANDO TUDO) ---
-        # A posição real deste aditivo na fila (1º, 2º, 3º...)
+        # --- CÁLCULO DO NÚMERO OFICIAL ---
         posicao_na_fila = len(self.lista_aditivos)
-
-        # O número "oficial" (Ex: Se começou no 10 e é o 1º da fila, vira 11)
         numero_oficial = self.sequencial_inicio + posicao_na_fila
-        # ---------------------------------------
+        # ---------------------------------
 
+        # ====================================================================
+        # CENÁRIO 1: RENOVAÇÃO COMPLETA (PRAZO + NOVO CICLO FINANCEIRO)
+        # ====================================================================
         if adt.tipo == "Prazo" and adt.renovacao_valor:
             id_ciclo_anterior = len(self.ciclos) - 1
-
-            # O nome do ciclo agora usa o número oficial calculado acima
             nome_ciclo = f"{numero_oficial}º Termo Aditivo"
 
+            # Cria o novo ciclo zerado
             novo_id = len(self.ciclos)
             novo_ciclo = CicloFinanceiro(novo_id, nome_ciclo, adt.valor)
+
+            if adt.data_nova:
+                novo_ciclo.data_fim = adt.data_nova
+
             self.ciclos.append(novo_ciclo)
             adt.ciclo_pertencente_id = novo_id
 
-            # Replica os valores dos serviços para o novo ciclo
+            # Replica a estrutura de serviços (zerados ou com valor inicial)
             for serv in self.lista_servicos:
-                valor_antigo = serv.get_valor_ciclo(id_ciclo_anterior)
-                serv.set_valor_ciclo(novo_id, valor_antigo)
+                valor_antigo_teto = serv.get_valor_ciclo(id_ciclo_anterior)
+                serv.set_valor_ciclo(novo_id, valor_antigo_teto)
 
-            return f"Novo Ciclo Criado: {nome_ciclo}. Serviços replicados."
+            return f"Novo Ciclo Criado: {nome_ciclo}."
 
-        elif adt.tipo == "Valor":
+        # ====================================================================
+        # CENÁRIO 2: IMPACTO FINANCEIRO (ACRÉSCIMO OU SUPRESSÃO)
+        # ====================================================================
+        elif adt.tipo in ["Valor", "Supressao"]:
+            # SEGURANÇA: Garante sinal negativo para supressão
+            if adt.tipo == "Supressao" and adt.valor > 0:
+                adt.valor = -abs(adt.valor)
+
             ciclo_atual = None
             if id_ciclo_alvo is not None:
                 ciclo_atual = next((c for c in self.ciclos if c.id_ciclo == id_ciclo_alvo), None)
 
             if not ciclo_atual:
-                ciclo_atual = next((c for c in reversed(self.ciclos) if "(CANCELADO)" not in c.nome),
-                                   self.ciclos[0])
+                ciclo_atual = next((c for c in reversed(self.ciclos) if "(CANCELADO)" not in c.nome), self.ciclos[0])
 
             ciclo_atual.aditivos_valor.append(adt)
             adt.ciclo_pertencente_id = ciclo_atual.id_ciclo
 
-            # Atualiza a descrição com o número oficial também
-            adt.descricao = f"{numero_oficial}º TA (Valor) - " + adt.descricao
+            # Atualiza Teto Global
+            ciclo_atual.teto_total += adt.valor
 
+            # Descrição
+            label = "Supressão" if adt.tipo == "Supressao" else "Valor"
+            adt.descricao = f"{numero_oficial}º TA ({label}) - {adt.descricao}"
+
+            # Atualiza Serviço Específico (se houver)
+            msg_extra = ""
             if adt.servico_idx >= 0 and adt.servico_idx < len(self.lista_servicos):
                 serv = self.lista_servicos[adt.servico_idx]
                 valor_atual = serv.get_valor_ciclo(ciclo_atual.id_ciclo)
                 serv.set_valor_ciclo(ciclo_atual.id_ciclo, valor_atual + adt.valor)
-                return f"Valor somado ao serviço '{serv.descricao}' no ciclo '{ciclo_atual.nome}'."
+                msg_extra = f" no serviço '{serv.descricao}'"
 
-            return f"Valor vinculado ao ciclo: {ciclo_atual.nome}"
+            return f"{label} de {fmt_br(adt.valor)} aplicada ao ciclo '{ciclo_atual.nome}'{msg_extra}."
 
-        return "Aditivo registrado (Apenas Prazo)"
+        # ====================================================================
+        # CENÁRIO 3: APOSTILAMENTO (REMANEJAMENTO DE SALDO) --- NOVO ---
+        # ====================================================================
+        elif adt.tipo == "Apostilamento":
+            # O Apostilamento não altera o Teto Global, mas altera a distribuição interna.
+            # Nota: A lógica matemática pesada (tirar de um e por no outro) já foi feita
+            # pelo método 'aplicar_apostilamento' antes de chamar este registro,
+            # ou deve ser feita aqui se o aditivo vier com origem definida.
+
+            # Como usamos 'aplicar_apostilamento' na JanelaPrincipal para fazer a conta,
+            # aqui servirá apenas para REGISTRO oficial no ciclo.
+
+            ciclo_atual = self.ciclos[-1]
+            ciclo_atual.aditivos_valor.append(adt)
+            adt.ciclo_pertencente_id = ciclo_atual.id_ciclo
+
+            # Atualiza descrição
+            adt.descricao = f"{numero_oficial}º Apostilamento - {adt.descricao}"
+
+            return f"Apostilamento registrado no ciclo '{ciclo_atual.nome}'."
+
+        # ====================================================================
+        # CENÁRIO 4: PRAZO SIMPLES
+        # ====================================================================
+        elif adt.tipo == "Prazo" and not adt.renovacao_valor:
+            ciclo_atual = self.ciclos[-1]
+            if adt.data_nova:
+                ciclo_atual.data_fim = adt.data_nova
+
+            adt.descricao = f"{numero_oficial}º TA (Prorrogação) - {adt.descricao}"
+
+            return f"Vigência prorrogada para {adt.data_nova}."
+
+        return "Aditivo registrado (Sem impacto automático calculado)."
+
+    def aplicar_apostilamento(self, valor, idx_origem, idx_destino, data_evento, justificativa):
+        """
+        Retira saldo do serviço de origem e adiciona ao de destino.
+        O Teto Global do Ciclo NÃO muda.
+        """
+        if not self.ciclos:
+            return False, "Não há ciclos ativos."
+
+        ciclo_atual = self.ciclos[-1]  # Mexe sempre no ciclo vigente
+
+        # Validações Básicas
+        if idx_origem == idx_destino:
+            return False, "A origem e o destino não podem ser o mesmo serviço."
+
+        serv_origem = self.lista_servicos[idx_origem]
+        serv_destino = self.lista_servicos[idx_destino]
+
+        # Verifica se a origem tem saldo no teto para ceder
+        saldo_origem = serv_origem.get_valor_ciclo(ciclo_atual.id_ciclo)
+        if saldo_origem < valor:
+            return False, f"O serviço de origem '{serv_origem.descricao}' não possui teto suficiente ({fmt_br(saldo_origem)}) para ceder {fmt_br(valor)}."
+
+        # --- A MÁGICA (ROBIN HOOD) ---
+        # 1. Retira da Origem
+        serv_origem.set_valor_ciclo(ciclo_atual.id_ciclo, saldo_origem - valor)
+
+        # 2. Adiciona no Destino
+        saldo_destino = serv_destino.get_valor_ciclo(ciclo_atual.id_ciclo)
+        serv_destino.set_valor_ciclo(ciclo_atual.id_ciclo, saldo_destino + valor)
+
+        # 3. Registra o Histórico
+        # Criamos um aditivo "fictício" apenas para constar na lista de eventos
+        from datetime import datetime
+        novo_aditivo = Aditivo(
+            tipo="Apostilamento",
+            valor=valor,  # Valor movimentado
+            data_assinatura=datetime.now().strftime("%d/%m/%Y"),
+            descricao=f"Remanejamento: De '{serv_origem.descricao}' Para '{serv_destino.descricao}'. Justificativa: {justificativa}",
+            servico_idx=idx_destino,  # Vinculamos ao destino para referência
+            data_inicio_vigencia=data_evento
+        )
+
+        # Incrementa contador e salva
+        self._contador_aditivos += 1
+        novo_aditivo.id_aditivo = self._contador_aditivos
+        self.lista_aditivos.append(novo_aditivo)
+
+        # Vincula ao ciclo (sem somar no teto global, pois é soma zero)
+        ciclo_atual.aditivos_valor.append(novo_aditivo)
+
+        return True, f"Apostilamento realizado com sucesso!\n\nOrigem: -{fmt_br(valor)}\nDestino: +{fmt_br(valor)}"
 
     def get_saldo_ciclo_geral(self, id_ciclo):
-        if id_ciclo < 0 or id_ciclo >= len(self.ciclos): return 0.0
-        c = self.ciclos[id_ciclo]
-        teto = c.get_teto_total()
-        empenhado = sum(ne.valor_inicial for ne in self.lista_notas_empenho if ne.ciclo_id == id_ciclo)
-        return teto - empenhado
+        """Retorna o saldo que ainda pode ser empenhado no ciclo (Teto - Empenho Líquido)"""
+        if id_ciclo < 0 or id_ciclo >= len(self.ciclos):
+            return 0.0
+
+        ciclo = self.ciclos[id_ciclo]
+        teto_total = ciclo.get_teto_total()
+
+        # Soma o valor LÍQUIDO (Emissão - Anulação)
+        # Isso garante que o valor anulado 'suba' de volta para o saldo disponível
+        total_empenhado_liquido = sum(
+            (ne.valor_inicial - ne.total_anulado)
+            for ne in self.lista_notas_empenho
+            if ne.ciclo_id == id_ciclo
+        )
+
+        return teto_total - total_empenhado_liquido
 
     def get_saldo_aditivo_especifico(self, id_aditivo):
         aditivo_alvo = next((a for a in self.lista_aditivos if a.id_aditivo == id_aditivo), None)
@@ -932,6 +1043,302 @@ class DialogoMonitorVigencia(BaseDialog):
 
         self.tabela.setSortingEnabled(True)
 
+
+# ============================================================================
+# CLASSE: MONITOR DE EMPENHOS (CORRIGIDO PARA SEU ARQUIVO)
+# ============================================================================
+class DialogoMonitorEmpenhos(QDialog):
+    def __init__(self, parent, lista_empenhos, lista_servicos=None):
+        super().__init__(parent)
+        self.setWindowTitle("Monitor Global de Saldos de Empenho")
+        self.resize(1450, 750)
+        self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowMaximizeButtonHint)
+
+        self.lista_empenhos = lista_empenhos
+        self.lista_servicos = lista_servicos
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 10, 10, 10)
+
+        # --- TOPO ---
+        top_layout = QHBoxLayout()
+        lbl_titulo = QLabel("Monitoramento Financeiro Detalhado")
+        lbl_titulo.setStyleSheet("font-size: 18px; font-weight: bold; color: #2c3e50;")
+        top_layout.addWidget(lbl_titulo)
+
+        lbl_dica = QLabel("(Clique duplo na linha para ver o histórico completo)")
+        lbl_dica.setStyleSheet("color: #7f8c8d; font-style: italic; margin-left: 10px;")
+        top_layout.addWidget(lbl_dica)
+
+        btn_export = QPushButton("Exportar Excel/CSV")
+        btn_export.setStyleSheet(
+            "background-color: #27ae60; color: white; font-weight: bold; padding: 5px 15px; border-radius: 4px;")
+        btn_export.clicked.connect(self.exportar_csv)
+        top_layout.addStretch()
+        top_layout.addWidget(btn_export)
+        layout.addLayout(top_layout)
+
+        layout.addSpacing(5)
+
+        # --- FILTROS ---
+        gb_filtros = QGroupBox()
+        gb_filtros.setStyleSheet(
+            "QGroupBox { border: 1px solid #bdc3c7; border-radius: 4px; background-color: #f9f9f9; margin: 0px; padding: 5px; }")
+        lay_filtros = QHBoxLayout(gb_filtros)
+        lay_filtros.setContentsMargins(5, 5, 5, 5)
+
+        def add_filtro(label, width=None):
+            lbl = QLabel(label)
+            lbl.setStyleSheet("font-weight: bold; color: #555; font-size: 11px;")
+            inp = QLineEdit()
+            inp.setStyleSheet(
+                "border: 1px solid #ccc; padding: 2px; border-radius: 3px; background: white; font-size: 11px;")
+            if width: inp.setFixedWidth(width)
+            inp.textChanged.connect(self.aplicar_filtros)
+            lay_filtros.addWidget(lbl)
+            lay_filtros.addWidget(inp)
+            return inp
+
+        self.txt_filtro_contrato = add_filtro("Contrato:", 90)
+        self.txt_filtro_prestador = add_filtro("Prestador:", 120)  # <--- NOVO FILTRO
+        self.txt_filtro_ne = add_filtro("Nº NE:", 70)
+        self.txt_filtro_fonte = add_filtro("Fonte:", 60)  # <--- REDUZIDO (Era padrão/grande)
+        self.txt_filtro_serv = add_filtro("Serviço:")
+
+        self.chk_apenas_saldo = QCheckBox("Ocultar Zerados")
+        self.chk_apenas_saldo.setStyleSheet("font-weight: bold; color: #555; margin-left: 10px; font-size: 11px;")
+        self.chk_apenas_saldo.toggled.connect(self.aplicar_filtros)
+        lay_filtros.addWidget(self.chk_apenas_saldo)
+
+        layout.addWidget(gb_filtros)
+
+        # --- TABELA ---
+        self.tabela = QTableWidget()
+
+        # ADICIONADA COLUNA "PRESTADOR" (Total 13 Colunas)
+        colunas = [
+            "Contrato", "Prestador", "Nº NE", "Emissão", "Fonte Recurso", "Serviço",
+            "Empenhado", "Anulado", "Pago", "Saldo",
+            "Valor Mensal Serviço", "Média Produção (Serviço)", "Média NE"
+        ]
+        self.tabela.setColumnCount(len(colunas))
+        self.tabela.setHorizontalHeaderLabels(colunas)
+
+        self.tabela.setWordWrap(True)
+        self.tabela.setAlternatingRowColors(False)
+        self.tabela.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.tabela.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.tabela.cellDoubleClicked.connect(self.abrir_historico_detalhado)
+
+        v_header = self.tabela.verticalHeader()
+        v_header.setVisible(False)
+        v_header.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        v_header.setDefaultSectionSize(24)
+
+        self.tabela.setStyleSheet("""
+            QTableWidget { border: 1px solid #ccc; font-family: 'Segoe UI'; font-size: 11px; gridline-color: #e0e0e0; }
+            QHeaderView::section { background-color: #34495e; color: white; font-weight: bold; padding: 2px; border: 1px solid #2c3e50; font-size: 11px; }
+            QTableWidget::item { padding: 1px 2px; }
+            QTableWidget::item:selected { background-color: #3498db; color: white; }
+        """)
+
+        # Ajuste de Colunas (Índices mudaram por causa da coluna Prestador)
+        header = self.tabela.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)  # Contrato
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)  # Prestador (Novo)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)  # NE
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)  # Data
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)  # Fonte
+        header.setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)  # Serviço
+
+        # Valores (6 a 12)
+        for i in range(6, 13):
+            header.setSectionResizeMode(i, QHeaderView.ResizeMode.ResizeToContents)
+
+        layout.addWidget(self.tabela)
+
+        self.lbl_rodape = QLabel("Total Disponível: R$ 0,00")
+        self.lbl_rodape.setStyleSheet(
+            "font-size: 14px; font-weight: bold; color: #27ae60; padding: 2px; border-top: 1px solid #eee;")
+        self.lbl_rodape.setAlignment(Qt.AlignmentFlag.AlignRight)
+        layout.addWidget(self.lbl_rodape)
+
+        self.carregar_dados()
+
+    def abrir_historico_detalhado(self, row, col):
+        # ATENÇÃO: A coluna com a NE agora é a 2 (antes era 1)
+        item_ne = self.tabela.item(row, 2)
+        if not item_ne: return
+        ne_obj = item_ne.data(Qt.ItemDataRole.UserRole)
+        if ne_obj:
+            dial = DialogoHistoricoMaximizado(ne_obj, parent=self)
+            dial.exec()
+        else:
+            DarkMessageBox.warning(self, "Erro", "Não foi possível carregar o objeto da NE.")
+
+    def formatar_reais(self, valor):
+        try:
+            if valor is None: valor = 0.0
+            val_float = float(valor)
+            return f"R$ {val_float:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        except:
+            return "R$ 0,00"
+
+    def carregar_dados(self):
+        self.tabela.setSortingEnabled(False)
+        self.tabela.setRowCount(0)
+
+        total_saldo = 0.0
+
+        # Cores
+        brush_ne = QBrush(QColor("#ffffff"))
+        brush_fonte = QBrush(QColor("#f4f6f7"))
+        brush_serv = QBrush(QColor("#fdfefe"))
+        brush_inicial = QBrush(QColor("#eafaf1"))
+        brush_anulado = QBrush(QColor("#fdedec"))
+        brush_pago = QBrush(QColor("#ebf5fb"))
+        brush_saldo = QBrush(QColor("#edf7ed"))
+        brush_medias = QBrush(QColor("#fef9e7"))
+
+        for ne in self.lista_empenhos:
+            v_inicial = ne.valor_inicial if ne.valor_inicial else 0.0
+            v_pago = ne.total_pago if ne.total_pago else 0.0
+            v_anulado = ne.total_anulado if ne.total_anulado else 0.0
+
+            saldo = v_inicial - v_pago - v_anulado
+            total_saldo += saldo
+
+            # Dados
+            nome_contrato = getattr(ne, 'temp_contrato', '-')
+            nome_prestador = getattr(ne, 'temp_prestador', '-')  # <--- NOVO
+            nome_serv = getattr(ne, 'temp_servico', 'Indefinido')
+
+            valor_mensal_fixo = getattr(ne, 'temp_valor_mensal', 0.0)
+            media_producao_serv = getattr(ne, 'temp_media_producao', 0.0)
+            media_ne = ne.calcular_media_mensal()
+
+            row = self.tabela.rowCount()
+            self.tabela.insertRow(row)
+
+            def create_item(text, bg_brush, bold=False, align=Qt.AlignmentFlag.AlignLeft):
+                it = QTableWidgetItem(str(text))
+                it.setBackground(bg_brush)
+                it.setTextAlignment(align | Qt.AlignmentFlag.AlignVCenter)
+                if bold: it.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
+                return it
+
+            def create_val(val, bg_brush, text_color="black", bold=False):
+                txt = self.formatar_reais(val)
+                it = QTableWidgetItem(txt)
+                it.setBackground(bg_brush)
+                it.setForeground(QColor(text_color))
+                it.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                if bold: it.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
+                it.setData(Qt.ItemDataRole.UserRole, val)
+                return it
+
+            # 0. Contrato
+            self.tabela.setItem(row, 0,
+                                create_item(nome_contrato, brush_ne, bold=True, align=Qt.AlignmentFlag.AlignCenter))
+
+            # 1. Prestador (NOVA COLUNA)
+            # Usamos brush_fonte (cinza claro) para diferenciar do resto
+            self.tabela.setItem(row, 1, create_item(nome_prestador, brush_fonte, align=Qt.AlignmentFlag.AlignLeft))
+
+            # 2. NE (Guardamos o objeto AQUI agora)
+            item_ne = create_item(ne.numero, brush_ne, align=Qt.AlignmentFlag.AlignCenter)
+            item_ne.setData(Qt.ItemDataRole.DisplayRole, ne.numero)
+            item_ne.setData(Qt.ItemDataRole.UserRole, ne)
+            self.tabela.setItem(row, 2, item_ne)
+
+            # 3. Data
+            self.tabela.setItem(row, 3, create_item(ne.data_emissao, brush_ne, align=Qt.AlignmentFlag.AlignCenter))
+
+            # 4. Fonte
+            self.tabela.setItem(row, 4, create_item(ne.fonte_recurso, brush_fonte, align=Qt.AlignmentFlag.AlignCenter))
+
+            # 5. Serviço
+            self.tabela.setItem(row, 5, create_item(nome_serv, brush_serv))
+
+            # 6. Empenhado
+            self.tabela.setItem(row, 6, create_val(v_inicial, brush_inicial, bold=True))
+
+            # 7. Anulado
+            self.tabela.setItem(row, 7, create_val(v_anulado, brush_anulado, text_color="#c0392b"))
+
+            # 8. Pago
+            self.tabela.setItem(row, 8, create_val(v_pago, brush_pago, text_color="#2980b9"))
+
+            # 9. Saldo
+            cor_txt = "#27ae60"
+            if saldo < -0.01:
+                cor_txt = "#c0392b"
+            elif saldo < 0.01:
+                cor_txt = "#95a5a6"
+            self.tabela.setItem(row, 9, create_val(saldo, brush_saldo, text_color=cor_txt, bold=True))
+
+            # 10. Valor Mensal Fixo
+            self.tabela.setItem(row, 10, create_val(valor_mensal_fixo, brush_medias, text_color="#7f8c8d"))
+
+            # 11. Média Produção
+            self.tabela.setItem(row, 11, create_val(media_producao_serv, brush_medias, text_color="#7f8c8d"))
+
+            # 12. Média NE
+            self.tabela.setItem(row, 12, create_val(media_ne, brush_medias, text_color="#7f8c8d"))
+
+        self.lbl_rodape.setText(f"Total Disponível Geral: {self.formatar_reais(total_saldo)}")
+        self.tabela.resizeRowsToContents()
+        self.tabela.setSortingEnabled(True)
+
+    def aplicar_filtros(self):
+        t_cont = self.txt_filtro_contrato.text().lower()
+        t_prest = self.txt_filtro_prestador.text().lower()  # <--- NOVO
+        t_ne = self.txt_filtro_ne.text().lower()
+        t_fonte = self.txt_filtro_fonte.text().lower()
+        t_serv = self.txt_filtro_serv.text().lower()
+        ocultar_zerados = self.chk_apenas_saldo.isChecked()
+
+        soma_visivel = 0.0
+
+        for r in range(self.tabela.rowCount()):
+            exibir = True
+
+            txt_cont = self.tabela.item(r, 0).text().lower()
+            txt_prest = self.tabela.item(r, 1).text().lower()  # <--- NOVO
+            txt_ne = self.tabela.item(r, 2).text().lower()
+            txt_fonte = self.tabela.item(r, 4).text().lower()
+            txt_serv = self.tabela.item(r, 5).text().lower()
+
+            item_saldo = self.tabela.item(r, 9)  # Saldo está na coluna 9
+            val_saldo = item_saldo.data(Qt.ItemDataRole.UserRole) if item_saldo else 0.0
+
+            if t_cont and t_cont not in txt_cont: exibir = False
+            if t_prest and t_prest not in txt_prest: exibir = False  # <--- LÓGICA
+            if t_ne and t_ne not in txt_ne: exibir = False
+            if t_fonte and t_fonte not in txt_fonte: exibir = False
+            if t_serv and t_serv not in txt_serv: exibir = False
+            if ocultar_zerados and val_saldo <= 0.009: exibir = False
+
+            self.tabela.setRowHidden(r, not exibir)
+
+            if exibir:
+                soma_visivel += val_saldo
+
+        self.lbl_rodape.setText(f"Total Disponível (Filtrado): {self.formatar_reais(soma_visivel)}")
+
+    def exportar_csv(self):
+        path, _ = QFileDialog.getSaveFileName(self, "Exportar Saldos", "monitor_saldos_global.csv", "CSV (*.csv)")
+        if path:
+            import csv
+            with open(path, 'w', newline='', encoding='utf-8-sig') as f:
+                writer = csv.writer(f, delimiter=';')
+                headers = [self.tabela.horizontalHeaderItem(i).text() for i in range(self.tabela.columnCount())]
+                writer.writerow(headers)
+                for r in range(self.tabela.rowCount()):
+                    if not self.tabela.isRowHidden(r):
+                        row_data = [self.tabela.item(r, c).text() for c in range(self.tabela.columnCount())]
+                        writer.writerow(row_data)
+            DarkMessageBox.info(self, "Sucesso", "Relatório global exportado!")
 
 class DialogoAjuda(BaseDialog):
     def __init__(self, parent=None):
@@ -1337,37 +1744,60 @@ class DialogoNovoEmpenho(BaseDialog):
 
 class DialogoAditivo(BaseDialog):
     def __init__(self, contrato, aditivo_editar=None, parent=None):
-        super().__init__(parent);
+        super().__init__(parent)
         self.contrato = contrato
-        self.setWindowTitle("Aditivo Contratual");
-        self.resize(550, 600)
+        self.setWindowTitle("Alteração Contratual (Aditivo / Apostilamento)")
+        self.resize(550, 650)
         layout = QFormLayout(self)
 
-        self.combo_tipo = QComboBox();
-        self.combo_tipo.addItems(["Valor (Acréscimo/Decréscimo)", "Prazo (Prorrogação)"])
+        # 1. ATUALIZAÇÃO: Adicionamos "Apostilamento" na lista
+        self.combo_tipo = QComboBox()
+        self.combo_tipo.addItems([
+            "Aditivo de Valor (Acréscimo)",
+            "Supressão de Valor (Redução)",
+            "Apostilamento (Remanejamento)",  # ✅ AQUI: Nova Opção
+            "Prazo (Prorrogação)"
+        ])
         self.combo_tipo.currentIndexChanged.connect(self.mudar_tipo)
 
         self.chk_renovacao = QCheckBox("Haverá renovação de valor? (Cria Novo Ciclo/Saldo)")
-        self.chk_renovacao.setVisible(False);
+        self.chk_renovacao.setVisible(False)
         self.chk_renovacao.toggled.connect(self.mudar_tipo)
 
-        self.lbl_info = QLabel("");
-        self.lbl_info.setStyleSheet("color: blue; font-size: 10px")
+        self.lbl_info = QLabel("")
+        self.lbl_info.setStyleSheet("color: #2980b9; font-size: 11px; font-weight: bold;")
+        self.lbl_info.setWordWrap(True)
 
-        self.combo_servico = QComboBox()
-        self.combo_servico.addItem("--- Nenhum / Genérico ---", -1)
+        # ✅ AQUI: CAMPO DE ORIGEM (Exclusivo para Apostilamento)
+        self.lbl_origem = QLabel("Retirar Saldo de (Origem):")
+        self.lbl_origem.setStyleSheet("color: #c0392b; font-weight: bold;")
+        self.combo_origem = QComboBox()
+        self.combo_origem.addItem("--- Selecione a Origem ---", -1)
         for i, serv in enumerate(contrato.lista_servicos):
-            self.combo_servico.addItem(f"{serv.descricao} (Base: {fmt_br(serv.get_valor_ciclo(0))})", i)
+            # Mostra o saldo disponível no ciclo atual para saber se pode tirar
+            saldo = serv.get_valor_ciclo(len(contrato.ciclos) - 1)
+            self.combo_origem.addItem(f"{serv.descricao} (Disp: {fmt_br(saldo)})", i)
 
-        self.inp_valor = CurrencyInput();
-        self.date_inicio = QDateEdit(QDate.currentDate());
+        # CAMPO DE DESTINO (O antigo combo_servico)
+        self.lbl_servico = QLabel("Vincular a Serviço (Destino):")
+        self.combo_servico = QComboBox()
+        self.combo_servico.addItem("--- Nenhum / Genérico (Afeta Teto Global) ---", -1)
+        for i, serv in enumerate(contrato.lista_servicos):
+            saldo_serv = serv.get_valor_ciclo(len(contrato.ciclos) - 1)
+            self.combo_servico.addItem(f"{serv.descricao} (Teto Atual: {fmt_br(saldo_serv)})", i)
+
+        self.inp_valor = CurrencyInput()
+
+        self.date_inicio = QDateEdit(QDate.currentDate())
         self.date_inicio.setCalendarPopup(True)
-        self.date_nova = QDateEdit(QDate.currentDate().addYears(1));
-        self.date_nova.setCalendarPopup(True);
+
+        self.date_nova = QDateEdit(QDate.currentDate().addYears(1))
+        self.date_nova.setCalendarPopup(True)
         self.date_nova.setEnabled(False)
+
         self.inp_desc = QLineEdit()
 
-        # --- NOVOS CAMPOS DE COMPETÊNCIA ---
+        # --- CAMPOS DE COMPETÊNCIA ---
         self.inp_c_ini = QLineEdit()
         self.inp_c_ini.setInputMask("99/9999")
         self.inp_c_ini.setPlaceholderText("MM/AAAA")
@@ -1375,117 +1805,199 @@ class DialogoAditivo(BaseDialog):
         self.inp_c_fim = QLineEdit()
         self.inp_c_fim.setInputMask("99/9999")
         self.inp_c_fim.setPlaceholderText("MM/AAAA")
-        # -----------------------------------
 
-        layout.addRow("Tipo:", self.combo_tipo)
+        # --- MONTAGEM DO LAYOUT ---
+        layout.addRow("Tipo de Alteração:", self.combo_tipo)
         layout.addRow("", self.chk_renovacao)
         layout.addRow("", self.lbl_info)
-        layout.addRow("Vincular a Serviço (Valor):", self.combo_servico)
-        layout.addRow("Início da Vigência (Data):", self.date_inicio)
-        layout.addRow("Fim da Vigência (Data):", self.date_nova)
 
-        # Adiciona ao layout
+        # ✅ AQUI: Adiciona a linha de Origem (inicialmente oculta pelo mudar_tipo)
+        layout.addRow(self.lbl_origem, self.combo_origem)
+
+        layout.addRow(self.lbl_servico, self.combo_servico)
+        layout.addRow("Início da Vigência:", self.date_inicio)
+        layout.addRow("Nova Data Final:", self.date_nova)
+
         self.lbl_comp_t = QLabel("Competências do Novo Ciclo (Obrigatório):")
-        self.lbl_comp_t.setStyleSheet("font-weight: bold; margin-top: 10px; color: #c0392b")  # Vermelho para destacar
+        self.lbl_comp_t.setStyleSheet("font-weight: bold; margin-top: 10px; color: #c0392b")
         layout.addRow(self.lbl_comp_t)
         layout.addRow("Comp. Inicial:", self.inp_c_ini)
         layout.addRow("Comp. Final:", self.inp_c_fim)
 
-        layout.addRow("Valor do Aditivo:", self.inp_valor)
+        self.lbl_valor_titulo = QLabel("Valor do Aditivo:")
+        layout.addRow(self.lbl_valor_titulo, self.inp_valor)
         layout.addRow("Justificativa:", self.inp_desc)
 
+        # Lógica de Edição (Se houver)
         if aditivo_editar:
-            idx = 0 if aditivo_editar.tipo == "Valor" else 1
-            self.combo_tipo.setCurrentIndex(idx);
-            self.inp_valor.set_value(aditivo_editar.valor)
+            tipo = aditivo_editar.tipo
+            if tipo == "Supressao":
+                self.combo_tipo.setCurrentIndex(1)
+            elif tipo == "Apostilamento":
+                self.combo_tipo.setCurrentIndex(2)  # ✅
+            elif tipo == "Valor":
+                self.combo_tipo.setCurrentIndex(0)
+            else:
+                self.combo_tipo.setCurrentIndex(3)
+
+            self.inp_valor.set_value(abs(aditivo_editar.valor))
             if aditivo_editar.data_nova: self.date_nova.setDate(str_to_date(aditivo_editar.data_nova))
             if aditivo_editar.data_inicio_vigencia: self.date_inicio.setDate(
                 str_to_date(aditivo_editar.data_inicio_vigencia))
-            self.inp_desc.setText(aditivo_editar.descricao);
+
+            self.inp_desc.setText(aditivo_editar.descricao)
             self.chk_renovacao.setChecked(aditivo_editar.renovacao_valor)
 
-            # Preenche competências se existirem
             if aditivo_editar.comp_inicio: self.inp_c_ini.setText(aditivo_editar.comp_inicio)
             if aditivo_editar.comp_fim: self.inp_c_fim.setText(aditivo_editar.comp_fim)
 
             idx_serv = self.combo_servico.findData(aditivo_editar.servico_idx)
             if idx_serv >= 0: self.combo_servico.setCurrentIndex(idx_serv)
 
-            self.mudar_tipo()
+            # Tentar recuperar origem se salvou na descrição ou outro campo (opcional)
+
+        # Atualiza a interface inicial
+        self.mudar_tipo()
 
         botoes = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
-
-        # --- MUDANÇA: CONECTA A UMA FUNÇÃO DE VALIDAÇÃO ---
         botoes.accepted.connect(self.validar_e_aceitar)
-        # --------------------------------------------------
-
         botoes.rejected.connect(self.reject)
         layout.addWidget(botoes)
 
     def mudar_tipo(self):
-        is_prazo = self.combo_tipo.currentText().startswith("Prazo")
+        txt = self.combo_tipo.currentText()
 
-        if is_prazo:
+        is_apostilamento = "Apostilamento" in txt
+        is_prazo = "Prazo" in txt
+        is_supressao = "Supressão" in txt
+
+        # Reset visual padrão
+        self.lbl_origem.setVisible(False)
+        self.combo_origem.setVisible(False)
+        self.chk_renovacao.setVisible(False)
+        self.date_nova.setEnabled(False)
+        self.inp_c_ini.setVisible(False)
+        self.inp_c_fim.setVisible(False)
+        self.lbl_comp_t.setVisible(False)
+
+        if is_apostilamento:
+            # ✅ AQUI: Lógica do Apostilamento
+            self.lbl_origem.setVisible(True)
+            self.combo_origem.setVisible(True)
+
+            self.lbl_servico.setText("Adicionar Saldo em (Destino):")
+            self.lbl_valor_titulo.setText("Valor a Remanejar (R$):")
+            self.lbl_info.setText("Transfere saldo da Origem para o Destino. O valor global do contrato NÃO muda.")
+
+            self.combo_servico.setEnabled(True)
+            self.inp_valor.setEnabled(True)
+            self.date_inicio.setEnabled(True)
+
+        elif is_prazo:
+            # Lógica de Prazo
             self.chk_renovacao.setVisible(True)
             self.date_nova.setEnabled(True)
-            self.inp_valor.setEnabled(self.chk_renovacao.isChecked())
             self.date_inicio.setEnabled(True)
-            self.combo_servico.setCurrentIndex(0)
+            self.lbl_servico.setText("Vincular a Serviço (Opcional):")
             self.combo_servico.setEnabled(False)
 
-            # Lógica dos campos de competência
-            is_renovacao = self.chk_renovacao.isChecked()
-            self.inp_c_ini.setEnabled(is_renovacao)
-            self.inp_c_fim.setEnabled(is_renovacao)
-            self.lbl_comp_t.setVisible(is_renovacao)
-            self.inp_c_ini.setVisible(is_renovacao)
-            self.inp_c_fim.setVisible(is_renovacao)
-
-            if is_renovacao:
-                self.lbl_info.setText("Cria NOVO CICLO. Definição de competências é OBRIGATÓRIA.")
+            if self.chk_renovacao.isChecked():
+                self.inp_valor.setEnabled(True)
+                self.lbl_valor_titulo.setText("Valor do Novo Ciclo:")
+                self.lbl_info.setText("CRIA NOVO CICLO FINANCEIRO.")
+                self.inp_c_ini.setVisible(True)
+                self.inp_c_fim.setVisible(True)
+                self.lbl_comp_t.setVisible(True)
             else:
-                self.lbl_info.setText("Apenas prorrogação de data final.")
-        else:
-            self.chk_renovacao.setVisible(False)
-            self.chk_renovacao.setChecked(False)
-            self.inp_valor.setEnabled(True)
-            self.date_nova.setEnabled(False)
-            self.date_inicio.setEnabled(False)
-            self.combo_servico.setEnabled(True)
-            self.lbl_info.setText("O valor será somado/subtraído do Ciclo Atual.")
+                self.inp_valor.setEnabled(False)
+                self.lbl_valor_titulo.setText("Valor (N/A):")
+                self.lbl_info.setText("Apenas estende a vigência.")
 
-            # Esconde competências
-            self.inp_c_ini.setVisible(False)
-            self.inp_c_fim.setVisible(False)
-            self.lbl_comp_t.setVisible(False)
+        elif is_supressao:
+            # Lógica de Supressão
+            self.lbl_servico.setText("Suprimir de (Serviço):")
+            self.lbl_valor_titulo.setText("Valor a REDUZIR (R$):")
+            self.lbl_valor_titulo.setStyleSheet("color: #c0392b; font-weight: bold;")
+            self.lbl_info.setText("O valor será SUBTRAÍDO do teto.")
+            self.combo_servico.setEnabled(True)
+            self.inp_valor.setEnabled(True)
+            self.date_inicio.setEnabled(False)
+
+        else:
+            # Lógica de Acréscimo (Padrão)
+            self.lbl_servico.setText("Acrescentar em (Serviço):")
+            self.lbl_valor_titulo.setText("Valor a ACRESCENTAR (R$):")
+            self.lbl_valor_titulo.setStyleSheet("color: black;")
+            self.lbl_info.setText("O valor será SOMADO ao teto.")
+            self.combo_servico.setEnabled(True)
+            self.inp_valor.setEnabled(True)
+            self.date_inicio.setEnabled(False)
 
     def validar_e_aceitar(self):
-        """Impede o salvamento se for Renovação e as datas estiverem vazias"""
-        is_prazo = self.combo_tipo.currentText().startswith("Prazo")
-        is_renovacao = self.chk_renovacao.isChecked()
+        txt = self.combo_tipo.currentText()
+        valor = self.inp_valor.get_value()
 
-        if is_prazo and is_renovacao:
-            # Remove a máscara (barras e espaços) para contar apenas números
-            c_ini_raw = ''.join(filter(str.isdigit, self.inp_c_ini.text()))
-            c_fim_raw = ''.join(filter(str.isdigit, self.inp_c_fim.text()))
+        # ✅ AQUI: Validação de Apostilamento
+        if "Apostilamento" in txt:
+            idx_origem = self.combo_origem.currentData()
+            idx_destino = self.combo_servico.currentData()
 
-            # MMAAAA = 6 dígitos
-            if len(c_ini_raw) < 6 or len(c_fim_raw) < 6:
-                DarkMessageBox.warning(self, "Dados Incompletos",
-                                       "Para Aditivos de Renovação, é <b>OBRIGATÓRIO</b> definir\n"
-                                       "as Competências Inicial e Final (MM/AAAA).\n\n"
-                                       "Isso garante a geração correta das Notas de Empenho.")
-                self.inp_c_ini.setFocus()
+            if idx_origem == -1:
+                DarkMessageBox.warning(self, "Erro", "Selecione o serviço de <b>Origem</b> (de onde sai o dinheiro).")
+                return
+            if idx_destino == -1:
+                DarkMessageBox.warning(self, "Erro",
+                                       "Selecione o serviço de <b>Destino</b> (para onde vai o dinheiro).")
+                return
+            if idx_origem == idx_destino:
+                DarkMessageBox.warning(self, "Erro", "A Origem e o Destino não podem ser o mesmo serviço.")
                 return
 
-        # Se passou na validação, fecha a janela
+        # Validação de Supressão (Mantida)
+        elif "Supressão" in txt:
+            servico_idx = self.combo_servico.currentData()
+            if servico_idx != -1 and valor > 0:
+                servico = self.contrato.lista_servicos[servico_idx]
+                teto_atual = servico.get_valor_ciclo(len(self.contrato.ciclos) - 1)
+                if valor > teto_atual:
+                    DarkMessageBox.warning(self, "Inválido",
+                                           f"Saldo insuficiente para supressão. Teto: {fmt_br(teto_atual)}")
+                    return
+
+        # Validação de Renovação (Mantida)
+        elif "Prazo" in txt and self.chk_renovacao.isChecked():
+            c_ini = ''.join(filter(str.isdigit, self.inp_c_ini.text()))
+            if len(c_ini) < 6:
+                DarkMessageBox.warning(self, "Erro", "Defina as competências.")
+                return
+
         self.accept()
 
     def get_dados(self):
-        tipo = "Valor" if self.combo_tipo.currentText().startswith("Valor") else "Prazo"
-        return (tipo, self.inp_valor.get_value(), self.date_nova.text(), self.inp_desc.text(),
-                self.chk_renovacao.isChecked(), self.date_inicio.text(), self.combo_servico.currentData(),
-                self.inp_c_ini.text(), self.inp_c_fim.text())
+        txt = self.combo_tipo.currentText()
+
+        # Define o tipo interno (string simples)
+        if "Apostilamento" in txt:
+            tipo = "Apostilamento"
+        elif "Supressão" in txt:
+            tipo = "Supressao"
+        elif "Prazo" in txt:
+            tipo = "Prazo"
+        else:
+            tipo = "Valor"
+
+        return (
+            tipo,
+            self.inp_valor.get_value(),
+            self.date_nova.text(),
+            self.inp_desc.text(),
+            self.chk_renovacao.isChecked(),
+            self.date_inicio.text(),
+            self.combo_servico.currentData(),  # Destino
+            self.inp_c_ini.text(),
+            self.inp_c_fim.text(),
+            self.combo_origem.currentData()  # ✅ AQUI: Retorna também a Origem
+        )
 
 
 class DialogoPagamento(BaseDialog):
@@ -1671,61 +2183,45 @@ class DialogoRateioPagamento(BaseDialog):
         self.popular_tabela_sugestao()
         aplicar_estilo_janela(self)
 
-    def popular_tabela_sugestao(self):
-        self.tabela.blockSignals(True)
-        self.tabela.setRowCount(0)
-        restante_sugestao = self.valor_total
+        def popular_tabela_sugestao(self):
+            self.tabela.setRowCount(0)
 
-        for ne in self.notas_disponiveis:
-            row = self.tabela.rowCount()
-            self.tabela.insertRow(row)
+            n_notas = len(self.notas_disponiveis)
+            valor_por_nota = self.valor_total / n_notas if n_notas > 0 else 0.0
 
-            # --- CORREÇÃO DA CHECKBOX ---
-            # Criamos o checkbox diretamente
+            for row, ne in enumerate(self.notas_disponiveis):
+                self.tabela.insertRow(row)
+
+                # Definimos o valor diretamente aqui para cada linha
+                v_sug = min(valor_por_nota, ne.saldo_disponivel)
+
+            # Checkbox com estilo para visibilidade (conforme sugerido)
             chk = QCheckBox()
-            chk.setStyleSheet(
-                "QCheckBox::indicator { width: 22px; height: 22px; border: 1px solid #333; border-radius: 4px; }")
-
-            # Container para centralizar
-            container = QWidget()
-            h_layout = QHBoxLayout(container)
-            h_layout.setContentsMargins(0, 0, 0, 0)
-            h_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            h_layout.addWidget(chk)
-
-            if restante_sugestao > 0:
-                chk.setChecked(True)
-                valor_sugerido = min(ne.saldo_disponivel, restante_sugestao)
-                restante_sugestao -= valor_sugerido
-            else:
-                chk.setChecked(False)
-                valor_sugerido = 0.0
-
-            # O SEGREDO: Conectar o sinal do checkbox à função de validação
+            chk.setStyleSheet("QCheckBox::indicator { width: 18px; height: 18px; border: 1px solid #2c3e50; }")
+            chk.setChecked(True)
             chk.toggled.connect(self.validar_distribuicao)
 
+            container = QWidget()
+            lay = QHBoxLayout(container)
+            lay.addWidget(chk)
+            lay.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            lay.setContentsMargins(0, 0, 0, 0)
             self.tabela.setCellWidget(row, 0, container)
 
-            # Dados da Nota
-            item_ne = QTableWidgetItem(f"{ne.numero}\n({ne.data_emissao})")
-            item_ne.setData(Qt.ItemDataRole.UserRole, ne)  # Guarda o objeto NE
-            item_ne.setData(Qt.ItemDataRole.UserRole + 1, chk)  # Guarda a referência do Checkbox
-            item_ne.setFlags(Qt.ItemFlag.ItemIsEnabled)
+            # Referências para o cálculo de rateio
+            item_ne = QTableWidgetItem(str(ne.numero))
+            item_ne.setData(Qt.ItemDataRole.UserRole, ne)
+            item_ne.setData(Qt.ItemDataRole.UserRole + 1, chk)
             self.tabela.setItem(row, 1, item_ne)
 
-            # Saldo Atual
-            it_saldo = QTableWidgetItem(fmt_br(ne.saldo_disponivel))
-            it_saldo.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            it_saldo.setFlags(Qt.ItemFlag.ItemIsEnabled)
-            self.tabela.setItem(row, 2, it_saldo)
+            # Saldo e Valor Sugerido
+            # Saldo disponível (Coluna 2)
+            self.tabela.setItem(row, 2, QTableWidgetItem(f"{ne.saldo_disponivel:.2f}".replace('.', ',')))
 
-            # Valor a Retirar
-            it_val = QTableWidgetItem(f"{valor_sugerido:.2f}".replace('.', ','))
-            it_val.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            # Valor Sugerido (Coluna 3) - Usando a variável local v_sug
+            it_val = QTableWidgetItem(f"{v_sug:.2f}".replace('.', ','))
             self.tabela.setItem(row, 3, it_val)
 
-        self.tabela.blockSignals(False)
-        self.tabela.resizeRowsToContents()
         self.validar_distribuicao()
 
     def ao_alterar_valor_texto(self, item):
@@ -1733,40 +2229,37 @@ class DialogoRateioPagamento(BaseDialog):
             self.validar_distribuicao()
 
     def validar_distribuicao(self):
-        total = 0.0
-        erros = False
+        total_selecionado = 0.0
+        houve_erro = False
 
         for r in range(self.tabela.rowCount()):
             it_ref = self.tabela.item(r, 1)
             ne = it_ref.data(Qt.ItemDataRole.UserRole)
-            chk = it_ref.data(Qt.ItemDataRole.UserRole + 1)
+            chk = it_ref.data(Qt.ItemDataRole.UserRole + 1)  # Recupera o checkbox
             it_v = self.tabela.item(r, 3)
 
             if chk.isChecked():
                 try:
+                    # Converte o texto da célula de volta para float
                     v = float(it_v.text().replace('.', '').replace(',', '.'))
+                    # Trava de segurança: não pode retirar mais do que o saldo da NE
                     if v > ne.saldo_disponivel + 0.01:
-                        it_v.setBackground(QColor("#ffcccc"))  # Vermelho (Erro)
-                        erros = True
+                        it_v.setBackground(QColor("#ffcccc"))  # Alerta Vermelho
+                        houve_erro = True
                     else:
-                        it_v.setBackground(QColor("#d5f5e3"))  # Verde (OK)
-                    total += v
-                except:
-                    it_v.setBackground(QColor("#ffcccc"))
-                    erros = True
+                        it_v.setBackground(QColor("#d5f5e3"))  # OK Verde
+                    total_selecionado += v
+                except ValueError:
+                    houve_erro = True
             else:
-                it_v.setBackground(QColor("#f0f0f0"))  # Cinza (Desativado)
+                it_v.setBackground(QColor("#f0f0f0"))  # Cinza se desmarcado
 
-        falta = self.valor_total - total
-        self.lbl_info_soma.setText(f"Distribuído: {fmt_br(total)} | Restante: {fmt_br(falta)}")
+        restante = self.valor_total - total_selecionado
+        self.lbl_info_soma.setText(f"Distribuído: {fmt_br(total_selecionado)} | Restante: {fmt_br(restante)}")
 
-        # Só permite dar OK se o valor bater 100% e não houver estouro de saldo
-        bateu_valor = abs(falta) < 0.01
-        self.btn_ok.setEnabled(bateu_valor and not erros)
-
-        cor_fundo = "#27ae60" if bateu_valor else "#c0392b"
-        self.lbl_info_soma.setStyleSheet(
-            f"font-weight: bold; font-size: 14px; color: #fff; background-color: {cor_fundo}; padding: 10px; border-radius: 5px;")
+        # Habilita o botão OK apenas se o valor bater 100% e não houver erros de saldo
+        pode_salvar = abs(restante) < 0.01 and not houve_erro
+        self.btn_ok.setEnabled(pode_salvar)
 
     def get_dados(self):
         div = []
@@ -5532,83 +6025,134 @@ del "%~f0"
             DarkMessageBox.critical(self, "Erro", str(e))
 
     def _executar_upload_reset(self, driver, nome_arq, file_id):
+        """Apaga a nuvem e sobe a versão local completa (Contratos + Prestadores + Logs)"""
         try:
-            d_prog = BaseDialog(self);
-            d_prog.setWindowTitle("Enviando...");
-            d_prog.resize(300, 50);
-            d_prog.show();
+            d_prog = BaseDialog(self)
+            d_prog.setWindowTitle("Enviando Dados...")
+            d_prog.resize(300, 50)
+            d_prog.show()
             QApplication.processEvents()
-            dados = {"contratos": [c.to_dict() for c in self.db_contratos],
-                     "logs": [l.to_dict() for l in self.db_logs],
-                     "prestadores": [p.to_dict() for p in self.db_prestadores]}
+
+            # CORREÇÃO: Usando self.db_...
+            dados = {
+                "versao": VERSAO_ATUAL,
+                "contratos": [c.to_dict() for c in self.db_contratos],
+                "prestadores": [p.to_dict() for p in self.db_prestadores],
+                "logs": [l.to_dict() for l in self.db_logs]
+            }
+
             driver.subir_json(nome_arq, dados, file_id_existente=file_id)
             d_prog.close()
-            DarkMessageBox.info(self, "Sucesso", "Nuvem atualizada (Reset).")
+
+            DarkMessageBox.info(self, "Sucesso", "Nuvem atualizada com sucesso (Upload Completo).")
+
         except Exception as e:
             if 'd_prog' in locals(): d_prog.close()
-            DarkMessageBox.critical(self, "Erro", str(e))
+            DarkMessageBox.critical(self, "Erro no Upload", str(e))
 
     def _executar_upload_uniao_sem_baixar(self, driver, file_id, nome_nuvem):
-        d_prog = BaseDialog(self);
-        d_prog.setWindowTitle("Mesclando...");
-        d_prog.resize(300, 50);
-        d_prog.show();
+        """Baixa nuvem -> Mescla com Local -> Sobe de Volta"""
+        d_prog = BaseDialog(self)
+        d_prog.setWindowTitle("Mesclando Dados...")
+        d_prog.resize(300, 50)
+        d_prog.show()
         QApplication.processEvents()
-        try:
-            # Baixa nuvem (RAM), mescla locais por cima e sobe de volta
-            dados_nuvem = driver.baixar_json(file_id)
-            # Mescla Contratos (Local ganha)
-            mapa = {c['numero']: c for c in dados_nuvem.get("contratos", [])}
-            for c_local in self.db_contratos: mapa[c_local.numero] = c_local.to_dict()
-            # Mescla Logs (Soma)
-            logs_finais = dados_nuvem.get("logs", []) + [l.to_dict() for l in self.db_logs]
-            # Mescla Prestadores
-            mapa_p = {p['cnpj']: p for p in dados_nuvem.get("prestadores", [])}
-            for p_local in self.db_prestadores: mapa_p[p_local.cnpj] = p_local.to_dict()
 
-            dados_final = {"contratos": list(mapa.values()), "logs": logs_finais,
-                           "prestadores": list(mapa_p.values())}
+        try:
+            # 1. Baixa dados atuais da nuvem
+            dados_nuvem = driver.baixar_json(file_id)
+
+            # 2. Mescla Contratos (Local sobrescreve nuvem se houver conflito de ID)
+            mapa_contratos = {c['numero']: c for c in dados_nuvem.get("contratos", [])}
+            # CORREÇÃO: self.db_contratos
+            for c_local in self.db_contratos:
+                mapa_contratos[c_local.numero] = c_local.to_dict()
+
+            # 3. Mescla Logs
+            logs_nuvem = dados_nuvem.get("logs", [])
+            # CORREÇÃO: self.db_logs
+            logs_locais = [l.to_dict() for l in self.db_logs]
+            logs_finais = logs_nuvem + logs_locais
+
+            # 4. Mescla Prestadores (Chave é o CNPJ)
+            mapa_prestadores = {p['cnpj']: p for p in dados_nuvem.get("prestadores", [])}
+            # CORREÇÃO: self.db_prestadores
+            for p_local in self.db_prestadores:
+                mapa_prestadores[p_local.cnpj] = p_local.to_dict()
+
+            # 5. Prepara pacote final
+            dados_final = {
+                "versao": VERSAO_ATUAL,
+                "contratos": list(mapa_contratos.values()),
+                "prestadores": list(mapa_prestadores.values()),
+                "logs": logs_finais
+            }
+
             driver.subir_json(nome_nuvem, dados_final, file_id_existente=file_id)
             d_prog.close()
-            DarkMessageBox.info(self, "Sucesso", "Seus dados foram mesclados e enviados.")
+            DarkMessageBox.info(self, "Sucesso", "Seus dados foram mesclados e enviados para a nuvem.")
+
         except Exception as e:
             d_prog.close()
-            DarkMessageBox.critical(self, "Erro", str(e))
+            DarkMessageBox.critical(self, "Erro na Mesclagem", str(e))
 
     def _executar_sincronizacao_inteligente(self, driver, fid, nome, apenas_importar=False):
-        # Esta função estava aninhada incorretamente antes. Agora é um método da classe.
+        """Baixa dados e atualiza listas locais (Contratos e Prestadores)"""
         try:
+            # Baixa JSON da nuvem
             d_nuvem = driver.baixar_json(fid)
+
+            # --- PARTE A: CONTRATOS ---
             c_nuvem_list = d_nuvem.get("contratos", [])
-            # ... (Lógica de detecção de conflitos simplificada) ...
+            count_contratos = 0
+            # CORREÇÃO: self.db_contratos
+            mapa_local_contratos = {c.numero: c for c in self.db_contratos}
 
-            # (Para economizar espaço, assumindo que você já tem a lógica de DialogoResolucaoConflitos)
-            # Se não tiver conflitos, avisa. Se tiver, abre o diálogo.
-            # Aqui vou colocar a lógica direta de "baixar o que não tenho"
-            count = 0
-            mapa_local = {c.numero: c for c in self.db_contratos}
             for cn in c_nuvem_list:
-                if cn['numero'] not in mapa_local:
+                if cn['numero'] not in mapa_local_contratos:
+                    # CORREÇÃO: self.db_contratos
                     self.db_contratos.append(Contrato.from_dict(cn))
-                    count += 1
-                elif cn.get('ultima_modificacao', '') > mapa_local[cn['numero']].ultima_modificacao:
-                    # Atualiza existente
-                    self.db_contratos = [c for c in self.db_contratos if c.numero != cn['numero']]
-                    self.db_contratos.append(Contrato.from_dict(cn))
-                    count += 1
+                    count_contratos += 1
 
+            # --- PARTE B: PRESTADORES (NOVO) ---
+            p_nuvem_list = d_nuvem.get("prestadores", [])
+            count_prestadores = 0
+            # CORREÇÃO: self.db_prestadores
+            mapa_local_prest = {p.cnpj: p for p in self.db_prestadores}
+
+            for pn in p_nuvem_list:
+                cnpj_nuvem = pn.get('cnpj')
+                if not cnpj_nuvem: continue
+
+                if cnpj_nuvem not in mapa_local_prest:
+                    # CORREÇÃO: self.db_prestadores
+                    self.db_prestadores.append(Prestador.from_dict(pn))
+                    count_prestadores += 1
+                else:
+                    # Atualiza dados cadastrais se já existir
+                    prestador_existente = mapa_local_prest[cnpj_nuvem]
+                    prestador_existente.razao_social = pn.get('razao_social', prestador_existente.razao_social)
+                    prestador_existente.nome_fantasia = pn.get('nome_fantasia', prestador_existente.nome_fantasia)
+                    prestador_existente.cnes = pn.get('cnes', prestador_existente.cnes)
+
+            # --- FINALIZAÇÃO ---
             self.salvar_dados()
             self.carregar_dados()
 
-            msg = f"{count} itens atualizados da nuvem."
+            msg = f"Sincronização Concluída:\n\n" \
+                  f"📥 {count_contratos} Contratos importados.\n" \
+                  f"📥 {count_prestadores} Prestadores importados."
+
             if not apenas_importar:
                 self._executar_upload_uniao_sem_baixar(driver, fid, nome)
-                msg += "\nSeus dados locais também foram enviados."
+                msg += "\n\n📤 Seus dados locais também foram enviados para a nuvem."
 
-            DarkMessageBox.info(self, "Sincronização", msg)
+            DarkMessageBox.info(self, "Relatório de Sincronização", msg)
 
         except Exception as e:
-            DarkMessageBox.critical(self, "Erro", f"Falha na sincronização inteligente: {e}")
+            import traceback
+            erro_detalhado = traceback.format_exc()
+            DarkMessageBox.critical(self, "Erro Crítico", f"Falha na sincronização:\n{str(e)}\n\n{erro_detalhado}")
 
     def aplicar_tema_visual(self):
         aplicar_estilo_janela(self)
@@ -5853,7 +6397,7 @@ del "%~f0"
         if os.path.exists(caminho_icone):
             self.setWindowIcon(QIcon(caminho_icone))
 
-        self.setWindowTitle("Gestor de Contratos v2.3")
+        self.setWindowTitle("Gestor de Contratos v3.0")
         self.setGeometry(50, 50, 1300, 850)
 
         mb = self.menuBar()
@@ -5893,6 +6437,8 @@ del "%~f0"
                 "Gerenciar empresas credoras")
         add_btn("Prazos", QStyle.StandardPixmap.SP_FileDialogDetailedView, self.abrir_monitor_vigencia,
                 "Monitor de vencimentos")
+        add_btn("Saldos NE", QStyle.StandardPixmap.SP_FileDialogListView, self.abrir_monitor_empenhos,
+                "Monitor de Saldos de Empenho")
 
         self.toolbar.addSeparator()
 
@@ -5977,6 +6523,11 @@ del "%~f0"
         # --- 3. MENU EXIBIR (Visual) ---
         m_exi = mb.addMenu("Exibir")
         m_exi.addAction("Painel de Pesquisa (Início)", self.voltar_para_pesquisa)
+
+        # --- NOVA LINHA AQUI ---
+        m_exi.addAction("💰 Monitor Global de Saldos (Empenhos)...", self.abrir_monitor_empenhos)
+        # -----------------------
+
         # --- NOVO: MONITOR DE VIGÊNCIAS ---
         m_exi.addAction("🚦 Monitor de Vigências e Prazos...", self.abrir_monitor_vigencia)
         # ----------------------------------
@@ -6077,7 +6628,7 @@ del "%~f0"
         m_ajuda.addAction("Verificar Atualizações...", self.verificar_updates)
 
         txt_sobre = (
-            "GC Gestor de Contratos - Versão 2.3\n"
+            "GC Gestor de Contratos - Versão 3.0\n"
             "Desenvolvido em Python/PyQt6\n\n"
             "Autor: Cássio de Souza Lopes, servo de Jesus Cristo ✝.\n"
             "Servidor da Secretaria Municipal de Saúde de Montes Claros(MG)\nMestre em Desenvolvimento Social (UNIMONTES)\nBacharel em Economia(UNIMONTES)\nGraduando em Análise e Desenvolvimento de Sistemas (UNINTER)\n"
@@ -6476,7 +7027,7 @@ del "%~f0"
         self.tab_aditivos.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.tab_aditivos.customContextMenuRequested.connect(self.menu_aditivo)
         l_adit.addWidget(self.tab_aditivos)
-        self.abas.addTab(tab_adit, "Aditivos")
+        self.abas.addTab(tab_adit, "Alterações Contratuais")
 
         # ABA 5: DETALHE GLOBAL
         self.painel_global = PainelDetalheGlobal()
@@ -9372,6 +9923,56 @@ del "%~f0"
         except Exception as e:
             DarkMessageBox.critical(self, "Erro no Arquivamento", str(e))
 
+    def abrir_monitor_empenhos(self):
+        lista_global_nes = []
+
+        for contrato in self.db_contratos:
+            if getattr(contrato, 'anulado', False): continue
+
+            # --- PRÉ-CÁLCULO DAS MÉDIAS ---
+            medias_producao = {}
+            for idx_serv, sub in enumerate(contrato.lista_servicos):
+                nes_do_servico = [n for n in contrato.lista_notas_empenho if n.subcontrato_idx == idx_serv]
+                total_pago = 0.0
+                competencias_unicas = set()
+
+                for n in nes_do_servico:
+                    for mov in n.historico:
+                        if mov.tipo == "Pagamento":
+                            total_pago += mov.valor
+                            if mov.competencia and mov.competencia != "-":
+                                for p in mov.competencia.split(','):
+                                    if p.strip(): competencias_unicas.add(p.strip())
+
+                if competencias_unicas:
+                    medias_producao[idx_serv] = total_pago / len(competencias_unicas)
+                else:
+                    medias_producao[idx_serv] = 0.0
+            # ------------------------------
+
+            for ne in contrato.lista_notas_empenho:
+                # --- INJEÇÃO DE DADOS ---
+                ne.temp_contrato = contrato.numero
+                ne.temp_prestador = contrato.prestador  # <--- NOVA LINHA (Importante!)
+
+                if 0 <= ne.subcontrato_idx < len(contrato.lista_servicos):
+                    obj_servico = contrato.lista_servicos[ne.subcontrato_idx]
+                    ne.temp_servico = obj_servico.descricao
+                    ne.temp_valor_mensal = obj_servico.valor_mensal
+                    ne.temp_media_producao = medias_producao.get(ne.subcontrato_idx, 0.0)
+                else:
+                    ne.temp_servico = "Serviço Não Identificado"
+                    ne.temp_valor_mensal = 0.0
+                    ne.temp_media_producao = 0.0
+
+                lista_global_nes.append(ne)
+
+        if not lista_global_nes:
+            DarkMessageBox.info(self, "Vazio", "Não há nenhum empenho cadastrado.")
+            return
+
+        dialogo = DialogoMonitorEmpenhos(self, lista_global_nes, None)
+        dialogo.exec()
 
 # --- NOVA CLASSE: TELA DE CARREGAMENTO (SPLASH SCREEN) ---
 class TelaCarregamento(QSplashScreen):

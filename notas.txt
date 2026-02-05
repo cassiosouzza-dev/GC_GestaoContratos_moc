@@ -1,10 +1,42 @@
-v1.1 - Atualização de Funcionalidades
+<h3>🚀 VERSÃO 3.0: O SALTO DE GESTÃO</h3>
+<p>Esta atualização transforma o GC Gestor em uma ferramenta de auditoria completa e gestão em massa.</p>
 
-✨ NOVIDADES:
-- Login: Adicionada opção "Lembrar meu CPF" para agilizar o acesso.
-- Importação: Agora é possível adicionar justificativas/observações ao importar Pagamentos via CSV.
-- Interface: Instruções de importação atualizadas e mais claras.
+<b>✨ NOVIDADES ESTRUTURAIS:</b>
+<ul>
+    <li><b>🔄 Gestão Contratual Avançada:</b>
+        <br>Novos tipos de alteração suportados nativamente:
+        <br>1. <b>Apostilamento (Remanejamento):</b> Transfira saldo de um serviço para outro sem alterar o valor global do contrato.
+        <br>2. <b>Supressão de Valor:</b> Redução formal do teto do contrato com recálculo automático de saldos.
+    </li>
 
-🔧 MELHORIAS TÉCNICAS:
-- Verificação automática de atualizações ao iniciar.
-- Correção de bugs visuais nos diálogos (Tema Escuro).
+    <li><b>📦 Importação em Lote (Global):</b>
+        <br>Não perca tempo importando um por um!
+        <br>- Novas ferramentas para importar <b>Serviços</b> e <b>Empenhos</b> de múltiplos contratos simultaneamente via planilha CSV única.
+    </li>
+</ul>
+
+<b>📊 VISIBILIDADE FINANCEIRA:</b>
+<ul>
+    <li><b>💰 Monitor Global de Saldos:</b>
+        <br>Visualize <u>TODOS</u> os empenhos de todos os contratos em uma única tela com filtros dinâmicos.
+    </li>
+
+    <li><b>📈 Métricas de Produção:</b>
+        <br>Novas colunas comparativas no Monitor:
+        <br>- <b>Valor Mensal (Meta):</b> O valor fixado no contrato.
+        <br>- <b>Média Produção (Real):</b> A média real do que foi pago historicamente.
+    </li>
+
+    <li><b>🔍 Drill-Down (Detalhamento):</b>
+        <br>Dê um <b>clique duplo</b> em qualquer linha do Monitor para abrir o extrato completo daquela Nota de Empenho.
+    </li>
+</ul>
+
+<b>☁️ INFRAESTRUTURA:</b>
+<ul>
+    <li><b>Sincronização Nuvem 2.0:</b> O cadastro de Prestadores agora também é sincronizado e protegido contra duplicidade.</li>
+    <li><b>Performance:</b> Tabelas com carregamento otimizado ("Slim") e ajuste automático de altura.</li>
+</ul>
+
+<hr>
+<i>Atualize agora para desbloquear o Apostilamento e o Monitor Global!</i>
