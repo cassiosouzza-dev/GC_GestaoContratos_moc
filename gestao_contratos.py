@@ -41,7 +41,7 @@ else:
 # ------------------------------------------
 
 # --- CONFIGURAÇÃO DE ATUALIZAÇÃO ---
-VERSAO_ATUAL = 3.0
+VERSAO_ATUAL = 3.1
 
 # 1. URL do arquivo de versão (Deve ser RAW e apontar para a branch correta, geralmente 'main')
 URL_VERSAO_TXT = "https://raw.githubusercontent.com/cassiosouzza-dev/GC_GestaoContratos_moc/master/versao.txt"
@@ -6397,7 +6397,7 @@ del "%~f0"
         if os.path.exists(caminho_icone):
             self.setWindowIcon(QIcon(caminho_icone))
 
-        self.setWindowTitle("Gestor de Contratos v3.0")
+        self.setWindowTitle("Gestor de Contratos v3.1")
         self.setGeometry(50, 50, 1300, 850)
 
         mb = self.menuBar()
@@ -6628,7 +6628,7 @@ del "%~f0"
         m_ajuda.addAction("Verificar Atualizações...", self.verificar_updates)
 
         txt_sobre = (
-            "GC Gestor de Contratos - Versão 3.0\n"
+            "GC Gestor de Contratos - Versão 3.1\n"
             "Desenvolvido em Python/PyQt6\n\n"
             "Autor: Cássio de Souza Lopes, servo de Jesus Cristo ✝.\n"
             "Servidor da Secretaria Municipal de Saúde de Montes Claros(MG)\nMestre em Desenvolvimento Social (UNIMONTES)\nBacharel em Economia(UNIMONTES)\nGraduando em Análise e Desenvolvimento de Sistemas (UNINTER)\n"
@@ -7508,6 +7508,8 @@ del "%~f0"
         if not self.ne_selecionada:
             DarkMessageBox.warning(self, "Aviso", "Selecione uma Nota de Empenho na tabela acima primeiro.")
             return
+
+        QApplication.setOverrideCursor(Qt.CursorShape.ArrowCursor)
 
         dial = DialogoHistoricoMaximizado(self.ne_selecionada, parent=self)
         dial.exec()

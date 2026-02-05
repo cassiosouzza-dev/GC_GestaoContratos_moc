@@ -16,6 +16,7 @@ python-3.12*/
 # Você não deve enviar o EXE nem as pastas de construção para o Git
 build/
 dist/
+dist3.0
 *.spec
 
 backup_emergencia.json
