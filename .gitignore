@@ -23,6 +23,8 @@ dados_sistema.db
 erro_pagamento.txt
 debug_importacao.txt
 debug_nuvem.txt
+dist 2.2
+debug_nuvem.txt
 
 # --- Arquivos de Configuração e Segredos (CRÍTICO: NÃO REMOVA ISSO) ---
 # Impede que suas senhas e chaves subam para o GitHub
