@@ -344,19 +344,25 @@ def gerar_competencias(inicio_str, fim_str):
 # --- 1. ESTRUTURA DE DADOS ---
 
 class Movimentacao:
-    def __init__(self, tipo, valor, competencia="", observacao=""):
+    def __init__(self, tipo, valor, competencia="", observacao="", link_doc=""):
         self.tipo = tipo
         self.valor = valor
         self.competencia = competencia
-        self.observacao = observacao  # Novo campo
+        self.observacao = observacao
+        self.link_doc = link_doc  # <--- NOVO CAMPO
 
     def to_dict(self): return self.__dict__
 
     @staticmethod
     def from_dict(d):
-        # Garante compatibilidade com versões anteriores (get 'observacao')
-        return Movimentacao(d['tipo'], d['valor'], d['competencia'], d.get('observacao', ''))
-
+        # Garante compatibilidade com versões anteriores (get 'link_doc')
+        return Movimentacao(
+            d['tipo'],
+            d['valor'],
+            d['competencia'],
+            d.get('observacao', ''),
+            d.get('link_doc', '') # <--- Carrega vazio se não existir
+        )
 
 class NotaEmpenho:
     # Adicionado parametro 'bloqueada=False' no final
@@ -398,7 +404,7 @@ class NotaEmpenho:
     def valor_pago(self, val):
         self.valor_pago_cache = val
 
-    def realizar_pagamento(self, valor, competencia, obs=""):
+    def realizar_pagamento(self, valor, competencia, obs="", link_doc=""):
         # --- TRAVA DE BLOQUEIO ---
         if self.bloqueada:
             return False, "🚫 Operação Negada: Esta Nota de Empenho está BLOQUEADA."
@@ -407,10 +413,11 @@ class NotaEmpenho:
         if valor > self.saldo_disponivel + 0.01:
             return False, f"Saldo insuficiente! Resta: {fmt_br(self.saldo_disponivel)}"
 
-        self.historico.append(Movimentacao("Pagamento", valor, competencia, obs))
+        # Passamos o link_doc para a movimentação
+        self.historico.append(Movimentacao("Pagamento", valor, competencia, obs, link_doc))
         return True, "Pagamento realizado."
 
-    # ... (mantenha realizar_anulacao, excluir_movimentacao, etc iguais) ...
+
     def realizar_anulacao(self, valor, justificativa=""):
         if valor > self.saldo_disponivel + 0.01:
             return False, f"Impossível anular R$ {fmt_br(valor)}. Saldo disponível na nota é apenas R$ {fmt_br(self.saldo_disponivel)}."
@@ -424,7 +431,7 @@ class NotaEmpenho:
         self.historico.pop(index)
         return True
 
-    def editar_movimentacao(self, index, novo_valor, nova_comp, nova_obs=""):
+    def editar_movimentacao(self, index, novo_valor, nova_comp, nova_obs="", novo_link=""):
         mov = self.historico[index]
         old_valor = mov.valor
         mov.valor = 0
@@ -434,13 +441,16 @@ class NotaEmpenho:
                 return False, "Novo valor excede o saldo disponível."
             mov.valor = novo_valor
         elif mov.tipo == "Anulação":
+            # Anulação não tem link geralmente, mas mantemos a assinatura
             novo_valor_neg = -abs(novo_valor)
             if abs(novo_valor) > self.saldo_disponivel + 0.01:
                 mov.valor = old_valor
-                return False, "Novo valor de anulação excede o saldo disponível."
+                return False, "Saldo insuficiente para anular."
             mov.valor = novo_valor_neg
+
         mov.competencia = nova_comp
         mov.observacao = nova_obs
+        mov.link_doc = novo_link  # Atualiza o link
         return True, "Sucesso"
 
     def calcular_media_mensal(self):
@@ -2100,79 +2110,30 @@ class DialogoPagamento(BaseDialog):
     # Adicionado parametro 'titulo' e 'label_valor'
     def __init__(self, comp_inicio, comp_fim, pg_editar=None, titulo="Realizar Pagamento", label_valor="Valor:",
                  parent=None):
-        super().__init__(parent);
-        self.setWindowTitle(titulo);
-        self.resize(400, 500)
+        super().__init__(parent)
+        self.setWindowTitle(titulo)
+        self.resize(450, 550)
         layout = QVBoxLayout(self)
 
         layout.addWidget(QLabel("Competência(s) Referente(s):"))
         self.lista_comp = QListWidget()
+        self.lista_comp.setStyleSheet("background: white; border: 1px solid #ccc;")
 
-        # 1. Desativa a seleção da linha (o texto não fica azul/verde)
         self.lista_comp.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         self.lista_comp.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
-        # 2. CSS DE ALTO CONTRASTE E SIMPLES
-        self.lista_comp.setStyleSheet("""
-            QListWidget {
-                background-color: #ffffff;
-                color: #000000;
-                border: 1px solid #999999;
-                border-radius: 4px;
-                font-size: 13px;
-                outline: 0;
-            }
-            QListWidget::item {
-                padding: 6px;
-                border-bottom: 1px solid #eeeeee;
-                color: #000000;
-            }
-            /* Efeito suave apenas ao passar o mouse */
-            QListWidget::item:hover {
-                background-color: #f2f2f2;
-            }
-            /* Garante que o texto não mude de cor ao clicar */
-            QListWidget::item:selected {
-                background-color: transparent;
-                color: #000000;
-            }
-
-            /* --- O QUADRADINHO (CHECKBOX) --- */
-            QListWidget::indicator {
-                width: 16px;
-                height: 16px;
-                background-color: white;
-                border: 2px solid #555555; /* Borda grossa cinza escuro (Visível!) */
-                border-radius: 3px;
-                margin-right: 10px;
-            }
-
-            /* Quando passa o mouse no quadradinho */
-            QListWidget::indicator:hover {
-                border-color: #000000;
-            }
-
-            /* Quando MARCADO (Simples e Sóbrio) */
-            QListWidget::indicator:checked {
-                background-color: #555555; /* Preenchimento cinza escuro */
-                border: 2px solid #555555;
-                /* O Qt desenha um check ou preenche dependendo do estilo, 
-                   mas o fundo escuro garante que saiba que está marcado */
-            }
-        """)
-
+        # Geração das competências
         meses = gerar_competencias(comp_inicio, comp_fim)
-        if not meses: meses = ["Erro datas contrato"]
+        if not meses: meses = ["Erro datas"]
 
-        competencias_selecionadas = []
+        sel_antes = []
         if pg_editar:
-            competencias_selecionadas = [c.strip() for c in pg_editar.competencia.split(',')]
+            sel_antes = [c.strip() for c in pg_editar.competencia.split(',')]
 
         for m in meses:
             item = QListWidgetItem(m)
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-
-            if pg_editar and m in competencias_selecionadas:
+            if pg_editar and m in sel_antes:
                 item.setCheckState(Qt.CheckState.Checked)
             else:
                 item.setCheckState(Qt.CheckState.Unchecked)
@@ -2180,39 +2141,73 @@ class DialogoPagamento(BaseDialog):
 
         layout.addWidget(self.lista_comp)
 
-        # Resto do layout igual
         layout.addWidget(QLabel(label_valor))
         self.inp_valor = CurrencyInput()
         layout.addWidget(self.inp_valor)
 
         layout.addWidget(QLabel("Justificativa / Observação:"))
         self.inp_obs = QLineEdit()
-        self.inp_obs.setPlaceholderText("Descreva o motivo...")
         layout.addWidget(self.inp_obs)
 
+        # --- CAMPO DE LINK (COM LÓGICA DE VISIBILIDADE) ---
+        self.lbl_link_titulo = QLabel("Link do Processo (1DOC/Drive):")
+        self.inp_link = QLineEdit()
+        self.inp_link.setPlaceholderText("Cole o link aqui...")
+
+        layout.addWidget(self.lbl_link_titulo)
+        layout.addWidget(self.inp_link)
+
+        # Lógica de Preenchimento e Visibilidade
         if pg_editar:
-            val_abs = abs(pg_editar.valor)
-            self.inp_valor.set_value(val_abs)
+            # MODO EDIÇÃO
+            self.inp_valor.set_value(abs(pg_editar.valor))
             self.inp_obs.setText(pg_editar.observacao)
+
+            # Mostra o link APENAS na edição
+            self.lbl_link_titulo.setVisible(True)
+            self.inp_link.setVisible(True)
+
+            if hasattr(pg_editar, 'link_doc'):
+                self.inp_link.setText(pg_editar.link_doc)
         else:
+            # MODO NOVO: Esconde link
+            self.lbl_link_titulo.setVisible(False)
+            self.inp_link.setVisible(False)
+
+            # Marca primeira competência
             if self.lista_comp.count() > 0:
                 self.lista_comp.item(0).setCheckState(Qt.CheckState.Checked)
 
-        botoes = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel);
-        botoes.accepted.connect(self.accept)
-        botoes.rejected.connect(self.reject)
-        layout.addWidget(botoes)
+        # --- CORREÇÃO DOS BOTÕES ---
+        btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+
+        # Aqui está o segredo: Pegamos o botão OK e conectamos manualmente
+        self.btn_ok = btns.button(QDialogButtonBox.StandardButton.Ok)
+        self.btn_ok.clicked.connect(self.validar_e_fechar)
+
+        btns.rejected.connect(self.reject)
+        layout.addWidget(btns)
+
+    def validar_e_fechar(self):
+        """Valida os dados e força o fechamento da janela"""
+        valor = self.inp_valor.get_value()
+
+        if valor <= 0:
+            DarkMessageBox.warning(self, "Valor Inválido", "O valor do pagamento deve ser maior que zero.")
+            return  # Não fecha a janela
+
+        # SE CHEGOU AQUI, ESTÁ TUDO CERTO -> FECHA A JANELA
+        self.accept()
 
     def get_dados(self):
-        selecionados = []
+        sel = []
         for i in range(self.lista_comp.count()):
             item = self.lista_comp.item(i)
             if item.checkState() == Qt.CheckState.Checked:
-                selecionados.append(item.text())
+                sel.append(item.text())
+        c_str = ", ".join(sel) if sel else "Nenhuma"
 
-        comp_str = ", ".join(selecionados) if selecionados else "Nenhuma"
-        return comp_str, self.inp_valor.get_value(), self.inp_obs.text()
-
+        return c_str, self.inp_valor.get_value(), self.inp_obs.text(), self.inp_link.text().strip()
 
 class DialogoRateioPagamento(BaseDialog):
     def __init__(self, valor_total, notas_disponiveis, nome_servico, parent=None):
@@ -3197,8 +3192,8 @@ class DialogoHistoricoMaximizado(BaseDialog):
         super().__init__(parent)
         self.setWindowTitle(f"Histórico Completo: NE {ne.numero}")
 
-        # 1. AUMENTO DA LARGURA DA JANELA (800 -> 1100)
-        self.resize(1100, 600)
+        # 1. AUMENTO DA LARGURA DA JANELA
+        self.resize(1150, 600)
 
         layout = QVBoxLayout(self)
 
@@ -3217,23 +3212,25 @@ class DialogoHistoricoMaximizado(BaseDialog):
         # Tabela
         self.tabela = TabelaExcel()
 
-        # 2. NOVA COLUNA ADICIONADA (Total 5)
-        # Ordem: Competência | Tipo | Descrição | Valor | Saldo
-        colunas = ["Competência", "Tipo de Movimento", "Descrição / Obs", "Valor", "Saldo Restante"]
-        self.tabela.setColumnCount(len(colunas))
+        # 2. CONFIGURAÇÃO DAS 6 COLUNAS (O SEU TRECHO ENTRA AQUI)
+        colunas = ["Competência", "Tipo", "Descrição / Obs", "Valor", "Saldo", "Link"]
+        self.tabela.setColumnCount(6)
         self.tabela.setHorizontalHeaderLabels(colunas)
 
-        # --- CONFIGURAÇÃO DE LARGURA INTELIGENTE ---
-        header = self.tabela.horizontalHeader()
-        # Colunas de dados curtos (Data, Tipo, Valores) ficam justas
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
-
-        # A coluna de Descrição estica para ocupar o espaço livre
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        # --- CONEXÃO DO CLIQUE PARA ABRIR O LINK ---
+        self.tabela.cellClicked.connect(self.abrir_link)
         # -------------------------------------------
+
+        # --- CONFIGURAÇÃO DE LARGURA ---
+        header = self.tabela.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)  # Comp
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)  # Tipo
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)  # Descrição (Estica)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)  # Valor
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)  # Saldo
+        header.setSectionResizeMode(5, QHeaderView.ResizeMode.Fixed)  # Link
+        self.tabela.setColumnWidth(5, 80)
+        # -------------------------------
 
         layout.addWidget(self.tabela)
 
@@ -3244,7 +3241,7 @@ class DialogoHistoricoMaximizado(BaseDialog):
         btns = QHBoxLayout()
         btn_copiar = QPushButton("Copiar Tabela")
         btn_copiar.clicked.connect(self.copiar_tudo)
-        btn_copiar.setStyleSheet("background-color: #27ae60; color: white; font-weight: bold; padding: 8px;")  # Verde
+        btn_copiar.setStyleSheet("background-color: #27ae60; color: white; font-weight: bold; padding: 8px;")
 
         btn_fechar = QPushButton("Fechar")
         btn_fechar.clicked.connect(self.close)
@@ -3258,10 +3255,10 @@ class DialogoHistoricoMaximizado(BaseDialog):
 
     def preencher_dados(self, ne):
         self.tabela.setRowCount(0)
-        self.tabela.setSortingEnabled(False)  # Desativa ordenação ao preencher
+        self.tabela.setSortingEnabled(False)
 
         saldo_corrente = ne.valor_inicial
-        fonte_negrito = QFont();
+        fonte_negrito = QFont()
         fonte_negrito.setBold(True)
 
         for row, m in enumerate(ne.historico):
@@ -3270,57 +3267,77 @@ class DialogoHistoricoMaximizado(BaseDialog):
             if m.tipo == "Pagamento":
                 saldo_corrente -= m.valor
             elif m.tipo == "Anulação":
-                saldo_corrente -= abs(m.valor)  # Garante subtração
+                saldo_corrente -= abs(m.valor)
 
             # Criação dos Itens
             item_comp = QTableWidgetItem(m.competencia)
             item_tipo = QTableWidgetItem(m.tipo)
 
-            # 3. PREENCHE A NOVA COLUNA
+            # Descrição
             obs_texto = m.observacao if m.observacao else ""
             if m.tipo == "Emissão Original":
-                # Na emissão original, a descrição da NE é mais útil que a obs vazia
                 obs_texto = ne.descricao
             item_obs = QTableWidgetItem(obs_texto)
-            item_obs.setToolTip(obs_texto)  # Ajuda se o texto for muito longo
+            item_obs.setToolTip(obs_texto)
 
             item_valor = QTableWidgetItem(fmt_br(m.valor))
             item_saldo = QTableWidgetItem(fmt_br(saldo_corrente))
 
+            # --- COLUNA 6: LINK ---
+            link_url = getattr(m, 'link_doc', '')
+            if link_url:
+                item_link = QTableWidgetItem("🔗 Abrir")
+                item_link.setForeground(QColor("blue"))
+                item_link.setFont(QFont("Arial", 9, QFont.Weight.Bold))
+                item_link.setData(Qt.ItemDataRole.UserRole, link_url)  # Guarda o link oculto
+                item_link.setToolTip(f"Ir para: {link_url}")
+            else:
+                item_link = QTableWidgetItem("-")
+
+            item_link.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            # ----------------------
+
             # Estilos e Cores
             item_saldo.setForeground(QColor("#27ae60"))  # Verde
 
-            # Alinhamento Centro (exceto descrição, que fica melhor à esquerda)
             for i in [item_comp, item_tipo, item_valor, item_saldo]:
                 i.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
 
             item_obs.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
 
-            # Destaque para Emissão Original
             if m.tipo == "Emissão Original":
                 for i in [item_comp, item_tipo, item_obs, item_valor, item_saldo]:
                     i.setFont(fonte_negrito)
 
-            # Cores por tipo
             if m.tipo == "Anulação":
                 item_tipo.setForeground(QColor("#c0392b"))
                 item_valor.setForeground(QColor("#c0392b"))
 
-            # Inserção na Tabela (Indices 0 a 4)
+            # Inserção na Tabela (Colunas 0 a 5)
             self.tabela.setItem(row, 0, item_comp)
             self.tabela.setItem(row, 1, item_tipo)
-            self.tabela.setItem(row, 2, item_obs)  # Nova Coluna
+            self.tabela.setItem(row, 2, item_obs)
             self.tabela.setItem(row, 3, item_valor)
             self.tabela.setItem(row, 4, item_saldo)
+            self.tabela.setItem(row, 5, item_link)  # <--- Inserindo o Link
 
         self.tabela.setSortingEnabled(True)
+
+    def abrir_link(self, row, col):
+        """Função chamada ao clicar na célula"""
+        # Se clicou na coluna 5 (Link)
+        if col == 5:
+            item = self.tabela.item(row, col)
+            if item:
+                link = item.data(Qt.ItemDataRole.UserRole)
+                if link:
+                    webbrowser.open(link)
 
     def copiar_tudo(self):
         self.tabela.selectAll()
         self.tabela.copiar_selecao()
         self.tabela.clearSelection()
-        DarkMessageBox.info(self, "Copiado",
-                            "Tabela copiada para a área de transferência!\nBasta colar no Excel (Ctrl+V).")
+        DarkMessageBox.info(self, "Copiado", "Tabela copiada para a área de transferência!")
 
 # --- NOVAS CLASSES DE AUDITORIA E LOGIN ---
 
@@ -7172,6 +7189,12 @@ del "%~f0"
         self.tab_empenhos.setSortingEnabled(True)
         # ------------------------------
 
+        # --- ALTERAÇÃO AQUI: LIMITAR ALTURA PARA ~7 LINHAS ---
+        # 35px por linha * 7 linhas + 40px cabeçalho = ~285px
+        self.tab_empenhos.setMinimumHeight(150)  # Garante que não fique muito pequena
+        self.tab_empenhos.setMaximumHeight(245)  # Trava em +/- 7 a 8 linhas
+        # -----------------------------------------------------
+
         l_fin.addWidget(self.tab_empenhos)
 
         # --- MUDANÇA AQUI: self.lbl_hist para poder alterar depois ---
@@ -7190,13 +7213,26 @@ del "%~f0"
         layout_hist_header.addWidget(btn_max_hist)
         l_fin.addLayout(layout_hist_header)
 
+        # Substitua o bloco da self.tab_mov por este:
         self.tab_mov = TabelaExcel()
-        self.tab_mov.setColumnCount(4)
-        self.tab_mov.setHorizontalHeaderLabels(["Competência", "Tipo", "Valor", "Saldo"])
-        self.tab_mov.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        self.tab_mov.setMaximumHeight(200)
+        self.tab_mov.setColumnCount(6)  # Aumentamos para 6
+        self.tab_mov.setHorizontalHeaderLabels(["Competência", "Tipo", "Valor", "Saldo", "Obs.", "Doc"])
+
+        # Ajustes de largura
+        h_mov = self.tab_mov.horizontalHeader()
+        h_mov.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)  # Tudo justo
+        h_mov.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)  # Obs estica
+        h_mov.setSectionResizeMode(5, QHeaderView.ResizeMode.Fixed)  # Doc fixo
+        self.tab_mov.setColumnWidth(5, 50)  # Largura do ícone
+
+        self.tab_mov.setMinimumHeight(235)
         self.tab_mov.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.tab_mov.customContextMenuRequested.connect(self.menu_movimentacao)
+
+        # --- CONECTA O CLIQUE PARA ABRIR O LINK ---
+        self.tab_mov.cellClicked.connect(self.abrir_link_navegador_mov)
+
+
         l_fin.addWidget(self.tab_mov)
 
         self.abas.addTab(tab_fin, "Financeiro")
@@ -7847,12 +7883,11 @@ del "%~f0"
             dial = DialogoPagamento(c_ini, c_fim, parent=self)
 
             if dial.exec():
-                # 2. Recebendo dados
-                comps_str, val, obs = dial.get_dados()
-                log_erro_arquivo(f"Tentando pagar: {val} | Comp: {comps_str}")
+                # Recebe 4 variaveis
+                comps_str, val, obs, link = dial.get_dados()
 
-                # 3. Realizando Pagamento (Memória)
-                ok, msg = self.ne_selecionada.realizar_pagamento(val, comps_str, obs)
+                # Passa o link
+                ok, msg = self.ne_selecionada.realizar_pagamento(val, comps_str, obs, link)
 
                 if not ok:
                     DarkMessageBox.warning(self, "Erro na Validação", msg)
@@ -7883,6 +7918,18 @@ del "%~f0"
 
             DarkMessageBox.critical(self, "Erro Crítico",
                                     f"Ocorreu um erro ao processar o pagamento.\nO sistema salvou um log em 'erro_pagamento.txt'.\n\nErro: {str(e)}")
+
+
+    def abrir_link_navegador_mov(self, row, col):
+        # A coluna 5 é a do Link (Doc)
+        if col == 5:
+            item = self.tab_mov.item(row, col)
+            if item:
+                link = item.data(Qt.ItemDataRole.UserRole)
+                if link:
+                    webbrowser.open(link)
+                else:
+                    self.status_bar.showMessage("Nenhum link anexado a este pagamento.")
 
     def abrir_historico_maximizado(self):
         if not self.ne_selecionada:
@@ -8736,8 +8783,9 @@ del "%~f0"
             "2. Valor do Pagamento (Obrigatório)\n"
             "3. Competência MM/AAAA (Obrigatório)\n"
             "4. Justificativa / Observação (Opcional)\n\n"
+            "5. Link do Processo (Opcional - Coluna E)"
             "Exemplo:\n"
-            "2025NE001; 1500,50; 01/2025; Pagamento referente medição 1"
+            "2025NE001; 1500,50; 01/2025; Pagamento referente medição 1; https://montesclaros.1doc.com.br/(...)"
         )
         DarkMessageBox.info(self, "Instruções", instrucao)
 
@@ -8766,6 +8814,9 @@ del "%~f0"
                         valor_pg = parse_float_br(row[1])
                         competencia = str(row[2]).strip()
                         obs = str(row[3]).strip() if len(row) > 3 else ""
+                        link_imp = ""
+                        if len(row) > 4:
+                            link_imp = str(row[4]).strip()
 
                         # 1. Encontrar a NE (Busca em todas as NEs do contrato)
                         ne_alvo = None
@@ -9315,37 +9366,40 @@ del "%~f0"
             DarkMessageBox.critical(self, "Erro no Rateio",
                                     f"Ocorreu um erro e o processo foi cancelado:\n{str(e)}\n\n{traceback.format_exc()}")
 
-
     def editar_pagamento(self, row):
         mov = self.ne_selecionada.historico[row]
 
-        # Lógica diferente dependendo do tipo
+        # 1. Se for ANULAÇÃO (Mantém lógica antiga, pois anulação não tem link)
         if mov.tipo == "Anulação":
-            # Abre diálogo de Anulação (menor, sem data)
             dial = DialogoAnulacao(editar_valor=mov.valor, editar_obs=mov.observacao, parent=self)
             if dial.exec():
                 v, obs = dial.get_dados()
-                # Anulação não tem competência, passamos "-"
-                ok, m = self.ne_selecionada.editar_movimentacao(row, v, "-", obs)
+                # Passamos link vazio "" pois anulação não usa
+                ok, m = self.ne_selecionada.editar_movimentacao(row, v, "-", obs, "")
                 if ok:
                     self.registrar_log("Editar Anulação", f"Editou anulação na NE {self.ne_selecionada.numero}.")
-                    self.atualizar_painel_detalhes();
-                    self.atualizar_movimentos();
+                    self.atualizar_painel_detalhes()
+                    self.atualizar_movimentos()
                     self.salvar_dados()
                 else:
                     DarkMessageBox.warning(self, "Erro", m)
 
+        # 2. Se for PAGAMENTO (Aqui estava o erro)
         else:
-            # Abre diálogo de Pagamento (com data)
             dial = DialogoPagamento(self.contrato_selecionado.comp_inicio, self.contrato_selecionado.comp_fim,
                                     pg_editar=mov, parent=self)
             if dial.exec():
-                c, v, obs = dial.get_dados()
-                ok, m = self.ne_selecionada.editar_movimentacao(row, v, c, obs)
+                # --- CORREÇÃO: ADICIONADA A VARIÁVEL 'link' ---
+                c, v, obs, link = dial.get_dados()
+                # ----------------------------------------------
+
+                # Passa o link para o método de edição
+                ok, m = self.ne_selecionada.editar_movimentacao(row, v, c, obs, link)
+
                 if ok:
                     self.registrar_log("Editar Pagamento", f"Editou pgto na NE {self.ne_selecionada.numero}.")
-                    self.atualizar_painel_detalhes();
-                    self.atualizar_movimentos();
+                    self.atualizar_painel_detalhes()
+                    self.atualizar_movimentos()
                     self.salvar_dados()
                 else:
                     DarkMessageBox.warning(self, "Erro", m)
@@ -9368,60 +9422,48 @@ del "%~f0"
         if not self.ne_selecionada: return
         self.tab_mov.setRowCount(0)
 
-        self.tab_mov.setColumnCount(5)
-        self.tab_mov.setHorizontalHeaderLabels(["Competência", "Tipo", "Valor", "Saldo", "Obs."])
-        self.tab_mov.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
+        # Garante 6 colunas sempre
+        self.tab_mov.setColumnCount(6)
+        self.tab_mov.setHorizontalHeaderLabels(["Competência", "Tipo", "Valor", "Saldo", "Obs.", "Doc"])
 
         saldo_corrente = self.ne_selecionada.valor_inicial
-        fonte_negrito = QFont();
-        fonte_negrito.setBold(True)
-        fonte_pequena = QFont();
-        fonte_pequena.setPointSize(8);
-        fonte_pequena.setBold(True)
 
         for row, m in enumerate(self.ne_selecionada.historico):
             self.tab_mov.insertRow(row)
 
-            # --- LÓGICA DO SALDO VISUAL ---
             if m.tipo == "Pagamento":
-                saldo_corrente -= m.valor  # Paga, diminui saldo
+                saldo_corrente -= m.valor
             elif m.tipo == "Anulação":
-                saldo_corrente -= abs(m.valor)  # Anula, também diminui saldo (corta a nota)
+                saldo_corrente -= abs(m.valor)
 
-            item_comp = QTableWidgetItem(m.competencia)
-            item_tipo = QTableWidgetItem(m.tipo)
-            item_valor = QTableWidgetItem(fmt_br(m.valor))
+            # Itens normais
+            self.tab_mov.setItem(row, 0, QTableWidgetItem(m.competencia))
+            self.tab_mov.setItem(row, 1, QTableWidgetItem(m.tipo))
+            self.tab_mov.setItem(row, 2, QTableWidgetItem(fmt_br(m.valor)))
+
             item_saldo = QTableWidgetItem(fmt_br(saldo_corrente))
+            item_saldo.setForeground(QColor("#27ae60"))
+            self.tab_mov.setItem(row, 3, item_saldo)
 
-            if m.tipo == "Anulação":
-                item_tipo.setForeground(QColor("#c0392b"))
-                item_valor.setForeground(QColor("#c0392b"))
-            elif m.tipo == "Pagamento":
-                item_valor.setForeground(QColor("black"))
-
+            # Obs
             txt_obs = m.observacao
             if m.tipo == "Emissão Original":
-                nome_serv = "?"
-                if 0 <= self.ne_selecionada.subcontrato_idx < len(self.contrato_selecionado.lista_servicos):
-                    nome_serv = self.contrato_selecionado.lista_servicos[self.ne_selecionada.subcontrato_idx].descricao
-                txt_obs = f"Serv: {nome_serv} | Fonte: {self.ne_selecionada.fonte_recurso} | {self.ne_selecionada.descricao}"
+                txt_obs = f"Fonte: {self.ne_selecionada.fonte_recurso} | {self.ne_selecionada.descricao}"
+            self.tab_mov.setItem(row, 4, QTableWidgetItem(txt_obs))
 
-            item_obs = QTableWidgetItem(txt_obs)
+            # --- ITEM LINK (O ÍCONE) ---
+            link_url = getattr(m, 'link_doc', '')
+            if link_url:
+                item_link = QTableWidgetItem("🔗")  # Ícone de corrente
+                item_link.setForeground(QColor("blue"))
+                item_link.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                item_link.setToolTip(f"Abrir: {link_url}")
+                item_link.setData(Qt.ItemDataRole.UserRole, link_url)  # Guarda o link
+            else:
+                item_link = QTableWidgetItem("")
+                item_link.setFlags(Qt.ItemFlag.NoItemFlags)  # Desabilita clique se não tiver link
 
-            for i in [item_comp, item_tipo, item_valor, item_saldo]:
-                i.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-
-            item_saldo.setForeground(QColor("#27ae60"))
-
-            if m.tipo == "Emissão Original":
-                for i in [item_comp, item_tipo, item_valor, item_saldo]: i.setFont(fonte_negrito)
-                item_obs.setFont(fonte_pequena)
-
-            self.tab_mov.setItem(row, 0, item_comp)
-            self.tab_mov.setItem(row, 1, item_tipo)
-            self.tab_mov.setItem(row, 2, item_valor)
-            self.tab_mov.setItem(row, 3, item_saldo)
-            self.tab_mov.setItem(row, 4, item_obs)
+            self.tab_mov.setItem(row, 5, item_link)
 
     def atualizar_painel_detalhes(self):
         if not self.contrato_selecionado: return
@@ -10450,7 +10492,18 @@ if __name__ == "__main__":
     import time
     import ctypes
 
+    # --- CORREÇÃO OBRIGATÓRIA PARA ÍCONE NA BARRA DE TAREFAS (WINDOWS) ---
+    # Isso separa o seu programa do processo genérico do Python no Windows.
+    # Sem isso, o ícone da barra de tarefas fica como o padrão do Python/sistema.
+    myappid = 'gc.gestor.contratos.v3.2'  # Uma string única qualquer
+    try:
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+    except AttributeError:
+        pass  # Caso rode em Linux/Mac, ignora o erro
+    # ---------------------------------------------------------------------
+
     # 1. Configurações Iniciais da App
+    # O QApplication deve ser criado APÓS definir o ID acima
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
     app.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
@@ -10459,10 +10512,13 @@ if __name__ == "__main__":
     caminho_ico = resource_path("icon_gc.ico")
     caminho_png = resource_path("icon_gc.png")
 
+    # Define o ícone PARA A APLICAÇÃO (Isso afeta a barra de tarefas)
     if os.path.exists(caminho_ico):
-        app.setWindowIcon(QIcon(caminho_ico))
+        icon = QIcon(caminho_ico)
+        app.setWindowIcon(icon)
     elif os.path.exists(caminho_png):
-        app.setWindowIcon(QIcon(caminho_png))
+        icon = QIcon(caminho_png)
+        app.setWindowIcon(icon)
 
     # 2. Exibe Splash
     splash = TelaCarregamento()
@@ -10479,8 +10535,15 @@ if __name__ == "__main__":
     # 3. Inicia Sistema (Passando splash para ele fechar lá dentro)
     janela = SistemaGestao(splash)
 
+    # Reforça o ícone na janela principal também (boas práticas)
+    if os.path.exists(caminho_ico):
+        janela.setWindowIcon(QIcon(caminho_ico))
+    elif os.path.exists(caminho_png):
+        janela.setWindowIcon(QIcon(caminho_png))
+
     # 4. Mostra a janela principal
     janela.show()
 
     sys.exit(app.exec())
+
 # FIM
