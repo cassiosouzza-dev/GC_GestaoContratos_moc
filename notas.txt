@@ -1,6 +1,0 @@
-Implementação de Tags(marcadores) para categorizar contratos, permitindo que a visualização de contratos na tela inicial se adeque à necessidade do usuário. Salva o último filtro aplicado para o reinício do programa!!!
-Inserção de campo para link do pagamento do 1DOC, ao clicar será aberto o processo/memorando no navegador.
-Correção de visualização de numeração de linhas na aba Serviço.
-Aumento do número de linhas no Histórico Financeiro (pagamentos)
-Correção de mensagem de erro indevida pós atualização automática do sistema.
-Correção de sincronização com a Nuvem para conversão de SQL em JSON.
