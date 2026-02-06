@@ -1,0 +1,79 @@
+# --- Python e Bytecode (Gerados automaticamente) ---
+__pycache__/
+*.py[cod]
+*$py.class
+
+# --- Ambientes Virtuais e Interpretadores Locais ---
+venv/
+.venv/
+env/
+.env
+# Ignora a pasta do Python Portátil se você a colocou dentro do projeto
+python-3.12.8-embed-amd64/
+python-3.12*/
+
+# --- PyInstaller (Arquivos de compilação do EXE) ---
+# Você não deve enviar o EXE nem as pastas de construção para o Git
+build/
+dist/
+dist3.0
+*.spec
+
+backup_emergencia.json
+dados_sistema.db
+erro_pagamento.txt
+
+
+
+dist 2.2
+
+
+# --- Arquivos de Configuração e Segredos (CRÍTICO: NÃO REMOVA ISSO) ---
+# Impede que suas senhas e chaves subam para o GitHub
+chave_api.txt
+credentials.json
+token.json
+client_secret.json
+
+# --- Dados do Sistema ---
+# Ignora o banco de dados real para manter a privacidade
+dados_sistema.json
+dados_gestao_contratos_db.json
+# Ignora backups locais
+*.bak
+backup_nuvem.json
+
+# --- Configurações Locais ---
+config.json
+
+# --- Arquivos Temporários de Atualização ---
+# O sistema cria isso enquanto atualiza, não precisa versionar
+updater.bat
+update_temp.exe
+debug_update.txt
+debug_nuvem.txt
+debug_importacao.txt
+
+# --- Arquivos Temporários de Teste ---
+dados_teste_unitario.json
+temp_test_db.json
+temp_undo_point.json
+
+# --- Arquivos Exportados (Relatórios) ---
+*.csv
+*.html
+*.pdf
+
+# --- IDEs e Editores ---
+.vscode/
+.idea/
+*.swp
+
+# --- Sistema Operacional ---
+Thumbs.db
+Desktop.ini
+token.json
+
+dist/
+
+build/
