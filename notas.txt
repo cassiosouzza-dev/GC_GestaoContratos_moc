@@ -1,1 +1,4 @@
-Correção de transição do mouse ao abrir e fechar Histórico Maximizado da NE na aba Financeiro.
+Implementação de Tags(marcadores) para categorizar contratos, permitindo que a visualização de contratos na tela inicial se adeque à necessidade do usuário. Salva o último filtro aplicado para o reinício do programa!!!
+Inserção de campo para link do pagamento do 1DOC, ao clicar será aberto o processo/memorando no navegador.
+Correção de visualização de número de linhas na aba Serviço.
+Correção de mensagem de erro indevida pós atualização automática do sistema.

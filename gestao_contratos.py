@@ -41,7 +41,7 @@ else:
 # ------------------------------------------
 
 # --- CONFIGURAÇÃO DE ATUALIZAÇÃO ---
-VERSAO_ATUAL = 3.1
+VERSAO_ATUAL = 3.2
 
 # 1. URL do arquivo de versão (Deve ser RAW e apontar para a branch correta, geralmente 'main')
 URL_VERSAO_TXT = "https://raw.githubusercontent.com/cassiosouzza-dev/GC_GestaoContratos_moc/master/versao.txt"
@@ -556,7 +556,7 @@ class CicloFinanceiro:
 
 class Contrato:
     def __init__(self, numero, prestador, descricao, valor_inicial, vig_inicio, vig_fim, comp_inicio, comp_fim,
-                 licitacao, dispensa, ultima_modificacao=None, sequencial_inicio=0):
+                 licitacao, dispensa, ultima_modificacao=None, sequencial_inicio=0, categoria=None):
         self.numero = numero
         self.prestador = prestador
         self.descricao = descricao
@@ -569,16 +569,16 @@ class Contrato:
         self.dispensa = dispensa
         self.sequencial_inicio = sequencial_inicio
 
-        # --- CORREÇÃO: Inicializando as variáveis de exclusão ---
+        # --- NOVO CAMPO ---
+        self.categoria = categoria
+        # ------------------
+
         self.anulado = False
-        self.usuario_exclusao = None  # <--- FALTAVA ISSO
-        self.data_exclusao = None  # <--- FALTAVA ISSO
-        # --------------------------------------------------------
+        self.usuario_exclusao = None
+        self.data_exclusao = None
 
         self.ultima_modificacao = ultima_modificacao if ultima_modificacao else datetime.now().isoformat()
-
         self.ciclos = []
-        # Nomeia o primeiro ciclo dinamicamente
         nome_inicial = "Contrato Inicial" if sequencial_inicio == 0 else f"{sequencial_inicio}º Termo Aditivo"
         self.ciclos.append(CicloFinanceiro(0, nome_inicial, valor_inicial))
 
@@ -801,9 +801,9 @@ class Contrato:
         d['lista_notas_empenho'] = [ne.to_dict() for ne in self.lista_notas_empenho]
         d['lista_aditivos'] = [adt.to_dict() for adt in self.lista_aditivos]
         d['lista_servicos'] = [sub.to_dict() for sub in self.lista_servicos]
-        d['anulado'] = self.anulado
-        d['usuario_exclusao'] = self.usuario_exclusao
-        d['data_exclusao'] = self.data_exclusao
+
+        # O campo 'categoria' já vai automático pelo __dict__.copy(),
+        # mas garantimos que ele existe.
         return d
 
     @staticmethod
@@ -819,7 +819,9 @@ class Contrato:
             d.get('comp_fim'),
             d.get('licitacao', ''),
             d.get('dispensa', ''),
-            d.get('ultima_modificacao')
+            d.get('ultima_modificacao'),
+            d.get('sequencial_inicio', 0),
+            d.get('categoria', None)
         )
         c.ultimo_ciclo_id = d.get('ultimo_ciclo_id', 0)
         c.ciclos = [CicloFinanceiro.from_dict(cd) for cd in d.get('ciclos', [])]
@@ -1364,46 +1366,47 @@ class DialogoAjuda(BaseDialog):
 
 
 class DialogoCriarContrato(BaseDialog):
-    def __init__(self, lista_prestadores, contrato_editar=None, parent=None):
+    def __init__(self, lista_prestadores, banco_dados, contrato_editar=None, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Cadastro de Contrato")
 
-        # AJUSTE FINO DE TAMANHO (Largura menor, Altura suficiente)
-        self.resize(550, 680)
-
-        # Garante que a janela não nasça gigante
+        # Ajustes de tamanho
+        self.resize(550, 700)  # Aumentei um pouco a altura para caber o novo campo
         self.setMinimumWidth(500)
+
+        self.banco = banco_dados  # Salva referência do banco
 
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(25, 25, 25, 20)
         main_layout.setSpacing(15)
 
-        # Título
+        # --- TÍTULO ---
         lbl_titulo = QLabel("Dados do Instrumento Contratual")
         lbl_titulo.setStyleSheet(
             "font-size: 16px; font-weight: bold; color: #2c3e50; border-bottom: 2px solid #27ae60; padding-bottom: 5px;")
         lbl_titulo.setAlignment(Qt.AlignmentFlag.AlignCenter)
         main_layout.addWidget(lbl_titulo)
 
-        # Formulário
+        # --- FORMULÁRIO ---
         layout = QFormLayout()
-        layout.setSpacing(12)  # Espaço confortável entre linhas
-        layout.setLabelAlignment(Qt.AlignmentFlag.AlignRight)  # Alinha labels à direita (fica mais elegante)
+        layout.setSpacing(12)
+        layout.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
 
+        # 1. Campo Número
         self.inp_numero = QLineEdit()
         self.inp_numero.setPlaceholderText("Ex: 123/2024")
 
-        # --- CAMPO DE PRESTADOR COM PESQUISA ---
+        # 2. Campo Prestador (Com Auto-Complete)
         self.combo_prestador = QComboBox()
         self.combo_prestador.setEditable(True)
         self.combo_prestador.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
         self.combo_prestador.setStyleSheet("QComboBox { padding: 5px; font-size: 13px; }")
-        # Política de tamanho para não esticar demais
         self.combo_prestador.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
         for p in lista_prestadores:
             texto = f"{p.nome_fantasia} ({p.razao_social})"
             self.combo_prestador.addItem(texto, p.nome_fantasia)
+            # Guarda o nome fantasia limpo no data
             self.combo_prestador.setItemData(self.combo_prestador.count() - 1, p.nome_fantasia)
 
         if self.combo_prestador.count() > 0:
@@ -1415,16 +1418,35 @@ class DialogoCriarContrato(BaseDialog):
             self.combo_prestador.setEditable(False)
             self.combo_prestador.addItem("Nenhum prestador cadastrado", "")
 
+        # 3. Campo Categoria (NOVO BLOCO)
+        container_cat = QWidget()
+        lay_cat = QHBoxLayout(container_cat)
+        lay_cat.setContentsMargins(0, 0, 0, 0)
+
+        self.combo_categoria = QComboBox()
+        self.combo_categoria.addItem("--- Sem Categoria ---", None)
+
+        btn_gerenciar_tags = QPushButton("🏷️")
+        btn_gerenciar_tags.setFixedWidth(30)
+        btn_gerenciar_tags.setToolTip("Criar/Editar Categorias")
+        btn_gerenciar_tags.clicked.connect(self.abrir_gerenciador_tags)
+
+        lay_cat.addWidget(self.combo_categoria)
+        lay_cat.addWidget(btn_gerenciar_tags)
+
+        self.carregar_categorias()  # Popula o combo
+
+        # 4. Outros Campos
         self.inp_desc = QLineEdit()
         self.inp_desc.setPlaceholderText("Resumo do objeto (Ex: Locação de Veículos)")
 
         self.inp_valor = CurrencyInput()
-        # ------
+
         self.inp_sequencial = QSpinBox()
         self.inp_sequencial.setRange(0, 100)
         self.inp_sequencial.setValue(0)
-        self.inp_sequencial.setToolTip("0 = Começar como Contrato Inicial. 5 = Começar já como 5º Aditivo.")
-        # -------------------------------
+        self.inp_sequencial.setToolTip("0 = Contrato Inicial. 5 = Começa já como 5º Aditivo.")
+
         self.inp_licitacao = QLineEdit()
         self.inp_dispensa = QLineEdit()
 
@@ -1433,24 +1455,26 @@ class DialogoCriarContrato(BaseDialog):
         self.date_vig_fim = QDateEdit(QDate.currentDate().addYears(1))
         self.date_vig_fim.setCalendarPopup(True)
 
+        # Campos pequenos de competência
         self.inp_comp_ini = QLineEdit(QDate.currentDate().toString("MM/yyyy"))
         self.inp_comp_ini.setInputMask("99/9999")
-        self.inp_comp_ini.setFixedWidth(100)  # Campo pequeno para data
+        self.inp_comp_ini.setFixedWidth(100)
 
         self.inp_comp_fim = QLineEdit(QDate.currentDate().addYears(1).toString("MM/yyyy"))
         self.inp_comp_fim.setInputMask("99/9999")
         self.inp_comp_fim.setFixedWidth(100)
 
-        # Adicionando linhas ao FormLayout
+        # --- ADICIONANDO TUDO AO LAYOUT (ORDEM VISUAL) ---
         layout.addRow("Número:", self.inp_numero)
         layout.addRow("Prestador:", self.combo_prestador)
+        layout.addRow("Classificação:", container_cat)  # <--- AQUI ENTRA A CATEGORIA
         layout.addRow("Objeto:", self.inp_desc)
         layout.addRow("Valor Inicial:", self.inp_valor)
         layout.addRow("Iniciar no Aditivo nº:", self.inp_sequencial)
         layout.addRow("Licitação:", self.inp_licitacao)
         layout.addRow("Inexigibilidade:", self.inp_dispensa)
 
-        layout.addRow(QLabel(""))  # Espaçador
+        layout.addRow(QLabel(""))  # Espaçador visual
         layout.addRow(QLabel("<b>Vigência:</b>"))
         layout.addRow("Início:", self.date_vig_ini)
         layout.addRow("Fim:", self.date_vig_fim)
@@ -1459,7 +1483,7 @@ class DialogoCriarContrato(BaseDialog):
         lbl_comp.setStyleSheet("font-weight: bold; color: #c0392b; margin-top: 5px;")
         layout.addRow(lbl_comp)
 
-        # Layout horizontal para as datas de competência (ficam na mesma linha)
+        # Layout horizontal para as datas de competência
         h_datas = QHBoxLayout()
         h_datas.addWidget(QLabel("De:"))
         h_datas.addWidget(self.inp_comp_ini)
@@ -1467,32 +1491,45 @@ class DialogoCriarContrato(BaseDialog):
         h_datas.addWidget(self.inp_comp_fim)
         h_datas.addStretch()
 
-        layout.addRow("", h_datas)  # Adiciona o layout horizontal no form
+        layout.addRow("", h_datas)
 
         main_layout.addLayout(layout)
 
-        # Preenchimento na Edição
+        # --- PREENCHIMENTO NA EDIÇÃO ---
         if contrato_editar:
             self.inp_numero.setText(contrato_editar.numero)
+
+            # Seleciona Prestador
             index = self.combo_prestador.findText(contrato_editar.prestador, Qt.MatchFlag.MatchContains)
             if index >= 0: self.combo_prestador.setCurrentIndex(index)
+
+            # Seleciona Categoria (NOVO)
+            if contrato_editar.categoria:
+                idx_cat = self.combo_categoria.findText(contrato_editar.categoria)
+                if idx_cat >= 0: self.combo_categoria.setCurrentIndex(idx_cat)
+
             self.inp_desc.setText(contrato_editar.descricao)
             self.inp_valor.set_value(contrato_editar.valor_inicial)
             self.inp_licitacao.setText(contrato_editar.licitacao)
             self.inp_dispensa.setText(contrato_editar.dispensa)
+
+            # Datas
             self.date_vig_ini.setDate(str_to_date(contrato_editar.vigencia_inicio))
             self.date_vig_fim.setDate(str_to_date(contrato_editar.vigencia_fim))
             self.inp_comp_ini.setText(contrato_editar.comp_inicio)
             self.inp_comp_fim.setText(contrato_editar.comp_fim)
 
+            # Sequencial (se existir no objeto)
+            if hasattr(contrato_editar, 'sequencial_inicio'):
+                self.inp_sequencial.setValue(contrato_editar.sequencial_inicio)
+
         main_layout.addStretch()
 
-        # Botões
+        # --- BOTÕES ---
         botoes = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         botoes.accepted.connect(self.validar_e_aceitar)
         botoes.rejected.connect(self.reject)
 
-        # Estilo dos botões
         for btn in botoes.buttons():
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
             if botoes.buttonRole(btn) == QDialogButtonBox.ButtonRole.AcceptRole:
@@ -1502,6 +1539,43 @@ class DialogoCriarContrato(BaseDialog):
                 btn.setStyleSheet("padding: 8px 20px;")
 
         main_layout.addWidget(botoes, 0, Qt.AlignmentFlag.AlignRight)
+
+        # --- MÉTODOS AUXILIARES DE CATEGORIA (Cole logo após o __init__) ---
+
+    def carregar_categorias(self):
+        # Guarda o texto atual para tentar restaurar depois de recarregar
+        atual = self.combo_categoria.currentText()
+
+        self.combo_categoria.clear()
+        self.combo_categoria.addItem("--- Sem Categoria ---", None)
+
+        try:
+            # Conecta ao banco para buscar as tags criadas
+            with self.banco.conectar() as conn:
+                cursor = conn.execute("SELECT nome FROM tags_categorias ORDER BY nome")
+                for row in cursor:
+                    # Adiciona a tag no combo (Texto visível, Dado interno)
+                    self.combo_categoria.addItem(row[0], row[0])
+        except Exception as e:
+            print(f"Erro ao carregar tags: {e}")
+
+        # Tenta selecionar novamente o que estava antes (se ainda existir)
+        self.combo_categoria.setCurrentText(atual)
+
+    def abrir_gerenciador_tags(self):
+        # Abre a janelinha de criar/excluir tags
+        # OBS: A classe DialogoGerenciarTags deve existir no seu arquivo
+        try:
+            dial = DialogoGerenciarTags(self.banco, self)
+            dial.exec()
+
+            # Quando fechar o gerenciador, recarrega o combobox
+            self.carregar_categorias()
+        except NameError:
+            DarkMessageBox.warning(self, "Erro",
+                                   "A classe 'DialogoGerenciarTags' não foi encontrada.\nVerifique se você colou ela no código.")
+
+    # -------------------------------------------------------------------
 
     def validar_e_aceitar(self):
         if not self.inp_numero.text().strip():
@@ -1531,11 +1605,24 @@ class DialogoCriarContrato(BaseDialog):
     def get_dados(self):
         texto_completo = self.combo_prestador.currentText()
         prestador_escolhido = texto_completo.split(' (')[0]
-        return (self.inp_numero.text(), prestador_escolhido, self.inp_desc.text(),
-                self.inp_valor.get_value(), self.date_vig_ini.text(), self.date_vig_fim.text(),
-                self.inp_comp_ini.text(), self.inp_comp_fim.text(), self.inp_licitacao.text(),
-                self.inp_dispensa.text(), self.inp_sequencial.value())  # <--- ADICIONADO O VALUE AQUI
 
+        # Pega o dado da categoria (NOVO)
+        cat_escolhida = self.combo_categoria.currentData()
+
+        return (
+            self.inp_numero.text(),  # 1
+            prestador_escolhido,  # 2
+            self.inp_desc.text(),  # 3
+            self.inp_valor.get_value(),  # 4
+            self.date_vig_ini.text(),  # 5
+            self.date_vig_fim.text(),  # 6
+            self.inp_comp_ini.text(),  # 7
+            self.inp_comp_fim.text(),  # 8
+            self.inp_licitacao.text(),  # 9
+            self.inp_dispensa.text(),  # 10
+            self.inp_sequencial.value(),  # 11
+            cat_escolhida  # 12
+        )
 
 class DialogoNovoEmpenho(BaseDialog):
     def __init__(self, contrato, ne_editar=None, parent=None):
@@ -1730,17 +1817,26 @@ class DialogoNovoEmpenho(BaseDialog):
                 self.combo_aditivo.addItem(f"{adt.descricao} (Resta: R$ {fmt_br(saldo)})", adt.id_aditivo)
 
     def get_dados(self):
-        sel = []
-        for i in range(self.lista_comp.count()):
-            it = self.lista_comp.item(i)
-            if it.checkState() == Qt.CheckState.Checked:
-                sel.append(it.text())
-        str_comp = ", ".join(sel)
+        texto_completo = self.combo_prestador.currentText()
+        prestador_escolhido = texto_completo.split(' (')[0]
 
-        return (self.inp_num.text(), self.inp_desc.text(), self.combo_sub.currentIndex(), self.inp_val.get_value(),
-                self.inp_fonte.text(), self.date_emissao.text(), self.combo_ciclo.currentData(),
-                self.combo_aditivo.currentData(), str_comp)
+        # Pega a categoria selecionada (o dado interno, não o texto visível)
+        cat = self.combo_categoria.currentData()
 
+        return (
+            self.inp_numero.text(),  # 1
+            prestador_escolhido,  # 2
+            self.inp_desc.text(),  # 3
+            self.inp_valor.get_value(),  # 4
+            self.date_vig_ini.text(),  # 5
+            self.date_vig_fim.text(),  # 6
+            self.inp_comp_ini.text(),  # 7
+            self.inp_comp_fim.text(),  # 8
+            self.inp_licitacao.text(),  # 9
+            self.inp_dispensa.text(),  # 10
+            self.inp_sequencial.value(),  # 11
+            cat  # 12 (NOVO!)
+        )
 
 class DialogoAditivo(BaseDialog):
     def __init__(self, contrato, aditivo_editar=None, parent=None):
@@ -4778,6 +4874,119 @@ class DialogoLixeira(BaseDialog):
         self.accept()
 
 
+class DialogoGerenciarTags(BaseDialog):
+    def __init__(self, db, parent=None):
+        super().__init__(parent)
+        self.db = db
+        self.setWindowTitle("Gerenciar Categorias")
+        self.resize(400, 300)
+
+        layout = QVBoxLayout(self)
+
+        self.lista_tags = QListWidget()
+        self.carregar_tags()
+        layout.addWidget(QLabel("Categorias Disponíveis:"))
+        layout.addWidget(self.lista_tags)
+
+        # Adicionar
+        form = QHBoxLayout()
+        self.txt_nova = QLineEdit()
+        self.txt_nova.setPlaceholderText("Nova Categoria (ex: TI, Obras)")
+        btn_add = QPushButton("Adicionar")
+        btn_add.clicked.connect(self.adicionar_tag)
+        form.addWidget(self.txt_nova)
+        form.addWidget(btn_add)
+        layout.addLayout(form)
+
+        # Excluir
+        btn_del = QPushButton("Excluir Selecionada")
+        btn_del.setStyleSheet("background-color: #c0392b; color: white;")
+        btn_del.clicked.connect(self.excluir_tag)
+        layout.addWidget(btn_del)
+
+        aplicar_estilo_janela(self)
+
+    def carregar_tags(self):
+        self.lista_tags.clear()
+        with self.db.conectar() as conn:
+            cursor = conn.execute("SELECT nome FROM tags_categorias ORDER BY nome")
+            for row in cursor:
+                self.lista_tags.addItem(row[0])
+
+    def adicionar_tag(self):
+        tag = self.txt_nova.text().strip().upper()
+        if not tag: return
+        try:
+            with self.db.conectar() as conn:
+                conn.execute("INSERT INTO tags_categorias (nome) VALUES (?)", (tag,))
+                conn.commit()
+            self.txt_nova.clear()
+            self.carregar_tags()
+        except sqlite3.IntegrityError:
+            DarkMessageBox.warning(self, "Aviso", "Essa categoria já existe!")
+
+    def excluir_tag(self):
+        item = self.lista_tags.currentItem()
+        if not item: return
+        tag = item.text()
+
+        if DarkMessageBox.question(self, "Confirmar", f"Excluir '{tag}'?") == QMessageBox.StandardButton.Yes:
+            with self.db.conectar() as conn:
+                conn.execute("DELETE FROM tags_categorias WHERE nome = ?", (tag,))
+                conn.commit()
+            self.carregar_tags()
+
+
+class DialogoFiltroTags(BaseDialog):
+    def __init__(self, db, filtros_atuais, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Filtrar por Categoria")
+        self.resize(300, 400)
+        self.filtros_selecionados = filtros_atuais if filtros_atuais else []
+        self.db = db
+
+        layout = QVBoxLayout(self)
+        self.checks = []
+
+        # Opção: Não Classificados
+        chk_nc = QCheckBox("⚠️ SEM CATEGORIA")
+        chk_nc.setProperty("tag_nome", "SEM_TAG")
+        if "SEM_TAG" in self.filtros_selecionados: chk_nc.setChecked(True)
+        layout.addWidget(chk_nc)
+        self.checks.append(chk_nc)
+
+        # Separador visual
+        line = QFrame();
+        line.setFrameShape(QFrame.Shape.HLine);
+        line.setFrameShadow(QFrame.Shadow.Sunken)
+        layout.addWidget(line)
+
+        # Tags do Banco
+        with self.db.conectar() as conn:
+            cursor = conn.execute("SELECT nome FROM tags_categorias ORDER BY nome")
+            tags = [row[0] for row in cursor]
+
+        for tag in tags:
+            chk = QCheckBox(tag)
+            chk.setProperty("tag_nome", tag)
+            if not self.filtros_selecionados or tag in self.filtros_selecionados:
+                chk.setChecked(True)
+            layout.addWidget(chk)
+            self.checks.append(chk)
+
+        btn_ok = QPushButton("Aplicar Filtro")
+        btn_ok.clicked.connect(self.accept)
+        layout.addWidget(btn_ok)
+        aplicar_estilo_janela(self)
+
+    def get_selecionados(self):
+        selecionados = []
+        for chk in self.checks:
+            if chk.isChecked():
+                selecionados.append(chk.property("tag_nome"))
+        return selecionados
+
+
 # ============================================================================
 # CLASSE DE GERENCIAMENTO DE BANCO DE DADOS (SQLite)
 # ============================================================================
@@ -4793,7 +5002,6 @@ class BancoDados:
         return sqlite3.connect(self.nome_arquivo)
 
     def inicializar_tabelas(self):
-        """Cria a estrutura do banco e corrige tabelas antigas se necessário"""
         with self.conectar() as conn:
             cursor = conn.cursor()
 
@@ -4852,6 +5060,14 @@ class BancoDados:
                     dados_json TEXT
                 )
             """)
+
+            # --- NOVO: TABELA DE TAGS ---
+            cursor.execute("""
+                            CREATE TABLE IF NOT EXISTS tags_categorias (
+                                nome TEXT PRIMARY KEY
+                            )
+                        """)
+
             conn.commit()
 
     def salvar_tudo_snapshot(self, contratos, prestadores, logs, usuarios_dict):
@@ -4967,7 +5183,7 @@ class SistemaGestao(QMainWindow):
         self.arquivo_db = "dados_sistema.db"
         self.banco = BancoDados(self.arquivo_db)
 
-        # Inicializa variáveis vazias
+        # Inicializa variáveis
         self.db_contratos = []
         self.db_prestadores = []
         self.db_logs = []
@@ -4975,19 +5191,21 @@ class SistemaGestao(QMainWindow):
         self.lista_alertas = []
         self.contrato_selecionado = None
         self.ne_selecionada = None
+        self.filtros_tags = []  # Começa vazio
 
-        # 3. Carrega Dados do Banco para a Memória (Sem mexer na tela ainda)
-        self.carregar_dados()
-
-        # 4. Configurações Visuais
+        # 3. Carrega Configurações (Lê o filtro salvo do JSON AQUI)
         self.usuario_nome = "Desconhecido"
         self.usuario_cpf = "000.000.000-00"
         self.tema_escuro = False
         self.custom_bg = None
         self.custom_sel = None
         self.tamanho_fonte = 14
-        self.carregar_config()
+
+        self.carregar_config()  # <--- Recupera self.filtros_tags do arquivo
         self.aplicar_tema_visual()
+
+        # 4. Carrega Dados do Banco (Sem zerar filtros)
+        self.carregar_dados()
 
         # 5. Verifica Auto-Login
         auto_login_sucesso = False
@@ -4999,8 +5217,6 @@ class SistemaGestao(QMainWindow):
                         cfg = json.load(f)
                         last = cfg.get("ultimo_usuario", {})
                         cpf_salvo = last.get("cpf", "")
-
-                        # Verifica se o CPF existe na memória carregada
                         if cpf_salvo and cpf_salvo in self.db_usuarios:
                             self.usuario_cpf = cpf_salvo
                             self.usuario_nome = self.db_usuarios[cpf_salvo]['nome']
@@ -5008,20 +5224,41 @@ class SistemaGestao(QMainWindow):
                 except:
                     pass
 
-        # 6. Abre Login (Se não logou automático)
+        # 6. Abre Login
         if not auto_login_sucesso:
             self.fazer_login()
 
-        # 7. Constrói a Interface Gráfica (Agora é seguro criar os botões)
+        # 7. Constrói Interface (APENAS UMA VEZ!)
         self.init_ui()
 
-        # 8. Preenche a Interface com os dados carregados
-        # (Agora funciona porque self.inp_search já existe)
-        self.filtrar_contratos()
+        # 8. Finalização
         self.processar_alertas()
         self.atualizar_barra_status()
 
-        # Inicializa IA e outros recursos
+        # --- GATILHO MÁGICO PARA O FILTRO ---
+        # Usa o Timer para aplicar o filtro visualmente logo após a janela abrir
+        QTimer.singleShot(10, self.aplicar_filtro_inicial)
+
+
+
+        # --- COLE ISTO LOGO APÓS O __INIT__ ---
+    def aplicar_filtro_inicial(self):
+        """Função chamada logo após a janela abrir para forçar o filtro e carregar IA"""
+
+        # 1. Aplica o filtro na tabela
+        self.filtrar_contratos()
+
+        # 2. Reforça o aviso visual se houver filtro (A BORDA LARANJA)
+        if self.filtros_tags:
+            tags_str = ", ".join(self.filtros_tags)
+            self.status_bar.showMessage(f"⚠️ FILTRO ATIVO: Mostrando apenas {tags_str}")
+            # Dica visual: Borda laranja na tabela para você saber que está filtrado
+            self.tabela_resultados.setStyleSheet("QTableWidget { border: 2px solid #e67e22; }")
+        else:
+            self.status_bar.showMessage("Sistema pronto. Nenhum filtro ativo.")
+            self.tabela_resultados.setStyleSheet("")  # Remove borda
+
+        # 3. Inicializa IA e verifica updates em segundo plano
         self.ia = ConsultorIA(self.db_contratos)
         aplicar_estilo_janela(self)
         self.em_tutorial = False
@@ -5472,9 +5709,10 @@ del "%~f0"
             if os.path.exists(caminho):
                 with open(caminho, "r", encoding='utf-8-sig') as f:
                     cfg = json.load(f)
+
                     self.tema_escuro = cfg.get("tema_escuro", False)
 
-                    # Carrega todas as variáveis de personalização
+                    # Carrega todas as variáveis de personalização visual
                     self.custom_bg = cfg.get("custom_bg", None)
                     self.custom_sel = cfg.get("custom_sel", None)
                     self.custom_tab = cfg.get("custom_tab", None)
@@ -5483,17 +5721,30 @@ del "%~f0"
                     self.custom_table_bg = cfg.get("custom_table_bg", None)
 
                     self.tamanho_fonte = cfg.get("tamanho_fonte", 14)
+
+
+                    # Lê a lista de tags que estava salva. Se não tiver nada, usa []
+                    self.filtros_tags = cfg.get("filtros_tags", [])
+                    # --------------------------
+                    print(f"DEBUG: Filtro carregado do arquivo: {self.filtros_tags}")  # Dica de debug
+
             else:
+                # Padrões se o arquivo config.json não existir
                 self.tema_escuro = False
-                # Reseta tudo se não achar arquivo
-                self.custom_bg = None;
-                self.custom_sel = None;
+                self.custom_bg = None
+                self.custom_sel = None
                 self.custom_tab = None
-                self.custom_tab_text = None;
-                self.custom_table_header = None;
+                self.custom_tab_text = None
+                self.custom_table_header = None
                 self.custom_table_bg = None
-        except:
+
+                self.filtros_tags = []  # Começa sem filtro
+
+        except Exception as e:
+            # Se der erro ao ler o arquivo (corrompido, etc), reseta para o seguro
+            print(f"Erro ao ler config: {e}")
             self.tema_escuro = False
+            self.filtros_tags = []
 
     def salvar_config(self):
         caminho = self.get_config_path()
@@ -5507,21 +5758,26 @@ del "%~f0"
                         cfg = {}
 
             cfg["tema_escuro"] = self.tema_escuro
-
-            # Salva todas as variáveis
             cfg["custom_bg"] = self.custom_bg
             cfg["custom_sel"] = self.custom_sel
             cfg["custom_tab"] = self.custom_tab
             cfg["custom_tab_text"] = self.custom_tab_text
             cfg["custom_table_header"] = self.custom_table_header
             cfg["custom_table_bg"] = self.custom_table_bg
-
             cfg["tamanho_fonte"] = self.tamanho_fonte
+
+            # --- A LINHA QUE FALTAVA ---
+            cfg["filtros_tags"] = self.filtros_tags
+            # ---------------------------
 
             with open(caminho, "w", encoding='utf-8-sig') as f:
                 json.dump(cfg, f, indent=4)
+
+            # Confirmação no terminal (para você ver que funcionou)
+            print(f"DEBUG: Config salva com sucesso! Filtros salvos: {self.filtros_tags}")
+
         except Exception as e:
-            print(f"Erro ao salvar config: {e}")
+            print(f"Erro config: {e}")
 
     def get_config_path(self):
         """Retorna o caminho exato do config.json na mesma pasta do executável"""
@@ -5531,32 +5787,6 @@ del "%~f0"
             pasta_app = os.path.dirname(os.path.abspath(__file__))
 
         return os.path.join(pasta_app, "config.json")
-
-    def salvar_config(self):
-        caminho = self.get_config_path()
-        try:
-            cfg = {}
-            if os.path.exists(caminho):
-                with open(caminho, "r", encoding='utf-8-sig') as f:
-                    try:
-                        cfg = json.load(f)
-                    except:
-                        cfg = {}
-
-            cfg["tema_escuro"] = self.tema_escuro
-            cfg["custom_bg"] = self.custom_bg
-            cfg["custom_sel"] = self.custom_sel
-            cfg["custom_tab"] = self.custom_tab
-            cfg["custom_tab_text"] = self.custom_tab_text
-            cfg["custom_table_header"] = self.custom_table_header
-            # SALVA A NOVA COR
-            cfg["custom_table_bg"] = self.custom_table_bg
-            cfg["tamanho_fonte"] = self.tamanho_fonte
-
-            with open(caminho, "w", encoding='utf-8-sig') as f:
-                json.dump(cfg, f, indent=4)
-        except Exception as e:
-            print(f"Erro config: {e}")
 
     def showEvent(self, event):
         # Garante que a barra fique escura assim que o programa abre
@@ -6397,14 +6627,14 @@ del "%~f0"
         if os.path.exists(caminho_icone):
             self.setWindowIcon(QIcon(caminho_icone))
 
-        self.setWindowTitle("Gestor de Contratos v3.1")
+        self.setWindowTitle("Gestor de Contratos v3.2")
         self.setGeometry(50, 50, 1300, 850)
 
         mb = self.menuBar()
 
         # --- BARRA DE FERRAMENTAS (TURBINADA) ---
         self.toolbar = self.addToolBar("Atalhos Rápidos")
-        self.toolbar.setIconSize(QSize(15, 15))  # Aumentei levemente para 22px
+        self.toolbar.setIconSize(QSize(20, 20))  # Aumentei levemente para 22px
         self.toolbar.setMovable(False)
         self.toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)  # Só ícones
 
@@ -6439,6 +6669,23 @@ del "%~f0"
                 "Monitor de vencimentos")
         add_btn("Saldos NE", QStyle.StandardPixmap.SP_FileDialogListView, self.abrir_monitor_empenhos,
                 "Monitor de Saldos de Empenho")
+        # Adicione na toolbar
+        # Ícone que parece um atalho/tag
+        # --- BOTÃO DE FILTRO COM ÍCONE PERSONALIZADO ---
+        # Tenta carregar imagem, se não tiver, usa um padrão
+        caminho_funil = resource_path("icon_funnel.png")
+
+        if os.path.exists(caminho_funil):
+            icon_filtro = QIcon(caminho_funil)
+        else:
+            # Fallback se não achar a imagem (Usa o DetailedView)
+            icon_filtro = self.style().standardIcon(QStyle.StandardPixmap.SP_FileDialogDetailedView)
+
+        acao_filtro = QAction(icon_filtro, "Filtrar Tags", self)
+        acao_filtro.setToolTip("<b>Filtrar Tags</b><br>Filtrar contratos por categoria")
+        acao_filtro.triggered.connect(self.abrir_filtro_tags)
+        self.toolbar.addAction(acao_filtro)
+        # -----------------------------------------------
 
         self.toolbar.addSeparator()
 
@@ -6628,7 +6875,7 @@ del "%~f0"
         m_ajuda.addAction("Verificar Atualizações...", self.verificar_updates)
 
         txt_sobre = (
-            "GC Gestor de Contratos - Versão 3.1\n"
+            "GC Gestor de Contratos - Versão 3.2\n"
             "Desenvolvido em Python/PyQt6\n\n"
             "Autor: Cássio de Souza Lopes, servo de Jesus Cristo ✝.\n"
             "Servidor da Secretaria Municipal de Saúde de Montes Claros(MG)\nMestre em Desenvolvimento Social (UNIMONTES)\nBacharel em Economia(UNIMONTES)\nGraduando em Análise e Desenvolvimento de Sistemas (UNINTER)\n"
@@ -6977,38 +7224,62 @@ del "%~f0"
         b_nserv.clicked.connect(self.abrir_novo_servico)
         l_serv.addWidget(b_nserv)
 
-        # ... dentro de init_ui ...
-
+        # --- TABELA DE SERVIÇOS (REFORMULADA IGUAL À TELA INICIAL) ---
         self.tab_subcontratos = TabelaExcel()
         self.tab_subcontratos.setColumnCount(8)
         self.tab_subcontratos.setHorizontalHeaderLabels([
             "Descrição", "Valor Mensal", "Orçamento\n(neste ciclo)", "Empenhado", "Não Empenhado",
             "Total Pago", "Saldo de Empenhos", "Saldo Serviço"
         ])
+
         self.tab_subcontratos.cellDoubleClicked.connect(self.abrir_historico_servico)
 
-        # --- MELHORIA DE VISUALIZAÇÃO ---
-        # 1. Fonte menor para caber mais dados
-        self.tab_subcontratos.setStyleSheet("font-size: 14px; padding: 5px;")
+        # 1. Estilo Visual (Idêntico à Tela Inicial)
+        self.tab_subcontratos.setAlternatingRowColors(True)  # Linhas zebradas (Branco/Cinza)
+        self.tab_subcontratos.setWordWrap(True)  # Quebra de linha automática
 
-        # 2. Permitir quebra de linha nas células
-        self.tab_subcontratos.setWordWrap(True)
+        # 2. Correção dos Índices (Números laterais cortados)
+        v_header_sub = self.tab_subcontratos.verticalHeader()
+        v_header_sub.setVisible(True)
+        v_header_sub.setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
+        v_header_sub.setDefaultSectionSize(45)  # Altura da linha mais confortável
+        v_header_sub.setFixedWidth(40)  # Largura fixa para o número não cortar
 
-        # 3. Configuração de Colunas
+        # 3. Estilo CSS para alinhar as grades (Bordas perfeitas)
+        self.tab_subcontratos.setStyleSheet("""
+                    QTableWidget {
+                        font-size: 13px; 
+                        padding: 2px;
+                        border: 1px solid #d0d0d0;
+                        gridline-color: #e0e0e0; /* Cor da grade cinza suave */
+                    }
+                    QHeaderView::section {
+                        background-color: #f0f0f0;
+                        padding: 4px;
+                        border: 1px solid #d0d0d0;
+                        font-weight: bold;
+                    }
+                """)
+
+        # 4. Configuração de Colunas (Larguras)
         header_sub = self.tab_subcontratos.horizontalHeader()
-        # Descrição estica
+
+        # A Descrição (coluna 0) ganha destaque e flexibilidade
         header_sub.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
-        self.tab_subcontratos.setColumnWidth(0, 800)
-        # Valores se ajustam ao conteúdo
+        self.tab_subcontratos.setColumnWidth(0, 450)  # Largura inicial generosa
+
+        # As colunas de valores (1 a 7) se ajustam ao conteúdo
         for i in range(1, 8):
-            header_sub.setSectionResizeMode(i, QHeaderView.ResizeMode.ResizeToContents)
-        # --------------------------------
+            header_sub.setSectionResizeMode(i,
+                                            QHeaderView.ResizeMode.Stretch)  # Stretch distribui melhor que ResizeToContents aqui
 
         self.tab_subcontratos.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.tab_subcontratos.customContextMenuRequested.connect(self.menu_subcontrato)
         self.tab_subcontratos.setSortingEnabled(True)
 
         l_serv.addWidget(self.tab_subcontratos)
+        # -------------------------------------------------------------
+
         self.abas.addTab(tab_serv, "Serviços")
 
         # ABA 4: ADITIVOS
@@ -7063,86 +7334,185 @@ del "%~f0"
         self.stack.setCurrentIndex(0)
 
     def filtrar_contratos(self):
+        # Proteção para não quebrar se a tela ainda não existir
+        if not hasattr(self, 'inp_search') or not hasattr(self, 'tabela_resultados'):
+            return
+
         texto = self.inp_search.text().lower().strip()
 
         self.tabela_resultados.setSortingEnabled(False)
         self.tabela_resultados.setRowCount(0)
 
+        # Pega todos os contratos ativos (não anulados)
         contratos_visiveis = [c for c in self.db_contratos if not getattr(c, 'anulado', False)]
 
+        # Mapa para buscar prestador rápido
         mapa_prestadores = {p.nome_fantasia: p for p in self.db_prestadores}
 
         for c in contratos_visiveis:
+
+            # --- 1. REGRA DO FILTRO DE CATEGORIAS (O CÓDIGO QUE FALTAVA) ---
+            if self.filtros_tags:
+                mostrar_este = False
+                cat_atual = getattr(c, 'categoria', None)
+
+                # Se o contrato tem categoria e ela está na lista de filtros
+                if cat_atual and cat_atual in self.filtros_tags:
+                    mostrar_este = True
+
+                # Se o contrato NÃO tem categoria e "SEM_TAG" foi marcado no filtro
+                elif not cat_atual and "SEM_TAG" in self.filtros_tags:
+                    mostrar_este = True
+
+                # Se não passou na regra, pula para o próximo contrato (ESCONDE ESTE)
+                if not mostrar_este:
+                    continue
+                    # -------------------------------------------------------------------------
+
+            # --- 2. REGRA DA BUSCA POR TEXTO (EXISTENTE) ---
             p_obj = mapa_prestadores.get(c.prestador)
             razao = p_obj.razao_social.lower() if p_obj else ""
             cnpj = p_obj.cnpj.lower() if p_obj else ""
 
-            # --- LÓGICA A: VERIFICA O CONTRATO ---
-            match_contrato = (texto in c.numero.lower() or
+            match_contrato = (texto == "" or
+                              texto in c.numero.lower() or
                               texto in c.prestador.lower() or
                               texto in c.descricao.lower() or
                               texto in razao or
                               texto in cnpj)
 
-            # Se bater com o contrato ou a busca estiver vazia, adiciona a linha do contrato
-            if match_contrato or texto == "":
-                # Chamamos uma função auxiliar para não repetir código de preencher tabela
+            if match_contrato:
                 self._inserir_linha_na_tabela_pesquisa(c, None, p_obj)
 
-            # --- LÓGICA B: VERIFICA AS NOTAS DE EMPENHO ---
-            # Só pesquisamos dentro das NEs se o usuário digitou algo
+            # Busca nas NEs também
             if texto != "":
                 for ne in c.lista_notas_empenho:
-                    # Pula se a NE individual estiver anulada (opcional)
                     if getattr(ne, 'anulada', False): continue
-
                     if texto in ne.numero.lower() or texto in ne.descricao.lower():
-                        # Adiciona a NE como uma linha independente vinculada a este contrato
                         self._inserir_linha_na_tabela_pesquisa(c, ne, p_obj)
 
         self.tabela_resultados.setSortingEnabled(True)
+
+    def abrir_filtro_tags(self):
+        print("--- ABRINDO FILTRO ---")
+        print(f"Filtros atuais na memória: {self.filtros_tags}")
+
+        dial = DialogoFiltroTags(self.banco, self.filtros_tags, self)
+
+        if dial.exec():
+            # 1. Pega a seleção da janela
+            novos_filtros = dial.get_selecionados()
+            print(f"RETORNO DA JANELA: {novos_filtros}")  # <--- AQUI É O IMPORTANTE
+
+            # 2. Atualiza a memória
+            self.filtros_tags = novos_filtros
+
+            # 3. Tenta Salvar
+            print("Chamando salvar_config()...")
+            self.salvar_config()
+
+            # 4. Aplica na tela
+            self.filtrar_contratos()
+
+            # 5. Visual
+            if self.filtros_tags:
+                tags_str = ", ".join(self.filtros_tags)
+                self.status_bar.showMessage(f"⚠️ Filtro Ativo: {tags_str}")
+                self.tabela_resultados.setStyleSheet("QTableWidget { border: 2px solid #e67e22; }")
+            else:
+                self.status_bar.showMessage("Filtro de categorias removido.")
+                self.tabela_resultados.setStyleSheet("")
+        else:
+            print("Cancelou a janela de filtros.")
 
     def _inserir_linha_na_tabela_pesquisa(self, contrato, ne, p_obj):
         row = self.tabela_resultados.rowCount()
         self.tabela_resultados.insertRow(row)
 
+        # Função auxiliar para criar itens centralizados
         def item_centro(txt):
             it = QTableWidgetItem(str(txt))
             it.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             return it
 
+        # --- LÓGICA DE VISUALIZAÇÃO ---
         # Se vier uma NE, o ID é a NE. Se não, é o número do Contrato.
         if ne:
             txt_id = f"NE {ne.numero}"
+            # Na NE, mostramos que é um empenho
             txt_objeto = f"[EMPENHO] {ne.descricao}"
             txt_status = "Nota de Empenho"
             cor_status = "#2980b9"  # Azul
             dados_linha = {"tipo": "NE", "obj": ne, "contrato": contrato}
+
+            # (Opcional) Você pode herdar a cor da categoria do contrato aqui se quiser,
+            # mas vamos manter simples para NEs.
+            cor_texto_objeto = "black"
+
         else:
+            # É UMA LINHA DE CONTRATO
             txt_id = contrato.numero
-            txt_objeto = contrato.descricao
+
+            # --- AQUI ESTÁ A IMPLEMENTAÇÃO DAS TAGS ---
+            # Se o contrato tem categoria, coloca ela antes do nome. Ex: "[TI] Manutenção..."
+            if contrato.categoria and contrato.categoria != "None":
+                tag_badge = f"[{contrato.categoria}] "
+                txt_objeto = f"{tag_badge}{contrato.descricao}"
+                cor_texto_objeto = "#2c3e50"  # Um azul/cinza escuro para destacar
+            else:
+                txt_objeto = contrato.descricao
+                cor_texto_objeto = "black"
+            # ------------------------------------------
+
+            # Verifica vigência para o Status
             try:
                 fim = str_to_date(contrato.get_vigencia_final_atual())
-                txt_status = "Vigente" if fim >= datetime.now() else "Vencido"
+                if fim >= datetime.now():
+                    txt_status = "Vigente"
+                    cor_status = "#27ae60"  # Verde
+                else:
+                    txt_status = "Vencido"
+                    cor_status = "#c0392b"  # Vermelho
             except:
                 txt_status = "Erro Data"
-            cor_status = "#27ae60" if txt_status == "Vigente" else "#c0392b"
+                cor_status = "gray"
+
             dados_linha = {"tipo": "CONTRATO", "obj": contrato}
 
-        # Preenche as colunas (0 a 7)
+        # --- PREENCHENDO AS COLUNAS (0 a 7) ---
+
+        # 0. Contrato / ID
         self.tabela_resultados.setItem(row, 0, item_centro(txt_id))
+
+        # 1. Prestador (Fantasia)
         self.tabela_resultados.setItem(row, 1, item_centro(contrato.prestador))
+
+        # 2 a 5. Dados do Prestador (Razão, CNPJ, CNES, Cód)
         self.tabela_resultados.setItem(row, 2, item_centro(p_obj.razao_social if p_obj else "-"))
         self.tabela_resultados.setItem(row, 3, item_centro(p_obj.cnpj if p_obj else "-"))
         self.tabela_resultados.setItem(row, 4, item_centro(p_obj.cnes if p_obj else "-"))
         self.tabela_resultados.setItem(row, 5, item_centro(p_obj.cod_cp if p_obj else "-"))
-        self.tabela_resultados.setItem(row, 6, item_centro(txt_objeto))
 
+        # 6. Objeto (Descrição com a TAG)
+        it_obj = item_centro(txt_objeto)
+        it_obj.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)  # Alinha à esquerda
+        it_obj.setForeground(QColor(cor_texto_objeto))  # Aplica a cor da tag
+
+        # Se tiver categoria, põe em negrito para destacar
+        if contrato.categoria and not ne:
+            font = QFont()
+            font.setBold(True)
+            it_obj.setFont(font)
+
+        self.tabela_resultados.setItem(row, 6, it_obj)
+
+        # 7. Status
         it_st = item_centro(txt_status)
         it_st.setForeground(QColor(cor_status))
+        it_st.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
         self.tabela_resultados.setItem(row, 7, it_st)
 
-        # Guarda o segredo da linha na coluna 0 para o clique duplo
+        # Guarda o segredo da linha na coluna 0 para o clique duplo funcionar
         self.tabela_resultados.item(row, 0).setData(Qt.ItemDataRole.UserRole, dados_linha)
 
     def filtrar_financeiro(self):
@@ -7272,7 +7642,7 @@ del "%~f0"
         menu.exec(self.tabela_resultados.mapToGlobal(pos))
 
     def abrir_novo_contrato(self):
-        dial = DialogoCriarContrato(self.db_prestadores, parent=self)
+        dial = DialogoCriarContrato(self.db_prestadores, self.banco, parent=self)
 
         # --- LÓGICA DO TUTORIAL (ATUALIZADA) ---
         if self.em_tutorial:
@@ -7296,14 +7666,19 @@ del "%~f0"
         # ---------------------------------------
 
         if dial.exec():
-            dados = dial.get_dados()  # Retorna 11 itens agora
+            dados = dial.get_dados()
 
-            # Separa os 10 primeiros dados do sequencial (o último)
+            # --- PROTEÇÃO CONTRA CRASH ---
+            if len(dados) == 11:
+                # Se faltar a categoria, adiciona None no final
+                dados = dados + (None,)
+            # -----------------------------
+
             dados_base = dados[:10]
             seq_ini = dados[10]
+            cat = dados[11]  # Agora seguro
 
-            # Cria com a estrutura correta
-            novo_c = Contrato(*dados_base, sequencial_inicio=seq_ini)
+            novo_c = Contrato(*dados_base, sequencial_inicio=seq_ini, categoria=cat)
 
             self.db_contratos.append(novo_c)
             self.registrar_log("Criar Contrato", f"Novo contrato criado: {novo_c.numero} (Início: {seq_ini})")
@@ -7311,42 +7686,47 @@ del "%~f0"
             self.salvar_dados()
 
     def editar_contrato_externo(self, c):
-        # Passamos self.db_prestadores para o combobox funcionar
-        dial = DialogoCriarContrato(self.db_prestadores, contrato_editar=c, parent=self)
+        # Passamos self.db_prestadores e self.banco para o combobox funcionar e carregar tags
+        dial = DialogoCriarContrato(self.db_prestadores, self.banco, contrato_editar=c, parent=self)
 
         if dial.exec():
-            d = dial.get_dados()  # Retorna 11 itens
+            d = dial.get_dados()
 
-            # Desempacota os dados
+            # --- PROTEÇÃO CONTRA CRASH ---
+            if len(d) == 11:
+                d = d + (None,)
+            # -----------------------------
+
             (c.numero, c.prestador, c.descricao,
              novo_valor_inicial,
              c.vigencia_inicio, c.vigencia_fim,
              c.comp_inicio, c.comp_fim,
              c.licitacao, c.dispensa,
-             novo_sequencial) = d
+             novo_sequencial,
+             nova_categoria) = d
 
-            # Atualiza os valores numéricos no objeto
+            # Atualiza os campos
+            c.categoria = nova_categoria
             c.valor_inicial = novo_valor_inicial
 
-            # --- CORREÇÃO: Atualiza nome do Ciclo 0 se o sequencial mudou ---
+            # --- Lógica de Atualização do Ciclo 0 (Se o sequencial mudou) ---
             if hasattr(c, 'sequencial_inicio'):
                 c.sequencial_inicio = novo_sequencial
 
-                # Renomeia o primeiro ciclo para refletir o novo número (Ex: 35º Termo Aditivo)
+                # Renomeia o primeiro ciclo para refletir o novo número
                 if len(c.ciclos) > 0:
                     if novo_sequencial == 0:
                         c.ciclos[0].nome = "Contrato Inicial"
                     else:
                         c.ciclos[0].nome = f"{novo_sequencial}º Termo Aditivo"
-            # ---------------------------------------------------------------
 
-            # Atualiza também o valor base do Ciclo 0
-            if len(c.ciclos) > 0:
-                c.ciclos[0].valor_base = novo_valor_inicial
+                    # Atualiza também o valor base do Ciclo 0
+                    c.ciclos[0].valor_base = novo_valor_inicial
+            # ---------------------------------------------------------------
 
             self.registrar_log("Editar Contrato", f"Alterou dados base do contrato {c.numero}")
 
-            self.filtrar_contratos()
+            self.filtrar_contratos()  # Atualiza a tabela principal
             self.processar_alertas()
             self.salvar_dados()
 
@@ -10068,6 +10448,7 @@ class TelaCarregamento(QSplashScreen):
 if __name__ == "__main__":
     import sys
     import time
+    import ctypes
 
     # 1. Configurações Iniciais da App
     app = QApplication(sys.argv)
