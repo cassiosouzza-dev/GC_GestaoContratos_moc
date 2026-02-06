@@ -53,6 +53,19 @@ update_temp.exe
 debug_update.txt
 debug_nuvem.txt
 debug_importacao.txt
+* .exe
+* .zip
+
+banco_teste_funcionalidades.db
+dist 2.2
+dist3.1
+dist 3.2
+exe teste
+gerar_exe.bat
+temp_undo_point.json
+temp_upload_sync.json
+ver_icones.py
+
 
 # --- Arquivos Temporários de Teste ---
 dados_teste_unitario.json

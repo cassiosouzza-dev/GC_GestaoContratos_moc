@@ -41,7 +41,7 @@ else:
 # ------------------------------------------
 
 # --- CONFIGURAÇÃO DE ATUALIZAÇÃO ---
-VERSAO_ATUAL = 3.1
+VERSAO_ATUAL = 3.2
 
 # 1. URL do arquivo de versão (Deve ser RAW e apontar para a branch correta, geralmente 'main')
 URL_VERSAO_TXT = "https://raw.githubusercontent.com/cassiosouzza-dev/GC_GestaoContratos_moc/master/versao.txt"
