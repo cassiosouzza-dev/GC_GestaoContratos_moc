@@ -520,30 +520,45 @@ class SubContrato:
     def __init__(self, descricao, valor_mensal=0.0):
         self.descricao = descricao
         self.valor_mensal = valor_mensal
-        self.valores_por_ciclo = {}  # Começa vazio, sem vincular a nenhum ciclo
+        self.valores_por_ciclo = {}  # Dicionário: { id_ciclo (int): valor (float) }
 
     def get_valor_ciclo(self, id_ciclo):
-        return self.valores_por_ciclo.get(id_ciclo, 0.0)
+        # Garante que busca por Inteiro, mesmo que passem string
+        try:
+            return self.valores_por_ciclo.get(int(id_ciclo), 0.0)
+        except:
+            return 0.0
 
     def set_valor_ciclo(self, id_ciclo, valor):
-        self.valores_por_ciclo[id_ciclo] = valor
+        # Garante que grava como Inteiro na memória
+        try:
+            self.valores_por_ciclo[int(id_ciclo)] = valor
+        except:
+            pass
 
     def to_dict(self):
         d = self.__dict__.copy()
+        # Converte chaves INT para STR para o JSON aceitar (JSON não aceita chaves numéricas)
         d['valores_por_ciclo'] = {str(k): v for k, v in self.valores_por_ciclo.items()}
         return d
 
     @staticmethod
     def from_dict(d):
         v_mensal = d.get('valor_mensal', 0.0)
-        sub = SubContrato(d['descricao'], v_mensal)
-        if 'valores_por_ciclo' in d:
-            sub.valores_por_ciclo = {int(k): v for k, v in d['valores_por_ciclo'].items()}
-        # Compatibilidade com versões antigas que usavam valor_estimado solto
-        elif 'valor_estimado' in d:
-            sub.valores_por_ciclo[0] = d['valor_estimado']
-        return sub
+        sub = SubContrato(d.get('descricao', 'Serviço Sem Nome'), v_mensal)
 
+        # Reconstrói o dicionário convertendo chaves STR de volta para INT
+        if 'valores_por_ciclo' in d:
+            for k, v in d['valores_por_ciclo'].items():
+                try:
+                    sub.valores_por_ciclo[int(k)] = v
+                except:
+                    pass  # Ignora chaves inválidas
+        elif 'valor_estimado' in d:
+            # Compatibilidade com versões antigas (legado)
+            sub.valores_por_ciclo[0] = d['valor_estimado']
+
+        return sub
 
 class CicloFinanceiro:
     def __init__(self, id_ciclo, nome, valor_base):
@@ -596,6 +611,7 @@ class Contrato:
         self.lista_aditivos = []
         self.lista_servicos = []
         self._contador_aditivos = 0
+        self.ultimo_ciclo_id = 0
 
     def marcar_alteracao(self):
         self.ultima_modificacao = datetime.now().isoformat()
@@ -807,51 +823,42 @@ class Contrato:
 
     def to_dict(self):
         d = self.__dict__.copy()
+        # Transforma objetos em dicionários para o JSON
         d['ciclos'] = [c.to_dict() for c in self.ciclos]
         d['lista_notas_empenho'] = [ne.to_dict() for ne in self.lista_notas_empenho]
         d['lista_aditivos'] = [adt.to_dict() for adt in self.lista_aditivos]
+
+        # GARANTIA: Inclui a lista de serviços
         d['lista_servicos'] = [sub.to_dict() for sub in self.lista_servicos]
 
-        # O campo 'categoria' já vai automático pelo __dict__.copy(),
-        # mas garantimos que ele existe.
         return d
 
     @staticmethod
     def from_dict(d):
         c = Contrato(
-            d.get('numero'),
-            d.get('prestador'),
-            d.get('descricao'),
-            d.get('valor_inicial', 0.0),
-            d.get('vigencia_inicio'),
-            d.get('vigencia_fim'),
-            d.get('comp_inicio'),
-            d.get('comp_fim'),
-            d.get('licitacao', ''),
-            d.get('dispensa', ''),
-            d.get('ultima_modificacao'),
-            d.get('sequencial_inicio', 0),
-            d.get('categoria', None)
+            d.get('numero'), d.get('prestador'), d.get('descricao'), d.get('valor_inicial', 0.0),
+            d.get('vigencia_inicio'), d.get('vigencia_fim'), d.get('comp_inicio'), d.get('comp_fim'),
+            d.get('licitacao', ''), d.get('dispensa', ''), d.get('ultima_modificacao'),
+            d.get('sequencial_inicio', 0), d.get('categoria', None)
         )
         c.ultimo_ciclo_id = d.get('ultimo_ciclo_id', 0)
-        c.ciclos = [CicloFinanceiro.from_dict(cd) for cd in d.get('ciclos', [])]
-        c.lista_servicos = [SubContrato.from_dict(sd) for sd in d.get('lista_servicos', [])]
-        c.lista_aditivos = [Aditivo.from_dict(ad) for ad in d.get('lista_aditivos', [])]
-        c.lista_notas_empenho = [NotaEmpenho.from_dict(nd) for nd in d.get('lista_notas_empenho', [])]
-        c._contador_aditivos = d.get('_contador_aditivos', 0)
         c.anulado = d.get('anulado', False)
+        c.usuario_exclusao = d.get('usuario_exclusao')
+        c.data_exclusao = d.get('data_exclusao')
 
-        # Garante que campos novos existam
-        c.usuario_exclusao = d.get('usuario_exclusao', None)
-        c.data_exclusao = d.get('data_exclusao', None)
-        c.sequencial_inicio = d.get('sequencial_inicio', 0)  # Carrega se existir
+        c.ciclos = [CicloFinanceiro.from_dict(x) for x in d.get('ciclos', [])]
+        c.lista_aditivos = [Aditivo.from_dict(x) for x in d.get('lista_aditivos', [])]
+        c.lista_notas_empenho = [NotaEmpenho.from_dict(x) for x in d.get('lista_notas_empenho', [])]
 
-        # Reconecta aditivos de valor aos ciclos
+        # GARANTIA: Lê a lista de serviços de volta
+        c.lista_servicos = [SubContrato.from_dict(x) for x in d.get('lista_servicos', [])]
+
+        # Reconecta aditivos de valor aos ciclos (Lógica de recuperação)
         for adt in c.lista_aditivos:
             if adt.tipo == "Valor" and adt.ciclo_pertencente_id != -1:
                 for ciclo in c.ciclos:
                     if ciclo.id_ciclo == adt.ciclo_pertencente_id:
-                        ciclo.aditivos_valor.append(adt);
+                        ciclo.aditivos_valor.append(adt)
                         break
         return c
 
@@ -5707,8 +5714,10 @@ del "%~f0"
             CREATE_NEW_CONSOLE = 0x00000010
             subprocess.Popen([caminho_bat], creationflags=CREATE_NEW_CONSOLE, shell=True, env=env_limpo)
 
-            # Fecha o Python imediatamente
-            sys.exit(0)
+            # --- CORREÇÃO AQUI ---
+            # Mude de sys.exit(0) para os._exit(0)
+            # Isso encerra o processo imediatamente sem gerar diálogos de erro
+            os._exit(0)
 
         except Exception as e:
             if 'd_prog' in locals(): d_prog.close()
