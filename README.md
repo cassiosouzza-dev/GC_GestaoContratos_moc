@@ -2,7 +2,7 @@
 
 > **Sistema Corporativo de Gestão Contratual, Financeira e Auditoria.**
 
-![ABA Financeiro](https://raw.githubusercontent.com/{cassiosouzza-dev}/{GC_GestaoContratos_moc}/master/contrato_financ.png
+![ABA Financeiro](https://github.com/cassiosouzza-dev/GC_GestaoContratos_moc/blob/master/img/contrato_financ.png)
 
 > *Desenvolvido para alta performance, segurança e controle total.*
 
@@ -20,14 +20,14 @@ O **GC Gestor** é uma solução completa para administração de contratos púb
 
 * **Workspace Multi-Abas:** Trabalhe em vários contratos simultaneamente sem perder o foco.
 
-![Página Inicial](https://raw.githubusercontent.com/{cassiosouzza-dev}/{GC_GestaoContratos_moc}/master/pag_inicial.png
+![Página Inicial](https://github.com/cassiosouzza-dev/GC_GestaoContratos_moc/blob/master/img/pag_inicial.png)
 
 * **Gestão Financeira:** Controle de saldos de empenho, pagamentos parciais e anulações.
 * **BI & Analytics:** Tabelas dinâmicas (Pivot Tables) e gráficos gerados em tempo real.
 
-![Tabela Dinâmica](https://raw.githubusercontent.com/{cassiosouzza-dev}/{GC_GestaoContratos_moc}/master/BI.png
+![Tabela Dinâmica](https://github.com/cassiosouzza-dev/GC_GestaoContratos_moc/blob/master/img/BI.png)
 
-![Gráfico](https://raw.githubusercontent.com/{cassiosouzza-dev}/{GC_GestaoContratos_moc}/master/graficos.png)
+![Gráfico](https://github.com/cassiosouzza-dev/GC_GestaoContratos_moc/blob/master/img/BI.png)
 
 * **Auditoria IA (Gemini):** Inteligência Artificial integrada para analisar riscos e responder perguntas sobre seus contratos.
 * **Nuvem Híbrida:** Sincronização inteligente com Google Drive (trabalhe offline e sincronize depois).
