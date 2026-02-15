@@ -27,7 +27,7 @@ O **GC Gestor** é uma solução completa para administração de contratos púb
 
 ![Tabela Dinâmica](https://github.com/cassiosouzza-dev/GC_GestaoContratos_moc/blob/master/img/BI.png)
 
-![Gráfico](https://github.com/cassiosouzza-dev/GC_GestaoContratos_moc/blob/master/img/BI.png)
+![Gráfico](https://github.com/cassiosouzza-dev/GC_GestaoContratos_moc/blob/master/img/graficos.png)
 
 * **Auditoria IA (Gemini):** Inteligência Artificial integrada para analisar riscos e responder perguntas sobre seus contratos.
 * **Nuvem Híbrida:** Sincronização inteligente com Google Drive (trabalhe offline e sincronize depois).
