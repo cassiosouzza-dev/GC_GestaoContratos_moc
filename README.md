@@ -1,4 +1,5 @@
-# 📊 GC Gestor de Contratos Inteligente
+!(https://github.com/cassiosouzza-dev/GC_GestaoContratos_moc/blob/master/img/icon_gc.png)
+#GC Gestor de Contratos Inteligente
 
 > **Sistema Corporativo de Gestão Contratual, Financeira e Auditoria.**
 
