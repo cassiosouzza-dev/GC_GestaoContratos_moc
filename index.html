@@ -3,29 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GCI Gestor Pro | Versão 5.0</title>
+    <title>GCI | Gestão Contratual Inteligente</title>
     <link rel="icon" href="icon_gc.png" type="image/png">
 
     <style>
-        /* --- DEFINIÇÕES DE ESTILO CORPORATIVO --- */
         :root {
-            --corporate-blue: #003366;    /* Azul Institucional */
-            --corporate-dark: #1a1a1a;    /* Preto Suave */
-            --corporate-gray: #f4f4f4;    /* Fundo Secundário */
-            --border-color: #dcdcdc;      /* Bordas Sutis */
-            --text-main: #333333;         /* Texto Principal */
-            --text-light: #666666;        /* Texto Secundário */
+            --corporate-blue: #003366;
+            --corporate-dark: #1a1a1a;
+            --corporate-gray: #f4f4f4;
+            --border-color: #dcdcdc;
+            --text-main: #333333;
+            --text-light: #666666;
             --white: #ffffff;
         }
 
         * { margin: 0; padding: 0; box-sizing: border-box; }
-
-        body {
-            font-family: 'Segoe UI', Helvetica, Arial, sans-serif;
-            background-color: var(--white);
-            color: var(--text-main);
-            line-height: 1.6;
-        }
+        body { font-family: 'Segoe UI', Arial, sans-serif; background-color: var(--white); color: var(--text-main); line-height: 1.6; }
 
         header {
             background-color: var(--corporate-blue);
@@ -35,14 +28,10 @@
             border-bottom: 4px solid #002244;
         }
 
-        .container {
-            max-width: 1000px;
-            margin: 0 auto;
-            padding: 0 20px;
-        }
-
+        .container { max-width: 1000px; margin: 0 auto; padding: 0 20px; }
         .hero h1 { font-size: 2.5rem; margin-bottom: 10px; letter-spacing: -1px; }
         .hero p { font-size: 1.1rem; opacity: 0.9; font-weight: 300; }
+        
         .version-badge {
             display: inline-block;
             background: #e67e22;
@@ -54,13 +43,7 @@
             margin-top: 10px;
         }
 
-        /* SEÇÃO DE DOWNLOAD */
-        .download-section {
-            padding: 60px 0;
-            text-align: center;
-            background-color: var(--white);
-        }
-
+        .download-section { padding: 60px 0; text-align: center; }
         .btn-download {
             display: inline-block;
             background-color: var(--corporate-blue);
@@ -70,82 +53,21 @@
             border-radius: 5px;
             font-weight: bold;
             font-size: 1.2rem;
-            transition: background 0.3s;
+            transition: 0.3s;
             box-shadow: 0 4px 15px rgba(0,0,0,0.1);
         }
-
         .btn-download:hover { background-color: #004488; }
 
-        /* GRID DE RECURSOS v5.0 */
-        .features {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 30px;
-            padding: 40px 0;
-        }
-
-        .feature-card {
-            padding: 25px;
-            border: 1px solid var(--border-color);
-            border-radius: 8px;
-            background: var(--corporate-gray);
-        }
-
+        .features { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 30px; padding: 40px 0; }
+        .feature-card { padding: 25px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--corporate-gray); text-align: left; }
         .feature-card h3 { color: var(--corporate-blue); margin-bottom: 12px; font-size: 1.2rem; }
-        .feature-card p { font-size: 0.95rem; color: var(--text-light); }
 
-        /* GUIA DE INSTALAÇÃO */
-        .setup-guide {
-            background-color: #f9f9f9;
-            padding: 60px 0;
-            border-top: 1px solid var(--border-color);
-        }
-
+        .setup-guide { background-color: #f9f9f9; padding: 60px 0; border-top: 1px solid var(--border-color); }
         .setup-guide h2 { text-align: center; margin-bottom: 40px; color: var(--corporate-blue); }
+        .step-item { display: flex; align-items: flex-start; background: var(--white); padding: 20px; border-radius: 8px; border-left: 5px solid var(--corporate-blue); margin-bottom: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+        .step-number { background: var(--corporate-blue); color: var(--white); width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-right: 15px; flex-shrink: 0; font-weight: bold; }
 
-        .step-list {
-            display: flex;
-            flex-direction: column;
-            gap: 20px;
-        }
-
-        .step-item {
-            display: flex;
-            align-items: flex-start;
-            background: var(--white);
-            padding: 20px;
-            border-radius: 8px;
-            border-left: 5px solid var(--corporate-blue);
-            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
-        }
-
-        .step-number {
-            background: var(--corporate-blue);
-            color: var(--white);
-            width: 30px;
-            height: 30px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin-right: 15px;
-            flex-shrink: 0;
-            font-weight: bold;
-        }
-
-        .step-text h4 { margin-bottom: 5px; color: var(--corporate-dark); }
-        .step-text p { font-size: 0.9rem; color: var(--text-light); }
-
-        footer {
-            background-color: var(--corporate-dark);
-            color: #999;
-            padding: 40px 0;
-            text-align: center;
-            font-size: 0.85rem;
-        }
-
-        footer p { margin-bottom: 5px; }
-        
+        footer { background-color: var(--corporate-dark); color: #999; padding: 40px 0; text-align: center; font-size: 0.85rem; }
         code { background: #eee; padding: 2px 5px; border-radius: 3px; font-family: monospace; color: #c0392b; }
     </style>
 </head>
@@ -154,9 +76,9 @@
 
     <header>
         <div class="container hero">
-            <h1>GCI Gestão de Contratos Inteligente</h1>
-            <p>Ecossistema Avançado de Auditoria, BI e Inteligência Artificial</p>
-            <span class="version-badge">Versão 5.0 LTS</span>
+            <h1>GCI – Gestão Contratual Inteligente</h1>
+            <p>Ecossistema de Auditoria, Business Intelligence e IA Aplicada</p>
+            <span class="version-badge">Versão 5.0 Pro</span>
         </div>
     </header>
 
@@ -165,26 +87,24 @@
             <a href="https://github.com/cassiosouzza-dev/GC_GestaoContratos_moc/releases/latest/download/GC_Gestor.exe" class="btn-download">
                 Download GCI Gestor Pro (.exe)
             </a>
-            <p style="margin-top: 15px; font-size: 0.85rem; color: #999;">
-                Requisitos: Windows 10/11 x64 | Conexão com Internet
-            </p>
+            <p style="margin-top: 15px; font-size: 0.85rem; color: #999;">Windows 10/11 x64</p>
 
             <div class="features">
                 <div class="feature-card">
                     <h3>Workspace Multi-Abas</h3>
-                    <p>Gerencie múltiplos contratos e processos simultaneamente em uma interface de abas dinâmicas, similar aos navegadores modernos.</p>
+                    <p>Interface de alta produtividade para gestão de múltiplos processos e contratos de forma simultânea.</p>
                 </div>
                 <div class="feature-card">
                     <h3>Business Intelligence</h3>
-                    <p>Módulo de tabelas dinâmicas (Pivot) para análises gerenciais, projeções financeiras e evolução mensal de empenhos.</p>
+                    <p>Análise de dados com tabelas Pivot para acompanhamento financeiro e evolução de empenhos.</p>
                 </div>
                 <div class="feature-card">
-                    <h3>Auditoria com IA</h3>
-                    <p>Integração com Google Gemini para análise de objetos contratuais, identificação de riscos e geração de pareceres técnicos.</p>
+                    <h3>Auditoria via IA</h3>
+                    <p>Pareceres técnicos e análise de riscos gerados automaticamente através da integração com Google Gemini.</p>
                 </div>
                 <div class="feature-card">
-                    <h3>Sincronização 1Doc</h3>
-                    <p>RPA (Robotic Process Automation) integrado para captura automática de andamentos e pagamentos direto do portal oficial.</p>
+                    <h3>RPA e Automação</h3>
+                    <p>Sincronização robótica com portais oficiais (1Doc) para monitoramento em tempo real de movimentações.</p>
                 </div>
             </div>
         </div>
@@ -192,39 +112,33 @@
 
     <section class="setup-guide">
         <div class="container">
-            <h2>Guia de Implantação Rápida</h2>
-            
-            <div class="step-list">
-                <div class="step-item">
-                    <div class="step-number">1</div>
-                    <div class="step-text">
-                        <h4>Diretório de Trabalho</h4>
-                        <p>Extraia o executável em uma pasta fixa (Ex: <code>C:\GCI_Gestor</code>). O sistema agora isola o banco de dados <code>dados_sistema.db</code> para maior segurança em atualizações.</p>
-                    </div>
+            <h2>Implantação do Sistema</h2>
+            <div class="step-item">
+                <div class="step-number">1</div>
+                <div class="step-text">
+                    <h4>Diretório Persistente</h4>
+                    <p>Mantenha o executável em uma pasta exclusiva (ex: <code>C:\GCI</code>). Os arquivos de banco de dados e login serão preservados neste local.</p>
                 </div>
-
-                <div class="step-item">
-                    <div class="step-number">2</div>
-                    <div class="step-text">
-                        <h4>Credenciais de IA</h4>
-                        <p>Para habilitar a Inteligência Artificial, insira sua chave do Google Gemini no arquivo <code>chave_api.txt</code> na mesma pasta do programa.</p>
-                    </div>
+            </div>
+            <div class="step-item">
+                <div class="step-number">2</div>
+                <div class="step-text">
+                    <h4>Ativação da IA</h4>
+                    <p>Adicione sua chave de API no arquivo <code>chave_api.txt</code> para liberar as funções de inteligência artificial.</p>
                 </div>
-
-                <div class="step-item">
-                    <div class="step-number">3</div>
-                    <div class="step-text">
-                        <h4>Primeiro Acesso</h4>
-                        <p>Ao iniciar, utilize a opção <b>"Criar Nova Conta"</b>. Suas credenciais serão salvas de forma persistente e criptografada no diretório local.</p>
-                    </div>
+            </div>
+            <div class="step-item">
+                <div class="step-number">3</div>
+                <div class="step-text">
+                    <h4>Acesso ao Sistema</h4>
+                    <p>No primeiro acesso, selecione <b>"Criar Nova Conta"</b> para registrar seu perfil de administrador local.</p>
                 </div>
-
-                <div class="step-item">
-                    <div class="step-number">4</div>
-                    <div class="step-text">
-                        <h4>Manual do Usuário</h4>
-                        <p>Consulte o <a href="https://github.com/cassiosouzza-dev/GC_GestaoContratos_moc/blob/master/MANUAL_DO_SISTEMA.pdf" target="_blank">Manual Técnico</a> para aprender a configurar os robôs de busca e as tabelas de BI.</p>
-                    </div>
+            </div>
+            <div class="step-item">
+                <div class="step-number">4</div>
+                <div class="step-text">
+                    <h4>Manual Técnico</h4>
+                    <p>Consulte o <a href="https://github.com/cassiosouzza-dev/GC_GestaoContratos_moc/blob/master/MANUAL_DO_SISTEMA.pdf" target="_blank">Manual do Usuário</a> para guias de configuração avançada.</p>
                 </div>
             </div>
         </div>
@@ -232,8 +146,8 @@
 
     <footer>
         <div class="container">
-            <p>GCI Gestor - Sistema de Gestão de Contratos e Convênios &copy; 2026</p>
-            <p>Desenvolvido por Cássio de Souza Lopes | Projeto de Extensão Universitária</p>
+            <p>GCI – Gestão Contratual Inteligente &copy; 2026</p>
+            <p>Cássio de Souza Lopes | Tecnologia para a Gestão Pública</p>
         </div>
     </footer>
 
