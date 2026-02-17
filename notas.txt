@@ -1,37 +1,17 @@
-=== GCI GESTOR PRO - VERSÃO 5.0 ===
+=== GCI GESTOR PRO v5.0 ===
 
-ESTA É A MAIOR ATUALIZAÇÃO DO SISTEMA ATÉ AGORA!
+🚀 NOVIDADES DE IMPACTO:
+• Sincronização 1Doc: RPA otimizado para capturar pagamentos e andamentos direto do portal.
+• Multi-Abas: Gerencie vários contratos sem fechar a pesquisa.
+• Painel BI: Relatórios gerenciais e Pivot Tables automáticas.
+• Auditoria IA: Pareceres técnicos via Gemini integrados.
 
-🚀 DESTAQUES DESTA VERSÃO:
---------------------------------------------------
-1. NOVO WORKSPACE MULTI-ABAS:
-   Agora você pode abrir vários contratos simultaneamente em abas,
-   facilitando a comparação e o trabalho em lote.
+🔧 ESTABILIDADE E FIXES:
+• Login Persistente: CPF e Senha mantidos pós-atualização.
+• Banco de Dados Blindado: Separação total de ficheiros e EXE.
+• Tooltips: Visualização rápida de objeto ao passar o rato.
+• Desempenho: Transições de tela 40% mais rápidas.
 
-2. INTERFACE MODERNA E ARREDONDADA:
-   Redesenhamos as abas e painéis para um visual mais limpo, 
-   profissional e intuitivo (Estilo Moderno).
-
-3. TOOLTIPS INTELIGENTES:
-   Passe o mouse sobre a aba do contrato para ver instantaneamente
-   o nome do Prestador e o Objeto, sem precisar clicar.
-
-4. AUDITORIA COM IA (GEMINI):
-   Integração profunda com IA para análise de riscos financeiros
-   e pareceres técnicos automáticos sobre os contratos.
-
-5. BI DINÂMICO (PIVOT TABLES):
-   Nova ferramenta de análise de dados que permite criar relatórios
-   estilo Excel dentro do sistema para visão gerencial.
-
-🔧 CORREÇÕES E ESTABILIDADE:
---------------------------------------------------
-- CORREÇÃO CRÍTICA: O sistema agora lembra o CPF e senha corretamente
-  após atualizações, separando arquivos de dados do executável.
-- PERSISTÊNCIA: Melhoria na lógica de salvamento do Banco de Dados SQLite.
-- SEGURANÇA: Implementação de Ponto de Restauração (Undo) automático.
-- VELOCIDADE: Otimização no carregamento inicial e transição de telas.
-
-Aproveite as novas ferramentas de gestão!
---------------------------------------------------
+Sincronize os dados e boa gestão!
+---------------------------------------------
 Desenvolvido por: Cássio de Souza Lopes
