@@ -1,41 +1,37 @@
-🚀 Notas de Atualização - Versão 4.2 (Edição Multiplataforma)
-🎨 Interface e Experiência do Usuário (UI/UX)
-Tema Híbrido "Fusion": Implementação do estilo nativo Fusion, garantindo uma aparência profissional e consistente tanto no Windows quanto no Linux (Ubuntu), eliminando o visual datado do estilo clássico.
+=== GCI GESTOR PRO - VERSÃO 5.0 ===
 
-Abertura Instantânea: Remoção de animações de opacidade (fade-in) para otimizar a performance em processadores i5 e evitar conflitos com o servidor gráfico Wayland do Linux.
+ESTA É A MAIOR ATUALIZAÇÃO DO SISTEMA ATÉ AGORA!
 
-Identidade no Sistema: Configuração de identificadores de desktop para que o ícone do sistema apareça corretamente na barra de tarefas (Dock) do Ubuntu.
+🚀 DESTAQUES DESTA VERSÃO:
+--------------------------------------------------
+1. NOVO WORKSPACE MULTI-ABAS:
+   Agora você pode abrir vários contratos simultaneamente em abas,
+   facilitando a comparação e o trabalho em lote.
 
-Cabeçalhos Inteligentes: Redimensionamento automático e aumento da altura mínima dos cabeçalhos das tabelas, permitindo a leitura completa de títulos longos e valores.
+2. INTERFACE MODERNA E ARREDONDADA:
+   Redesenhamos as abas e painéis para um visual mais limpo, 
+   profissional e intuitivo (Estilo Moderno).
 
-📊 Business Intelligence (Tabela Dinâmica)
-Drag & Drop Bidirecional: Agora é possível arrastar campos de volta para a lista de origem para removê-los da análise.
+3. TOOLTIPS INTELIGENTES:
+   Passe o mouse sobre a aba do contrato para ver instantaneamente
+   o nome do Prestador e o Objeto, sem precisar clicar.
 
-Ações de Atalho: Adicionado suporte a duplo clique para devolver itens à lista e menu de contexto (clique direito) para filtragem rápida.
+4. AUDITORIA COM IA (GEMINI):
+   Integração profunda com IA para análise de riscos financeiros
+   e pareceres técnicos automáticos sobre os contratos.
 
-Botão Limpar Tudo: Novo recurso de "Reset" que devolve todos os campos para a origem e limpa a tabela de resultados com um único clique.
+5. BI DINÂMICO (PIVOT TABLES):
+   Nova ferramenta de análise de dados que permite criar relatórios
+   estilo Excel dentro do sistema para visão gerencial.
 
-Filtro Global: Capacidade de filtrar qualquer variável do banco de dados, independentemente de ela estar sendo usada como linha ou coluna no momento.
+🔧 CORREÇÕES E ESTABILIDADE:
+--------------------------------------------------
+- CORREÇÃO CRÍTICA: O sistema agora lembra o CPF e senha corretamente
+  após atualizações, separando arquivos de dados do executável.
+- PERSISTÊNCIA: Melhoria na lógica de salvamento do Banco de Dados SQLite.
+- SEGURANÇA: Implementação de Ponto de Restauração (Undo) automático.
+- VELOCIDADE: Otimização no carregamento inicial e transição de telas.
 
-🤖 Inteligência Artificial (Gemini 1.5 Flash)
-Auditoria Contextual: A IA agora analisa apenas os dados visíveis (filtrados) na tela, permitindo auditorias específicas sobre um único prestador ou período.
-
-Aviso de Depreciação: Limpeza do terminal com a supressão de avisos de bibliotecas antigas do Google.
-
-Blindagem de Fontes: Detecção automática do sistema operacional para alternar entre fontes Microsoft (Segoe UI) e Linux (Sans-serif), evitando travamentos no Matplotlib.
-
-💰 Monitor de Empenhos e Saldos
-Filtros de Vigência: Adicionado checkbox para visualizar apenas NEs do Ciclo Vigente, limpando o histórico de empenhos antigos da visão de saldo atual.
-
-Filtro por Ano: Novo seletor de ano que detecta automaticamente todas as datas de emissão presentes no banco de dados.
-
-Status Visual (Badges): Implementação de etiquetas coloridas (Vigente, Crítico, Vencido) que se adaptam ao tema claro ou escuro.
-
-🛠️ Estabilidade e Correções Técnicas
-Proteção de API Windows: Blindagem total de chamadas ctypes e windll, garantindo que o programa ignore funções de registro do Windows ao rodar no Linux.
-
-Prevenção de Crash (NoneType): Correção no carregamento de gráficos que fechava o programa caso nenhum contrato estivesse selecionado.
-
-Otimização de Performance: Inserção de dados em massa com desativação temporária de ordenação, acelerando o carregamento de grandes tabelas.
-
-Ajuste de Layout: Correção de erros de redundância em layouts horizontais que geravam avisos no terminal.
+Aproveite as novas ferramentas de gestão!
+--------------------------------------------------
+Desenvolvido por: Cássio de Souza Lopes
