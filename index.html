@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GC Gestor | Sistema de Gestão Contratual</title>
+    <link rel="icon" href="icon_gc.png" type="image/png">
+
+    <style>
+        /* --- DEFINIÇÕES DE ESTILO CORPORATIVO --- */
+        :root {
+            --corporate-blue: #003366;    /* Azul Institucional */
+            --corporate-dark: #1a1a1a;    /* Preto Suave */
+            --corporate-gray: #f4f4f4;    /* Fundo Secundário */
+            --border-color: #dcdcdc;      /* Bordas Sutis */
+            --text-main: #333333;         /* Texto Principal */
+            --text-light: #666666;        /* Texto Secundário */
+            --white: #ffffff;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI', Helvetica, Arial, sans-serif;
+            background-color: var(--white);
+            color: var(--text-main);
+            line-height: 1.6;
+        }
+
+        /* BARRA SUPERIOR */
+        header {
+            background-color: var(--white);
+            border-bottom: 1px solid var(--border-color);
+            padding: 15px 0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+
+        .header-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo-area {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .sys-icon {
+            width: 40px;
+            height: 40px;
+        }
+
+        .logo-title {
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: var(--corporate-blue);
+            letter-spacing: -0.5px;
+        }
+
+        .version-tag {
+            font-size: 0.75rem;
+            background-color: #eee;
+            color: #555;
+            padding: 2px 8px;
+            border-radius: 3px;
+            border: 1px solid #ccc;
+            margin-left: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        /* SEÇÃO PRINCIPAL (HERO) */
+        .hero-section {
+            padding: 80px 0;
+            text-align: center;
+            background: linear-gradient(to bottom, #ffffff 0%, #f8f9fa 100%);
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            color: var(--corporate-dark);
+            margin-bottom: 20px;
+            font-weight: 600;
+        }
+
+        .subtitle {
+            font-size: 1.1rem;
+            color: var(--text-light);
+            max-width: 700px;
+            margin: 0 auto 40px auto;
+        }
+
+        .cta-button {
+            display: inline-block;
+            background-color: var(--corporate-blue);
+            color: var(--white);
+            padding: 12px 35px;
+            font-size: 1rem;
+            font-weight: 600;
+            text-decoration: none;
+            border-radius: 4px;
+            transition: background-color 0.2s;
+            border: 1px solid #002244;
+        }
+
+        .cta-button:hover {
+            background-color: #002244;
+        }
+
+        .system-requirements {
+            margin-top: 15px;
+            font-size: 0.85rem;
+            color: var(--text-light);
+        }
+
+        /* ÁREA DA IMAGEM */
+        .screenshot-wrapper {
+            margin-top: 50px;
+            padding: 10px;
+            background-color: var(--white);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+            display: inline-block;
+        }
+
+        .print-img {
+            max-width: 100%;
+            height: auto;
+            display: block;
+        }
+
+        /* FUNCIONALIDADES */
+        .features-section {
+            background-color: var(--corporate-gray);
+            padding: 60px 0;
+            border-top: 1px solid var(--border-color);
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .grid-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+            margin-top: 30px;
+        }
+
+        .feature-card {
+            background: var(--white);
+            padding: 25px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+        }
+
+        .feature-card h3 {
+            color: var(--corporate-blue);
+            font-size: 1.1rem;
+            margin-bottom: 10px;
+            border-bottom: 2px solid #eee;
+            padding-bottom: 10px;
+        }
+
+        .feature-card p {
+            font-size: 0.95rem;
+            color: var(--text-light);
+        }
+
+        /* GUIA DE INSTALAÇÃO */
+        .installation-guide {
+            padding: 60px 0;
+        }
+
+        .section-title {
+            text-align: center;
+            font-size: 1.8rem;
+            color: var(--corporate-dark);
+            margin-bottom: 40px;
+        }
+
+        .step-item {
+            display: flex;
+            align-items: flex-start;
+            margin-bottom: 20px;
+            background-color: var(--white);
+            border-bottom: 1px solid #eee;
+            padding-bottom: 20px;
+        }
+
+        .step-number {
+            background-color: var(--corporate-blue);
+            color: var(--white);
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            border-radius: 3px;
+            margin-right: 15px;
+            flex-shrink: 0;
+        }
+
+        .step-text h4 {
+            font-size: 1.05rem;
+            margin-bottom: 5px;
+            color: var(--corporate-dark);
+        }
+
+        .step-text p {
+            font-size: 0.95rem;
+            color: var(--text-light);
+        }
+
+        code {
+            background-color: #f0f0f0;
+            padding: 2px 6px;
+            font-family: Consolas, monospace;
+            font-size: 0.9em;
+            color: #c7254e;
+        }
+
+        /* RODAPÉ */
+        footer {
+            background-color: var(--corporate-dark);
+            color: #aaa;
+            text-align: center;
+            padding: 30px 0;
+            font-size: 0.85rem;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="container header-content">
+            <div class="logo-area">
+                <img src="icon_gc.png" alt="Logotipo do Sistema" class="sys-icon">
+                <div>
+                    <div class="logo-title">GC Gestor</div>
+                    <div style="font-size: 0.8rem; color: #666; line-height: 1;">Soluções em Contratos Públicos</div>
+                </div>
+                <span class="version-tag">Versão 1.0</span>
+            </div>
+        </div>
+    </header>
+
+    <section class="hero-section">
+        <div class="container">
+            <h1>Sistema Integrado de Gestão Contratual</h1>
+            <p class="subtitle">
+                Software especializado para auditoria de empenhos, controle de saldos orçamentários,
+                gestão de aditivos e conformidade administrativa. Projetado para eficiência e transparência.
+            </p>
+
+            <a href="https://github.com/cassiosouzza-dev/GC_GestaoContratos_moc/releases/latest/download/GC_Gestor.zip" class="cta-button">
+                Download do Executável
+            </a>
+
+            <div class="system-requirements">
+                Compatibilidade: Microsoft Windows 10/11 (64-bits) • Arquitetura Portable (Sem Instalação)
+            </div>
+
+            <div class="screenshot-wrapper">
+                <img src="print_sistema.png" alt="Interface do Sistema GC Gestor" class="print-img">
+            </div>
+        </div>
+    </section>
+
+    <section class="features-section">
+        <div class="container">
+            <div class="grid-cards">
+                <div class="feature-card">
+                    <h3>Análise Preditiva e IA</h3>
+                    <p>Módulo integrado de inteligência artificial para consulta em linguagem natural e análise de riscos contratuais, identificando inconformidades em datas e saldos.</p>
+                </div>
+                <div class="feature-card">
+                    <h3>Integridade de Dados</h3>
+                    <p>Sistema de versionamento com backups automáticos locais (.bak) e funcionalidade de reversão de operações críticas (Rollback/Undo), garantindo segurança da informação.</p>
+                </div>
+                <div class="feature-card">
+                    <h3>Relatórios Gerenciais</h3>
+                    <p>Emissão de extratos detalhados em formato HTML/PDF, prontos para compor processos administrativos e prestações de contas oficiais.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="installation-guide">
+        <div class="container">
+            <h2 class="section-title">Procedimentos de Instalação e Acesso</h2>
+
+            <div style="max-width: 800px; margin: 0 auto;">
+                <div class="step-item">
+                    <div class="step-number">1</div>
+                    <div class="step-text">
+                        <h4>Download e Extração</h4>
+                        <p>O sistema utiliza arquitetura <i>Portable</i> para facilitar o uso sem privilégios administrativos. Baixe o arquivo comprimido (ZIP) e extraia todo o conteúdo para uma pasta local segura.</p>
+                    </div>
+                </div>
+
+                <div class="step-item">
+                    <div class="step-number">2</div>
+                    <div class="step-text">
+                        <h4>Configuração de Ambiente</h4>
+                        <p>Certifique-se de que o arquivo <code>chave_api.txt</code> (contendo a credencial da API Gemini (IA)) esteja presente no diretório raiz para habilitar os módulos de inteligência.</p>
+                    </div>
+                </div>
+
+                <div class="step-item">
+                    <div class="step-number">3</div>
+                    <div class="step-text">
+                        <h4>Inicialização e Credenciais</h4>
+                        <p>Execute o arquivo! <code>GC_Gestor.exe</code>. No primeiro acesso, selecione a opção <b>"Criar Nova Conta"</b> para definir as credenciais de Administrador do sistema.</p>
+                    </div>
+                </div>
+
+                <div class="step-item">
+                    <div class="step-number">4</div>
+                    <div class="step-text">
+                        <h4>Operação Inicial</h4>
+                        <p>Após a autenticação, acesse o menu <b>Cadastros > Gerenciar Prestadores</b> para iniciar o povoamento da base de dados.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <footer>
+        <div class="container">
+            <p>GC Gestor - Sistema de Gestão de Contratos e Convênios &copy; 2026</p>
+            <p>Desenvolvido por Cássio de Souza Lopes | Uso exclusivo autorizado.</p>
+        </div>
+    </footer>
+
+</body>
+
+</html>
