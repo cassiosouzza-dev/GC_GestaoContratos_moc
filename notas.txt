@@ -1,4 +1,6 @@
-=== GCI GESTOR PRO v5.0 ===
+            === GCI GESTOR PRO v5.0 ===
+
+<<<<<<<<<<< ATENÇÃO!!! EFETUE NOVO CADASTRO APÓS A ATULIZAÇÃO DEVIDO À IMPLEMENTAÇÃO DO "LEMBRAR SENHA E CPF" !!!! >>>>>>>>
 
 🚀 NOVIDADES DE IMPACTO:
 • Sincronização 1Doc: RPA otimizado para capturar pagamentos e andamentos direto do portal.
@@ -15,3 +17,4 @@
 Sincronize os dados e boa gestão!
 ---------------------------------------------
 Desenvolvido por: Cássio de Souza Lopes
+
