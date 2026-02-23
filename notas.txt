@@ -1,20 +1,45 @@
-            === GCI GESTOR PRO v5.0 ===
+=========================================================
+🚀 NOTAS DE ATUALIZAÇÃO - GCI Workspace (VERSÃO 5.1)
+=========================================================
+Data de Lançamento: 23 de Fevereiro de 2026
 
-<<<<<<<<<<< ATENÇÃO!!! EFETUE NOVO CADASTRO APÓS A ATULIZAÇÃO DEVIDO À IMPLEMENTAÇÃO DO "LEMBRAR SENHA E CPF" !!!! >>>>>>>>
+A Versão 5.0 do GCI traz a maior reestruturação interna 
+já feita no sistema. O foco desta atualização é a garantia 
+absoluta da integridade dos seus dados, prevenção contra 
+falhas e uma arquitetura de código totalmente nova.
 
-🚀 NOVIDADES DE IMPACTO:
-• Sincronização 1Doc: RPA otimizado para capturar pagamentos e andamentos direto do portal.
-• Multi-Abas: Gerencie vários contratos sem fechar a pesquisa.
-• Painel BI: Relatórios gerenciais e Pivot Tables automáticas.
-• Auditoria IA: Pareceres técnicos via Gemini integrados.
+🛡️ SEGURANÇA E PROTEÇÃO CONTRA PERDAS:
+- Salvamento Silencioso (Auto-Save): Seu trabalho nunca 
+  mais será perdido! O sistema agora possui um motor de 
+  salvamento persistente que grava suas alterações em 
+  segundo plano tentando gravar repetidamente por 10 
+  segundosmesmo se houver outro  processo em andamento,
+  sem travar a tela ou interromper o seu fluxo de trabalho.
+- Novo Motor de Backup Diário: O GCI agora cria uma cópia 
+  de segurança invisível do banco de dados no seu primeiro 
+  acesso do dia.
+- Faxina de Disco (Auto-limpeza): Para não lotar o seu 
+  computador, o sistema gerencia os backups sozinho, 
+  mantendo apenas os últimos 30 dias salvos e apagando 
+  os mais antigos de forma autônoma.
 
-🔧 ESTABILIDADE E FIXES:
-• Login Persistente: CPF e Senha mantidos pós-atualização.
-• Banco de Dados Blindado: Separação total de ficheiros e EXE.
-• Tooltips: Visualização rápida de objeto ao passar o rato.
-• Desempenho: Transições de tela 40% mais rápidas.
+⚙️ INTEGRIDADE E TRATAMENTO DE ERROS:
+- Teste de Sanidade de Dados: Antes de gravar qualquer 
+  alteração, o banco de dados agora realiza um "Teste de 
+  Sanidade" invisível. Se houver qualquer dado corrompido, 
+  o sistema bloqueia a gravação e protege o banco principal.
+- Proteção de Inicialização: Erros silenciosos foram 
+  eliminados. Se o sistema não encontrar arquivos vitais 
+  (como a chave de IA ou o banco), ele exibe diagnósticos 
+  claros em vez de simplesmente fechar.
 
-Sincronize os dados e boa gestão!
----------------------------------------------
-Desenvolvido por: Cássio de Souza Lopes
+🏗️ REFATORAÇÃO E ARQUITETURA:
+- Modularização do Sistema: O código-fonte ("Engine") foi 
+  completamente refatorado e dividido em módulos independentes 
+  (Database, Sync, Workspace, Utilitários). Isso torna o 
+  aplicativo mais leve, mais rápido para iniciar e elimina 
+  conflitos de memória em execuções longas.
 
+=========================================================
+Obrigado por utilizar o GCI Gestão Contratual Inteligente!
+Seus dados agora estão blindados e seguros.
