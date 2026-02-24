@@ -1,45 +1,46 @@
-=========================================================
-🚀 NOTAS DE ATUALIZAÇÃO - GCI Workspace (VERSÃO 5.1)
-=========================================================
-Data de Lançamento: 23 de Fevereiro de 2026
+=============================================================================
+NOTAS DE ATUALIZAÇÃO - GCI GESTOR PRO (VERSÃO 5.3)
+=============================================================================
+Resumo das alterações arquiteturais, correções de bugs e melhorias de nuvem.
 
-A Versão 5.0 do GCI traz a maior reestruturação interna 
-já feita no sistema. O foco desta atualização é a garantia 
-absoluta da integridade dos seus dados, prevenção contra 
-falhas e uma arquitetura de código totalmente nova.
+1. SINCRONIZAÇÃO GRANULAR E RESOLUÇÃO DE CONFLITOS (TIMESTAMPS)
+-----------------------------------------------------------------------------
+- Adicionado o campo 'ultima_modificacao' e o método 'marcar_alteracao()' 
+  em todas as classes filhas (Serviços, Aditivos, NEs e Movimentações).
+- Refatoração da função '_mesclar_contratos_profundamente': o sistema agora 
+  funde dados linha a linha. Se dois usuários editarem sub-itens diferentes 
+  no mesmo contrato, ambas as edições são mantidas. Se editarem o mesmo item, 
+  a edição cronologicamente mais recente prevalece.
 
-🛡️ SEGURANÇA E PROTEÇÃO CONTRA PERDAS:
-- Salvamento Silencioso (Auto-Save): Seu trabalho nunca 
-  mais será perdido! O sistema agora possui um motor de 
-  salvamento persistente que grava suas alterações em 
-  segundo plano tentando gravar repetidamente por 10 
-  segundosmesmo se houver outro  processo em andamento,
-  sem travar a tela ou interromper o seu fluxo de trabalho.
-- Novo Motor de Backup Diário: O GCI agora cria uma cópia 
-  de segurança invisível do banco de dados no seu primeiro 
-  acesso do dia.
-- Faxina de Disco (Auto-limpeza): Para não lotar o seu 
-  computador, o sistema gerencia os backups sozinho, 
-  mantendo apenas os últimos 30 dias salvos e apagando 
-  os mais antigos de forma autônoma.
+2. EXCLUSÃO DEFINITIVA EM NUVEM (SISTEMA DE TOMBSTONES / LISTA NEGRA)
+-----------------------------------------------------------------------------
+- Criação da tabela 'exclusoes_pendentes' no banco SQLite local.
+- Itens excluídos agora têm seu UID registrado nesta lista negra local, que 
+  passa a ser transmitida para o JSON da nuvem na chave 'tombstones'.
+- Correção de Falha (Fantasmas): Ao baixar dados da nuvem, o sistema agora 
+  lê a lista negra e destrói ativamente os itens apagados que ainda pudessem 
+  estar na memória de computadores desatualizados.
+- Corrigida a indentação do Bloco de Exclusão (Bloco 6), garantindo que a 
+  faxina ocorra independentemente da estrutura do contrato importado.
 
-⚙️ INTEGRIDADE E TRATAMENTO DE ERROS:
-- Teste de Sanidade de Dados: Antes de gravar qualquer 
-  alteração, o banco de dados agora realiza um "Teste de 
-  Sanidade" invisível. Se houver qualquer dado corrompido, 
-  o sistema bloqueia a gravação e protege o banco principal.
-- Proteção de Inicialização: Erros silenciosos foram 
-  eliminados. Se o sistema não encontrar arquivos vitais 
-  (como a chave de IA ou o banco), ele exibe diagnósticos 
-  claros em vez de simplesmente fechar.
+3. PREVENÇÃO DE PAGAMENTOS DUPLICADOS (IDEMPOTÊNCIA)
+-----------------------------------------------------------------------------
+- Trava de Backend: A função 'realizar_pagamento' foi blindada. O sistema 
+  agora recusa a criação de pagamentos com Valor, Competência e Observação 
+  idênticos, exigindo que o usuário diferencie parcelas (ex: "Parcela 2").
+- Deduplicação Ativa (Auto-Tombstone): Adicionada rotina na união de dados 
+  que rastreia pagamentos legados idênticos. Caso encontre clones exatos, 
+  mantém o mais recente e envia o UID do clone "perdedor" para a Lista Negra, 
+  limpando a base de dados automaticamente.
 
-🏗️ REFATORAÇÃO E ARQUITETURA:
-- Modularização do Sistema: O código-fonte ("Engine") foi 
-  completamente refatorado e dividido em módulos independentes 
-  (Database, Sync, Workspace, Utilitários). Isso torna o 
-  aplicativo mais leve, mais rápido para iniciar e elimina 
-  conflitos de memória em execuções longas.
+4. INTERFACE E USABILIDADE (BUG DO CURSOR)
+-----------------------------------------------------------------------------
 
-=========================================================
-Obrigado por utilizar o GCI Gestão Contratual Inteligente!
-Seus dados agora estão blindados e seguros.
+
+5. ESTABILIDADE E LOGS (DEBUG)
+-----------------------------------------------------------------------------
+
+
+=============================================================================
+SISTEMA PRONTO PARA COMPILAÇÃO (.EXE) PARA AMBIENTE DE PRODUÇÃO.
+=============================================================================
