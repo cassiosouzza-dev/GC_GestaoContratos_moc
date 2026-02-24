@@ -1,46 +1,47 @@
 =============================================================================
-NOTAS DE ATUALIZAÇÃO - GCI GESTOR PRO (VERSÃO 5.3)
+NOTAS DE ATUALIZAÇÃO - SISTEMA DE "DESFAZER" E ESTADO DE TELA
 =============================================================================
-Resumo das alterações arquiteturais, correções de bugs e melhorias de nuvem.
+Resumo das correções no motor de restauração (Ctrl+Alt+Z) e interface gráfica.
 
-1. SINCRONIZAÇÃO GRANULAR E RESOLUÇÃO DE CONFLITOS (TIMESTAMPS)
+1. RESTAURAÇÃO DE MEMÓRIA IN-PLACE (INJEÇÃO DE DADOS)
 -----------------------------------------------------------------------------
-- Adicionado o campo 'ultima_modificacao' e o método 'marcar_alteracao()' 
-  em todas as classes filhas (Serviços, Aditivos, NEs e Movimentações).
-- Refatoração da função '_mesclar_contratos_profundamente': o sistema agora 
-  funde dados linha a linha. Se dois usuários editarem sub-itens diferentes 
-  no mesmo contrato, ambas as edições são mantidas. Se editarem o mesmo item, 
-  a edição cronologicamente mais recente prevalece.
+- O sistema de "Desfazer" (desfazer_ultima_critica) foi reescrito. Em vez 
+  de recriar a lista de contratos do zero (o que quebrava as abas abertas), 
+  o sistema agora utiliza injeção in-place (c_atual.__dict__.update).
+- Isso garante que a restauração dos dados ocorra sem alterar os endereços 
+  de memória que a Interface Gráfica (GUI) está usando, evitando o erro da 
+  "tela quebrada" ao acionar o Ctrl+Alt+Z.
 
-2. EXCLUSÃO DEFINITIVA EM NUVEM (SISTEMA DE TOMBSTONES / LISTA NEGRA)
+2. ATUALIZAÇÃO VISUAL INSTANTÂNEA (SINCRONIA DE PONTEIROS)
 -----------------------------------------------------------------------------
-- Criação da tabela 'exclusoes_pendentes' no banco SQLite local.
-- Itens excluídos agora têm seu UID registrado nesta lista negra local, que 
-  passa a ser transmitida para o JSON da nuvem na chave 'tombstones'.
-- Correção de Falha (Fantasmas): Ao baixar dados da nuvem, o sistema agora 
-  lê a lista negra e destrói ativamente os itens apagados que ainda pudessem 
-  estar na memória de computadores desatualizados.
-- Corrigida a indentação do Bloco de Exclusão (Bloco 6), garantindo que a 
-  faxina ocorra independentemente da estrutura do contrato importado.
+- Corrigido o bug onde um pagamento restaurado não aparecia na tabela 
+  imediatamente.
+- O sistema agora reconecta automaticamente o ponteiro da Nota de Empenho 
+  aberta na tela (self.ne_selecionada) à sua versão recém-restaurada.
+- Adicionadas chamadas forçadas de redesenho da tela (exibir_historico_ne, 
+  atualizar_movimentos), fazendo com que sub-registros restaurados "pisquem" 
+  de volta na interface no mesmo milissegundo do Desfazer.
 
-3. PREVENÇÃO DE PAGAMENTOS DUPLICADOS (IDEMPOTÊNCIA)
+3. COMPATIBILIDADE DO DESFAZER COM A NUVEM (O "PERDÃO" DA LISTA NEGRA)
 -----------------------------------------------------------------------------
-- Trava de Backend: A função 'realizar_pagamento' foi blindada. O sistema 
-  agora recusa a criação de pagamentos com Valor, Competência e Observação 
-  idênticos, exigindo que o usuário diferencie parcelas (ex: "Parcela 2").
-- Deduplicação Ativa (Auto-Tombstone): Adicionada rotina na união de dados 
-  que rastreia pagamentos legados idênticos. Caso encontre clones exatos, 
-  mantém o mais recente e envia o UID do clone "perdedor" para a Lista Negra, 
-  limpando a base de dados automaticamente.
+- Criada a rotina de "Perdão de Tombstones". 
+- Antes, se o usuário apagasse uma NE e desse Ctrl+Z, ela voltava para a 
+  tela, mas a nuvem a apagava novamente na próxima sincronização (pois o UID 
+  continuava na Lista Negra local do SQLite).
+- Agora, a rotina de restauração varre todos os contratos, NEs e pagamentos 
+  restaurados e executa 'remover_da_lista_negra' no banco de dados, 
+  garantindo que o item ressuscitado seja aceito pela nuvem perfeitamente.
 
-4. INTERFACE E USABILIDADE (BUG DO CURSOR)
+4. CONFIRMAÇÕES DE SEGURANÇA (EXCLUSÃO DE NE E PAGAMENTOS)
 -----------------------------------------------------------------------------
-
-
-5. ESTABILIDADE E LOGS (DEBUG)
------------------------------------------------------------------------------
-
+- Implementadas travas de segurança rigorosas antes da exclusão de sub-itens.
+- Exclusão de NE agora exibe um aviso claro de que todos os pagamentos 
+  vinculados serão destruídos em cascata.
+- A exclusão de movimentações foi blindada para impedir a deleção da 
+  "Emissão Original" (o que corromperia a estrutura financeira da NE).
+- Ambas as funções agora disparam o 'criar_ponto_restauracao()' garantindo 
+  um snapshot (fotografia) da memória milissegundos antes da exclusão.
 
 =============================================================================
-SISTEMA PRONTO PARA COMPILAÇÃO (.EXE) PARA AMBIENTE DE PRODUÇÃO.
+SISTEMA DE DESFAZER GLOBAL 100% OPERACIONAL E INTEGRADO À NUVEM.
 =============================================================================
