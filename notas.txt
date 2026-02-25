@@ -1,47 +1,23 @@
 =============================================================================
 NOTAS DE ATUALIZAÇÃO - SISTEMA DE "DESFAZER" E ESTADO DE TELA
 =============================================================================
-Resumo das correções no motor de restauração (Ctrl+Alt+Z) e interface gráfica.
+Notas da Versão - GCI (Gestão Contratual Inteligente)
+Versão: 5.5
+Data: 25 de Fevereiro de 2026
 
-1. RESTAURAÇÃO DE MEMÓRIA IN-PLACE (INJEÇÃO DE DADOS)
------------------------------------------------------------------------------
-- O sistema de "Desfazer" (desfazer_ultima_critica) foi reescrito. Em vez 
-  de recriar a lista de contratos do zero (o que quebrava as abas abertas), 
-  o sistema agora utiliza injeção in-place (c_atual.__dict__.update).
-- Isso garante que a restauração dos dados ocorra sem alterar os endereços 
-  de memória que a Interface Gráfica (GUI) está usando, evitando o erro da 
-  "tela quebrada" ao acionar o Ctrl+Alt+Z.
+🚀 Resumo das Atualizações e Correções (Changelog)
+1. Sincronização Dinâmica de Competências (Aba 5 e Aba 3)
 
-2. ATUALIZAÇÃO VISUAL INSTANTÂNEA (SINCRONIA DE PONTEIROS)
------------------------------------------------------------------------------
-- Corrigido o bug onde um pagamento restaurado não aparecia na tabela 
-  imediatamente.
-- O sistema agora reconecta automaticamente o ponteiro da Nota de Empenho 
-  aberta na tela (self.ne_selecionada) à sua versão recém-restaurada.
-- Adicionadas chamadas forçadas de redesenho da tela (exibir_historico_ne, 
-  atualizar_movimentos), fazendo com que sub-registros restaurados "pisquem" 
-  de volta na interface no mesmo milissegundo do Desfazer.
 
-3. COMPATIBILIDADE DO DESFAZER COM A NUVEM (O "PERDÃO" DA LISTA NEGRA)
------------------------------------------------------------------------------
-- Criada a rotina de "Perdão de Tombstones". 
-- Antes, se o usuário apagasse uma NE e desse Ctrl+Z, ela voltava para a 
-  tela, mas a nuvem a apagava novamente na próxima sincronização (pois o UID 
-  continuava na Lista Negra local do SQLite).
-- Agora, a rotina de restauração varre todos os contratos, NEs e pagamentos 
-  restaurados e executa 'remover_da_lista_negra' no banco de dados, 
-  garantindo que o item ressuscitado seja aceito pela nuvem perfeitamente.
+2. Correção na Janela Flutuante de Detalhe de Serviço
 
-4. CONFIRMAÇÕES DE SEGURANÇA (EXCLUSÃO DE NE E PAGAMENTOS)
------------------------------------------------------------------------------
-- Implementadas travas de segurança rigorosas antes da exclusão de sub-itens.
-- Exclusão de NE agora exibe um aviso claro de que todos os pagamentos 
-  vinculados serão destruídos em cascata.
-- A exclusão de movimentações foi blindada para impedir a deleção da 
-  "Emissão Original" (o que corromperia a estrutura financeira da NE).
-- Ambas as funções agora disparam o 'criar_ponto_restauracao()' garantindo 
-  um snapshot (fotografia) da memória milissegundos antes da exclusão.
 
-=============================================================================
-SISTEMA DE DESFAZER GLOBAL 100% OPERACIONAL E INTEGRADO À NUVEM.
-=============================================================================
+3. Blindagem Contra "Ciclos Órfãos" (Fantasmas)
+
+
+4. Numeração Inteligente de Termos Aditivos
+
+
+5. Limpeza de Descrições Duplicadas (Auto-Clean)
+
+------------------------------- # --------------------------------------------
