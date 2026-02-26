@@ -1,23 +1,17 @@
 =============================================================================
-NOTAS DE ATUALIZAÇÃO - SISTEMA DE "DESFAZER" E ESTADO DE TELA
+NOTAS DE ATUALIZAÇÃO - Correção da Sicronização com Nuvem
 =============================================================================
 Notas da Versão - GCI (Gestão Contratual Inteligente)
-Versão: 5.5
-Data: 25 de Fevereiro de 2026
+Versão: 5.7
+Data: 26 de Fevereiro de 2026
 
 🚀 Resumo das Atualizações e Correções (Changelog)
-1. Sincronização Dinâmica de Competências (Aba 5 e Aba 3)
+
+Foi realizado aprimoramento da sincronização com a nuvem para que todas as 
+modificações realizadas sejam marcadas com data e horário, evitando perder
+as atualizações ao sincronizar com a nuvem.
 
 
-2. Correção na Janela Flutuante de Detalhe de Serviço
 
+============================================================================
 
-3. Blindagem Contra "Ciclos Órfãos" (Fantasmas)
-
-
-4. Numeração Inteligente de Termos Aditivos
-
-
-5. Limpeza de Descrições Duplicadas (Auto-Clean)
-
-------------------------------- # --------------------------------------------
