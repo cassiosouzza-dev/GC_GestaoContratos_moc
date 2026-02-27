@@ -1,17 +1,29 @@
 =============================================================================
 NOTAS DE ATUALIZAÇÃO - Correção da Sicronização com Nuvem
 =============================================================================
-Notas da Versão - GCI (Gestão Contratual Inteligente)
-Versão: 5.7
-Data: 26 de Fevereiro de 2026
+📝 Notas da Versão 5.8 - GCI Gestor
+Data: 27 de Fevereiro de 2026
 
-🚀 Resumo das Atualizações e Correções (Changelog)
+Status: Estável (Recomendada para atualização imediata)
 
-Foi realizado aprimoramento da sincronização com a nuvem para que todas as 
-modificações realizadas sejam marcadas com data e horário, evitando perder
-as atualizações ao sincronizar com a nuvem.
+🚀 O que há de novo:
+Sincronização Avançada (Time-Tracking): Implementação de "relógios de auditoria" em todos os níveis do sistema. Agora, edições em Prestadores, Serviços e Movimentações Financeiras são rastreadas individualmente, garantindo que a versão mais recente sempre vença conflitos na nuvem.
 
+Blindagem da Classe Prestador: Correção de um "ponto cego" onde alterações cadastrais de empresas (CNPJ/Razão Social) poderiam não ser propagadas. Agora, cada prestador possui o seu próprio carimbo de ultima_modificacao.
+
+🛠️ Correções e Melhorias:
+Consistência de Interface (Workspace): Ajuste no motor de abas (gci_workspace.py). Ao fechar uma janela flutuante, a tela principal é atualizada automaticamente, eliminando a necessidade de atualizar manualmente para ver as mudanças.
+
+Correção na Exclusão por Ciclo: Corrigido bug onde a remoção de um serviço de um ciclo específico (mantendo o histórico) não disparava o sinal de sincronização.
+
+Integridade de Notas de Empenho: Otimização do método de edição de pagamentos. Ao alterar um valor ou observação, o sistema agora atualiza o timestamp tanto do pagamento individual quanto da Nota de Empenho pai.
+
+⚠️ Instruções de Atualização:
+O sistema deve detetar a versão 5.8 automaticamente ao iniciar.
+
+Caso a atualização automática falhe, certifique-se de que o arquivo anterior GC_Gestor.exe não está aberto no Gerenciador de Tarefas.
 
 
 ============================================================================
+
 
