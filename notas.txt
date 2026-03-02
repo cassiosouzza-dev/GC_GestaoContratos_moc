@@ -1,77 +1,41 @@
-📝 GCI - NOTAS DA VERSÃO 5.9
-DESTAQUE: Esta versão traz a maior evolução na segurança de dados desde o início do projeto e a nova ferramenta de auxílio ao 1Doc.
+📝 GCI - NOTAS DA VERSÃO 6.0
+- Aprimorado Editor de Rascunhos de Pagamento
+- Novo Relatório por Prestador
 
-Essa é a mudança de arquitetura mais profunda que fizemos no sistema GCI na versão 5.9. Entender essa interrelação é fundamental para perceber por que o sistema se tornou "inquebrável" em comparação às versões anteriores.
+CORREÇÃO DE BUGS:
 
-Aqui está a explicação de como os objetos agora se "conversam" sem depender de ordens sequenciais:
+1. Motor Financeiro & Rateio:
 
-O Fim da "Ditadura do Índice" (Como era antes)
-Nas versões anteriores, a relação entre os objetos era baseada na posição deles em uma lista.
-Exemplo: Se você tinha 5 pagamentos, o sistema dizia: "O pagamento 3 pertence à Nota de Empenho X".
+Correção Crítica (Crash): Resolvido erro UnboundLocalError na função de Rateio que fechava o sistema ao clicar em "Cancelar".
 
-O Problema: Se alguém apagasse o pagamento 2, o pagamento 3 passava a ser o 2. O sistema "se perdia", gerando o que chamamos de vínculos órfãos ou desalinhamento de dados. Se dois usuários sincronizassem pastas diferentes, a ordem mudava e o caos estava instalado.
+Lógica de Cascata: Corrigido bug no cálculo de sugestão automática; agora o saldo restante é recalculado instantaneamente ao alterar valores manuais.
 
-A Era da "Identidade Digital" (Como é agora)
-Agora, a interrelação ocorre por Identificadores Únicos (UIDs). Pense nisso como o CPF de cada registro. Não importa se o registro é o primeiro ou o milésimo da lista; o que importa é a "etiqueta" que ele carrega.
-Como os objetos se conectam agora:
-Nota de Empenho ↔ Pagamento:
-O objeto Movimentacao (Pagamento) agora carrega dentro de si o uid da Nota de Empenho à qual ele pertence. Quando o sistema carrega o histórico, ele não pergunta "quem é o próximo?", ele pergunta "quais pagamentos possuem o UID desta nota?".
+Ordenação de Prioridade: Corrigido o motor de movimentação de linhas (▲/▼) que perdia o estado dos Checkboxes ao trocar a posição das notas.
 
-Aditivo ↔ Ciclo Financeiro:
-Anteriormente, um aditivo se ligava a um ciclo pelo número (ex: Ciclo 1). Agora, o Aditivo guarda o uid do Ciclo. Se você renomear o ciclo ou mudar a ordem dos aditivos, o vínculo permanece intacto porque o "ID" nunca muda.
+Arredondamento Monetário: Implementada trava de precisão decimal para evitar erro de centavos (0.0000001) que impedia a confirmação de pagamentos.
 
-Pagamento ↔ Rascunho HTML:
-Esta é a interrelação mais moderna do sistema. O registro no banco de dados (JSON) e o arquivo físico na sua pasta (.html) são "gêmeos" unidos pelo mesmo UID.
+2. Arquitetura de Dados (UID Migration):
 
-O banco diz: uid = PG-123
+Fantasmas de Refatoração: Corrigida a inconsistência entre id_ciclo_alvo e uid_ciclo_alvo em importações e aditivos.
 
-O arquivo se chama: draft_PG-123.html
+Persistência de Auditoria: Resolvido bug no from_dict que resetava o CPF do autor do pagamento para zeros ao recarregar a base de dados.
 
-Resultado: Você pode mudar o valor do pagamento, a data ou a observação; o ícone 📝 continuará lá porque o nome do arquivo e o ID no banco são o mesmo "elo".
+Ponte de Retrocompatibilidade: Corrigida a leitura de orçamentos em contratos antigos onde o sistema não encontrava o índice numérico após a migração para UIDs.
 
-Impacto na Sincronização (Nuvem)
-A interrelação por UID permite o que chamamos de Mesclagem Atômica. No arquivo tela_gestao_gc.py, a função _mesclar_contratos_profundamente agora funciona assim:
-Ela lê o contrato da nuvem.
+3. Relatórios & Exportação:
 
-Para cada Nota de Empenho, ela não olha a posição. Ela procura: "Eu já tenho o UID NE-abc no meu PC?".
+Correção de Exportação (CSV): Resolvido o erro NameError: ciclo_view_id que ocorria ao tentar gerar o extrato completo de contratos com múltiplos aditivos.
 
-Se sim: Ela apenas atualiza os valores que mudaram.
+Cálculo de Competências: Corrigido o seletor de meses; agora o sistema identifica corretamente as datas de início e fim baseadas no Aditivo/Ciclo selecionado e não mais apenas no contrato original de 2023.
 
-Se não: Ela cria uma nova nota, garantindo que nada seja sobrescrito por erro de posição.
+4. Interface e Usabilidade:
 
-Resumo das Vantagens Técnicas
-Desacoplamento: Os objetos são independentes. Você pode mover um serviço de um contrato para outro apenas alterando o pai_uid, sem precisar reconstruir listas.
-Integridade Referencial: Mesmo que ocorra um erro de rede durante a sincronização, o dado que chegar terá seu ID. O sistema nunca ligará um pagamento de "Medicamentos" em uma nota de "Material de Escritório" só porque as listas ficaram do mesmo tamanho.
+Seleção de Contexto: Corrigida a falha de seleção no Botão Direito da tabela de empenhos; agora a linha sob o cursor é selecionada automaticamente para evitar a exclusão acidental da nota errada.
 
-Auditoria: Como o UID (gerado no utils_gc.py) contém carimbos de data ou sequenciais globais, você consegue rastrear exatamente quando e onde aquele objeto "nasceu".
+Editor de Rascunhos: Resolvido erro AttributeError ao tentar inserir tabelas e corrigida a colagem de imagens que perdia a referência do caminho físico.
 
-Em suma: Saímos de uma organização por "fila indiana" (onde se um cai, todos se perdem) para uma organização por "rastreamento por satélite" (onde cada dado sabe exatamente quem é e a quem pertence, não importa onde esteja).
+Estabilidade de DPI: Bloqueado o redimensionamento forçado do Windows que causava janelas "gigantes" em monitores de baixa resolução.
 
-🛡️ 1. Blindagem de Dados (Sistema UID)
-Sincronização Inteligente: Agora, cada pagamento, nota de empenho e aditivo possui um "CPF" exclusivo (UID). Isso impede que o sistema duplique registros ou confunda dados quando dois usuários editam o sistema ao mesmo tempo via Google Drive.
+5. Sistema de Nuvem:
 
-Fim dos Erros de Índice: O sistema não depende mais da ordem da lista. Você pode excluir ou mover itens sem o risco de "desalinhar" os pagamentos.
-
-📝 2. Novo Editor de Rascunhos 1Doc
-Preparação de Texto: Agora você pode criar rascunhos formatados antes de lançar no 1Doc.
-
-Recursos Profissionais: O editor suporta Negrito, Itálico, Imagens (prints), e tabelas customizáveis.
-
-Tabelas Avançadas: Clique com o botão direito dentro da tabela para inserir linhas/colunas e pintar o fundo das células (ideal para destacar cabeçalhos).
-
-Salvamento Ágil: Use o atalho Ctrl+S para salvar instantaneamente sem fechar a janela.
-
-🚀 3. Produtividade e Interface
-Suporte a 2 Monitores: O editor de rascunhos abre em uma janela independente. Você pode deixar o GCI em uma tela e o rascunho na outra enquanto trabalha.
-
-Acesso Rápido no Histórico: Não precisa mais clicar em "Editar" para ver o rascunho. Basta clicar com o botão direito sobre o pagamento no histórico e selecionar "Gerir Rascunho 1Doc".
-
-Indicador Visual: O ícone 📝 aparece automaticamente na coluna de observações sempre que um rascunho existir para aquele pagamento. Se você apagar o rascunho, o ícone some na hora.
-
-🧹 4. Otimização Automática
-Limpeza de Banco: O sistema agora realiza uma "faxina" automática toda vez que você salva os dados, removendo restos de versões antigas e deixando o arquivo de sincronização mais leve e rápido.
-
-Dica de Uso: Se encontrar um registro antigo (da v5.8) que não abre o rascunho direto, apenas clique em "Editar" e salve-o uma vez. Isso gerará o novo ID de segurança para ele!
-
-
-
+Deduplicação de Pagamentos: Corrigida a lógica de sincronização que gerava pagamentos duplicados ("Zumbis") quando dois usuários salvavam alterações no mesmo contrato simultaneamente.
