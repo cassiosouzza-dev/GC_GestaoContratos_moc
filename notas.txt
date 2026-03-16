@@ -1,3 +1,2 @@
-📝 GCI - NOTAS DA VERSÃO 6.2
-- Aprimorado robô de busca de status de pagamentos. (Mais veloz)
-- Aprimoramento em Rascunhos de pagamentos.
+📝 GCI - NOTAS DA VERSÃO 6.2.2
+Correção de tag +vr (valor residual) na função de Rascunhos de Pagamento.
