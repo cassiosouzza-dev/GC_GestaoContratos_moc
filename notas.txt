@@ -1,2 +1,2 @@
-📝 GCI - NOTAS DA VERSÃO 6.2.2
-Correção de tag +vr (valor residual) na função de Rascunhos de Pagamento.
+📝 GCI - NOTAS DA VERSÃO 6.2.3
+resolve bug de dupla contagem no Valor Residual (+vr), adiciona trava de texto exato e consolida versão estável
