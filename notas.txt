@@ -1,2 +1,3 @@
-📝 GCI - NOTAS DA VERSÃO 6.2.3
-resolve bug de dupla contagem no Valor Residual (+vr), adiciona trava de texto exato e consolida versão estável
+📝 GCI - NOTAS DA VERSÃO 6.2.4
+
+Ajuste em TAGS de Rascunho e Correção de Relatório por Prestador.
