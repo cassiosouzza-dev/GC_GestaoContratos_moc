@@ -1,3 +1,3 @@
-📝 GCI - NOTAS DA VERSÃO 6.2.4
+📝 GCI - NOTAS DA VERSÃO 6.2.5
 
-Ajuste em TAGS de Rascunho e Correção de Relatório por Prestador.
+Ajuste Gerais para otimização.
