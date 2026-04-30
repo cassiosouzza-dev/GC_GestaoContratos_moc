@@ -1,3 +1,4 @@
-📝 GCI - NOTAS DA VERSÃO 6.2.5
+📝 GCI - NOTAS DA VERSÃO 6.2.6
 
-Ajuste Gerais para otimização.
+Correção Detalhe Contrato - 
+Cálculo corrigido para exibição de valor mensal. O valor usado para o cálculo do valor mensal passa a ser o valor Teto do ciclo vigente (aditivo de prazo + aditivos de valor).
