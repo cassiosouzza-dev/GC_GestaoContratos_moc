@@ -1,4 +1,8 @@
-📝 GCI - NOTAS DA VERSÃO 6.2.6
+📝 GCI - NOTAS DA VERSÃO 7.1.0
 
-Correção Detalhe Contrato - 
-Cálculo corrigido para exibição de valor mensal. O valor usado para o cálculo do valor mensal passa a ser o valor Teto do ciclo vigente (aditivo de prazo + aditivos de valor).
+Migração para banco de dados do Firebase/Google para sincronização automatica.
+Melhorias no processo de Geração em Lote de Rascunhos.
+Implementação de Aditivo Outros para aditivo de cláusula.
+Melhorias no Visualizados dinamico.
+Melhorias no Histórico Financeiro da NE com coluna de nº de processo e data de criação no 1DOC.
+Aprimoramento de Controle de Acesso.
