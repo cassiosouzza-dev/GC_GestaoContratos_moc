@@ -1,8 +1,7 @@
-📝 GCI - NOTAS DA VERSÃO 7.1.0
+📝 GCI - NOTAS DA VERSÃO 7.1.5
 
-Migração para banco de dados do Firebase/Google para sincronização automatica.
-Melhorias no processo de Geração em Lote de Rascunhos.
-Implementação de Aditivo Outros para aditivo de cláusula.
-Melhorias no Visualizados dinamico.
-Melhorias no Histórico Financeiro da NE com coluna de nº de processo e data de criação no 1DOC.
-Aprimoramento de Controle de Acesso.
+Foi realizada correção da Aba Detalhe Contrato/Ciclo para que mostrasse o valor mensal de acordo com o ciclo vigente do contrato, permitindo o acompanhamento fidedigno do consumo do saldo contratual.
+A falha era apenas um bug visual, não interferindo nos registros existentes no banco de dados.
+
+Obrigado pela compreensão!
+Bom uso!
