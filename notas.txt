@@ -1,7 +1,44 @@
-📝 GCI - NOTAS DA VERSÃO 7.1.5
+Versão 7.2.0
 
-Foi realizada correção da Aba Detalhe Contrato/Ciclo para que mostrasse o valor mensal de acordo com o ciclo vigente do contrato, permitindo o acompanhamento fidedigno do consumo do saldo contratual.
-A falha era apenas um bug visual, não interferindo nos registros existentes no banco de dados.
+NOVIDADES
 
-Obrigado pela compreensão!
-Bom uso!
+- Registro de Memorandos: cadastro simples de memorandos (número,
+  assunto, data, destinatário, link), com filtro e busca.
+- Suporte: agora dá pra enviar dúvida, sugestão, reclamação ou elogio
+  direto pelo sistema (Ajuda > Suporte). O administrador responde por
+  lá mesmo, e você recebe um aviso quando a resposta chegar.
+- Conversor de TXT em PDF: arraste um ou vários arquivos de texto e
+  gere o PDF automaticamente, sem precisar imprimir um por um.
+- Dicas rápidas: balões explicando os botões e recursos mais novos da
+  barra de ferramentas, na primeira vez que você usa o sistema
+  (revise quando quiser em Ajuda > Ver Dicas Novamente).
+- Filtro por coluna (clique com o botão direito no cabeçalho da
+  tabela) em várias telas: Tela Inicial, Histórico Financeiro,
+  Monitor de Vigência, Monitor de Empenhos, Monitor de Pagamentos e
+  Registro de Memorandos.
+- Personalização de aparência: escolha entre 3 temas de cores, estilo
+  dos ícones da barra de ferramentas, e opção de deixar os botões só
+  em cinza (sem cores).
+- Novas colunas na Tela Inicial (Licitação, CNES) e no Histórico da
+  aba Financeiro (Etapa Atual no 1Doc).
+
+MELHORIAS
+
+- Interface mais rápida ao abrir o Gerador de Lote de Rascunhos 1Doc
+  e o Monitor de Pagamentos, com indicador de carregamento.
+- Geração de rascunhos no 1Doc mais confiável, com nova conferência
+  automática ao final do lote (reenvia sozinho o que falhar).
+- Barra de título da janela agora acompanha a cor do tema escolhido.
+- Atualizações do sistema agora se aplicam de forma mais confiável,
+  sem precisar reinstalar manualmente.
+
+CORREÇÕES
+
+- Corrigido: anular parte de uma Nota de Empenho e depois tentar usar
+  o saldo liberado num novo empenho não era mais bloqueado por engano.
+- Corrigido: exclusão de Apostilamento agora reverte o remanejamento
+  corretamente em todos os casos.
+- Corrigido: contratos arquivados pelo Cofre Histórico não somem mais
+  do sistema.
+- Diversos ajustes de exibição (colunas cortando texto, seleção de
+  linha, quebra de linha em tabelas) em várias telas.
