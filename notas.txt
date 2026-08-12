@@ -1,43 +1,25 @@
+🚀 Notas de Atualização - Versão 7.3.0
 
-NOVIDADES
+🔐 Login e Segurança
+Autenticação reforçada: o login passou a usar um sistema de autenticação dedicado, com proteção automática contra tentativas repetidas de acesso indevido.
 
-- Registro de Memorandos: cadastro simples de memorandos (número,
-  assunto, data, destinatário, link), com filtro e busca.
-- Suporte: agora dá pra enviar dúvida, sugestão, reclamação ou elogio
-  direto pelo sistema (Ajuda > Suporte). O administrador responde por
-  lá mesmo, e você recebe um aviso quando a resposta chegar.
-- Conversor de TXT em PDF: arraste um ou vários arquivos de texto e
-  gere o PDF automaticamente, sem precisar imprimir um por um.
-- Dicas rápidas: balões explicando os botões e recursos mais novos da
-  barra de ferramentas, na primeira vez que você usa o sistema
-  (revise quando quiser em Ajuda > Ver Dicas Novamente).
-- Filtro por coluna (clique com o botão direito no cabeçalho da
-  tabela) em várias telas: Tela Inicial, Histórico Financeiro,
-  Monitor de Vigência, Monitor de Empenhos, Monitor de Pagamentos e
-  Registro de Memorandos.
-- Personalização de aparência: escolha entre 3 temas de cores, estilo
-  dos ícones da barra de ferramentas, e opção de deixar os botões só
-  em cinza (sem cores).
-- Novas colunas na Tela Inicial (Licitação, CNES) e no Histórico da
-  aba Financeiro (Etapa Atual no 1Doc).
+Esqueci minha Senha: agora gera um pedido para o administrador aprovar a redefinição, em vez de depender de e-mail.
 
-MELHORIAS
+Criar Conta: o autocadastro também passa por aprovação do administrador antes de a conta ficar ativa.
 
-- Interface mais rápida ao abrir o Gerador de Lote de Rascunhos 1Doc
-  e o Monitor de Pagamentos, com indicador de carregamento.
-- Geração de rascunhos no 1Doc mais confiável, com nova conferência
-  automática ao final do lote (reenvia sozinho o que falhar).
-- Barra de título da janela agora acompanha a cor do tema escolhido.
-- Atualizações do sistema agora se aplicam de forma mais confiável,
-  sem precisar reinstalar manualmente.
+Senha mínima: toda senha nova (cadastro, troca ou redefinição) passa a exigir pelo menos 6 caracteres.
 
-CORREÇÕES
+📋 Gerenciamento de Usuários (Administradores)
+Fila de Pedidos: nova aba em "Gerenciar Usuários e Acessos" para aprovar cadastros e redefinições de senha pendentes.
 
-- Corrigido: anular parte de uma Nota de Empenho e depois tentar usar
-  o saldo liberado num novo empenho não era mais bloqueado por engano.
-- Corrigido: exclusão de Apostilamento agora reverte o remanejamento
-  corretamente em todos os casos.
-- Corrigido: contratos arquivados pelo Cofre Histórico não somem mais
-  do sistema.
-- Diversos ajustes de exibição (colunas cortando texto, seleção de
-  linha, quebra de linha em tabelas) em várias telas.
+Coluna Versão: a tela de usuários agora mostra a versão do sistema que cada pessoa usou no último login.
+
+Log de Segurança: tela ampliada, com o detalhe de cada ação exibido por completo, sem cortar texto.
+
+
+🔄 Atualização Automática
+Verificação de Integridade: a partir desta versão, toda atualização automática confere o arquivo baixado antes de instalar, prevenindo a instalação de um arquivo corrompido ou adulterado.
+
+🛠️ Correções
+Balão de dica: não aparece mais indevidamente ao trocar para outro programa.
+Contador de dicas: corrigida a ordem de exibição.
