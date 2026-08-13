@@ -1,4 +1,3 @@
-🚀 Notas de Atualização - Versão 7.3.0
 
 🔐 Login e Segurança
 Autenticação reforçada: o login passou a usar um sistema de autenticação dedicado, com proteção automática contra tentativas repetidas de acesso indevido.
